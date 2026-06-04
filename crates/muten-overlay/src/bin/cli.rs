@@ -40,6 +40,11 @@ enum Cmd {
         /// Optional blocklist file.
         #[arg(long)]
         rules: Option<PathBuf>,
+        /// Emit the full verdict as machine-readable JSON (for SIEM /
+        /// scripting) instead of the human-readable summary. Exit codes
+        /// are unchanged.
+        #[arg(long)]
+        json: bool,
     },
     /// Show a summary of a blocklist file (counts + sanity check).
     Rules { file: PathBuf },
@@ -56,6 +61,10 @@ enum Cmd {
         /// Blocklist file with `process:` rules.
         #[arg(long)]
         rules: Option<PathBuf>,
+        /// Emit the verdict as machine-readable JSON. Exit codes
+        /// unchanged.
+        #[arg(long)]
+        json: bool,
     },
     /// Dry-run the full enforce loop over a JSON array of windows
     /// (each an OverlayWindow with an extra "id" field), using the
@@ -99,13 +108,18 @@ fn main() -> ExitCode {
 
 fn run(cli: Cli) -> Result<ExitCode, String> {
     match cli.cmd {
-        Cmd::Classify { window, rules } => cmd_classify(&window, rules.as_deref()),
+        Cmd::Classify {
+            window,
+            rules,
+            json,
+        } => cmd_classify(&window, rules.as_deref(), json),
         Cmd::Rules { file } => cmd_rules(&file),
         Cmd::Scareware {
             repeats,
             process,
             rules,
-        } => cmd_scareware(repeats, process.as_deref(), rules.as_deref()),
+            json,
+        } => cmd_scareware(repeats, process.as_deref(), rules.as_deref(), json),
         Cmd::Enforce { windows, rules } => cmd_enforce(&windows, rules.as_deref()),
         Cmd::Monitor {
             windows,
@@ -127,8 +141,12 @@ fn load_rules(path: Option<&std::path::Path>) -> Result<Ruleset, String> {
     }
 }
 
-fn cmd_classify(window: &str, rules: Option<&std::path::Path>) -> Result<ExitCode, String> {
-    let json = if window == "-" {
+fn cmd_classify(
+    window: &str,
+    rules: Option<&std::path::Path>,
+    json: bool,
+) -> Result<ExitCode, String> {
+    let input = if window == "-" {
         use std::io::Read;
         let mut s = String::new();
         std::io::stdin()
@@ -139,19 +157,34 @@ fn cmd_classify(window: &str, rules: Option<&std::path::Path>) -> Result<ExitCod
         std::fs::read_to_string(window).map_err(|e| format!("reading {window}: {e}"))?
     };
     let w: OverlayWindow =
-        serde_json::from_str(&json).map_err(|e| format!("parsing window JSON: {e}"))?;
+        serde_json::from_str(&input).map_err(|e| format!("parsing window JSON: {e}"))?;
     let rs = load_rules(rules)?;
     let v = classify(&w, &rs);
 
-    println!("decision: {:?}", v.decision);
-    println!("score:    {}", v.score);
-    println!("signals:  {}", v.signals.join(", "));
-    if !v.categories.is_empty() {
-        let cats: Vec<&str> = v.categories.iter().map(|c| c.as_str()).collect();
-        println!("dark_patterns: {}", cats.join(", "));
-    }
-    if let Some(rule) = &v.matched_rule {
-        println!("matched:  {rule}");
+    if json {
+        // Serialize the verdict and splice in the natural-language
+        // explanation, so a SIEM gets the structured fields *and* the
+        // human sentence in one object.
+        let mut val = serde_json::to_value(&v).map_err(|e| format!("serializing verdict: {e}"))?;
+        if let Some(obj) = val.as_object_mut() {
+            obj.insert("explanation".into(), serde_json::Value::String(v.explain()));
+        }
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&val).map_err(|e| format!("encoding json: {e}"))?
+        );
+    } else {
+        println!("decision: {:?}", v.decision);
+        println!("score:    {}", v.score);
+        println!("signals:  {}", v.signals.join(", "));
+        if !v.categories.is_empty() {
+            let cats: Vec<&str> = v.categories.iter().map(|c| c.as_str()).collect();
+            println!("dark_patterns: {}", cats.join(", "));
+        }
+        if let Some(rule) = &v.matched_rule {
+            println!("matched:  {rule}");
+        }
+        println!("why:      {}", v.explain());
     }
 
     use muten_overlay::Decision::*;
@@ -177,14 +210,22 @@ fn cmd_scareware(
     repeats: u32,
     process: Option<&str>,
     rules: Option<&std::path::Path>,
+    json: bool,
 ) -> Result<ExitCode, String> {
     let rs = load_rules(rules)?;
     let v = muten_overlay::assess(repeats, process, &rs);
-    println!("decision:        {:?}", v.decision);
-    println!("repeat_count:    {}", v.repeat_count);
-    println!("signals:         {}", v.signals.join(", "));
-    if let Some(p) = &v.matched_process {
-        println!("matched_process: {p}");
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&v).map_err(|e| format!("encoding json: {e}"))?
+        );
+    } else {
+        println!("decision:        {:?}", v.decision);
+        println!("repeat_count:    {}", v.repeat_count);
+        println!("signals:         {}", v.signals.join(", "));
+        if let Some(p) = &v.matched_process {
+            println!("matched_process: {p}");
+        }
     }
     use muten_overlay::ScarewareDecision::*;
     Ok(match v.decision {

@@ -5,6 +5,43 @@ Follows [Keep a Changelog](https://keepachangelog.com/) and
 the crate that adds the "screen" half of muten's v0.4.0 endpoint
 environment enforcement (scam-overlay + rogue-AV detection).
 
+## [0.5.0] — unreleased
+
+Evasion-resistant detection + explainability. Additive and
+backward-compatible: the JSON verdict gains fields, no existing field
+changes meaning. No new dependencies; still offline, pure,
+`forbid(unsafe_code)`.
+
+### Added
+- **Mixed-script evasion signal** (`mixed_script`, weight 30). A single
+  token mixing Latin with Cyrillic/Greek letters (e.g. `раypаl`,
+  `miсrosoft`) is flagged as a homoglyph-disguise tell (UTS #39
+  mixed-script confusables; NDSS 2015 typosquatting). Evaluated on the
+  **raw** title and the URL host — never CJK/Kana, so legitimate
+  Japanese+Latin titles are not flagged. Maps to the `Sneaking`
+  dark-pattern category (previously unmapped). The signal nudges toward
+  `Suspicious`; it never blocks alone. (Roadmap C8-4, C9-1.)
+- **Text-normalization pipeline** for blocklist title matching
+  (`confusables::normalize_for_match`): strips zero-width / BiDi-control
+  characters (C8-5/C8-9), folds confusables, and restores leetspeak
+  digits inside words (`v1rus`→`virus`, `1nfected`→`infected`) while
+  leaving pure-digit runs — phone numbers, counts — untouched (C8-6).
+  Host matching now also strips invisibles. Phone-number scanning is
+  unchanged (it deliberately keeps the original digits).
+- **`Verdict::explain()`** — a deterministic, plain-language sentence
+  describing why a verdict was reached, assembled from the signals that
+  fired (CLAUDE.md I6 / roadmap C5-8).
+- **`classify --json` and `scareware --json`** CLI flags — emit the full
+  verdict (incl. `explanation`) as machine-readable JSON for SIEM /
+  scripting. Exit codes unchanged. The human-readable `classify` output
+  now also prints a `why:` explanation line. (Roadmap C4-2, partial.)
+- New public API: `confusables::{strip_invisibles, normalize_for_match,
+  has_confusable_mixed_script, fold_leet_in_words, script_of, Script}`.
+- ~30 new unit + property tests (160 total, up from 141): invisibles
+  stripping, leet-in-words vs. phone digits, within-token mixed-script
+  detection, the Japanese+Latin false-positive guard, and `explain()`
+  well-formedness over random windows.
+
 ## [0.4.0] — unreleased
 
 ### Added

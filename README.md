@@ -11,7 +11,7 @@ tool and now enforces two things:
   antivirus / scareware**.
 
 This repository currently contains the **screen** half:
-[`crates/muten-overlay`](crates/muten-overlay) (v0.4.0).
+[`crates/muten-overlay`](crates/muten-overlay) (v0.5.0).
 
 ## Design principles
 
@@ -76,7 +76,7 @@ produces these.
 
 ## Status
 
-`muten-overlay` v0.4.0 — 141 tests, `clippy -D warnings` clean, MSRV 1.75.0.
+`muten-overlay` v0.5.0 — 160 tests, `clippy -D warnings` clean, MSRV 1.75.0.
 CI runs format/lint/test, an MSRV build, and a supply-chain gate
 (cargo-audit + cargo-deny + gitleaks) on every PR.
 

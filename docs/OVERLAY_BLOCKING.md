@@ -36,11 +36,36 @@ in the audit log:
 | unsolicited | +25 | appeared with no user action |
 | very_new (<1s) | +10 | just popped up |
 | blocklist_title | +40 | title matches a known scam phrase |
+| phone_number | +35 | a support number in an alert-shaped window (NDSS 2017) |
+| mixed_script | +30 | title/host mixes Latin with Cyrillic/Greek (homoglyph disguise) |
 | user_initiated | −40 | the user opened it → trust more |
 | blocklist_host | → hard Block | confirmed scam host |
 
 A benign user-opened full-screen video scores ~5 (Allow). A classic
 fake-virus overlay scores ~125 (Block).
+
+### Text normalization (defeating evasion)
+
+Before a title is matched against the blocklist it is run through
+`confusables::normalize_for_match`, which composes four offline,
+dependency-free passes:
+
+1. **strip invisibles** — drop zero-width and BiDi-control characters
+   (`U+200B…200D`, `U+FEFF`, soft hyphen, `U+202A…202E`, …) that split a
+   word past a naive substring match.
+2. **fold confusables** — Cyrillic/Greek/full-width look-alikes → ASCII
+   skeleton (e.g. Cyrillic `і` → `i`).
+3. **fold leetspeak in words** — `0→o 1→i 3→e 4→a 5→s 7→t`, but only
+   inside tokens that already contain a letter, so phone numbers and
+   counts (pure-digit runs) are left intact.
+4. **lowercase**.
+
+The `mixed_script` signal is computed on the **raw** title and host
+*before* folding (folding erases the evidence). It deliberately ignores
+CJK/Kana, so a legitimate Japanese+Latin title is never flagged — the
+project's false-positive-averse posture for the JP market. The
+phone-number scan runs on the original (non-leet-folded) text so digits
+survive.
 
 ## Blocklist format (offline)
 

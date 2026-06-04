@@ -1,6 +1,6 @@
 # muten-overlay
 
-The "screen" half of [muten](../../README.md) v0.4.0 — endpoint
+The "screen" half of [muten](../../README.md) v0.5.0 — endpoint
 environment enforcement. While the rest of muten keeps managed PCs
 quiet (audio), this crate detects and dismisses **scam overlays**
 (fake "your computer is infected / call support / verify you are

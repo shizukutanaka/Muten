@@ -59,7 +59,7 @@
 同種: ripgrep, fd, bat, gh
 
 1. ★★ **シェル補完生成**: clap_complete で bash/zsh/fish/pwsh。[根拠: モダンCLI標準] [現状: なし]
-2. ★★ **`--json` 出力**: classify/monitor を機械可読JSONで(現状は人間向けtext)。SIEM連携。[現状: text]
+2. ✓DONE(部分, v0.5.0) ★★ **`--json` 出力**: classify/scareware に `--json`(verdict + explanation を機械可読JSONで)。SIEM連携。monitor/enforce は次段。[現状: text]
 3. ★★★ **stdin ストリーミング**: helper出力を pipe で連続classify。[現状: enforce が JSON配列一括]
 4. ★ **man page 生成**: clap_mangen。[現状: なし]
 5. ★★ **`--quiet`/`--verbose`/`-v`**: ログレベル制御。[現状: なし]
@@ -80,7 +80,7 @@
 5. ★ **時間減衰**: 古いsignalの重み低下。[現状: なし]
 6. ★★ **YARA風ルール言語**: blocklistを表現力あるDSLに。[根拠: YARA業界標準] [現状: prefix:形式]
 7. ★ **per-signal の誤検出率記録**: 監査ログから signal別精度を集計。[現状: なし]
-8. ★★ **explainability出力強化**: 「なぜBlockか」を自然文で(UIGuard的)。[根拠: arXiv:2308.05898] [現状: signal名リスト]
+8. ✓DONE(v0.5.0) ★★ **explainability出力強化**: `Verdict::explain()` が「なぜBlockか」を決定論的な自然文で返す(UIGuard的)。CLI `why:` 行 + `--json` の `explanation`。[根拠: arXiv:2308.05898] [現状: signal名リスト]
 9. ★ **正規表現/glob title マッチ**: 現状substring。「call .* now」等。[現状: substring]
 10. ★★ **ベースライン学習(任意)**: 環境の正常window分布を学習し外れ値検出。ただしML黒箱回避(I6)とのバランス要。[現状: 静的]
 
@@ -121,9 +121,9 @@
 1. ✓DONE ★★ **host への confusable folding**: 現状titleのみ。micros0ft.com等のtyposquat。[根拠: NDSS 2015] [現状: title限定]
 2. ★★★ **完全UTS#39 confusables**: 現状頻出subset。unicode-security crate検討(但し依存増)。[根拠: arXiv:2401.07867 homoglyph] [現状: 手書きsubset]
 3. ★ **NFKC正規化**: 合成文字/互換文字の正規化。[現状: confusableのみ]
-4. ★★ **mixed-script検出**: 1単語にラテン+キリル混在 = 高リスクシグナル。[根拠: UTS#39 mixed-script] [現状: fold後に消える]
-5. ★ **zero-width文字除去**: ZWSP等で単語分割を妨害する回避。[現状: 未対応]
-6. ★★ **leetspeak正規化**: v1rus→virus, 1nfected。[根拠: 一般的回避] [現状: 数字隣接で誤検出回避のみ]
+4. ✓DONE(v0.5.0) ★★ **mixed-script検出**: 1単語にラテン+キリル/ギリシャ混在 = `mixed_script`(+30, Sneaking)シグナル。raw title/host で fold 前に判定、CJK/かなは無視(日本語+ラテンの誤検出回避)。[根拠: UTS#39 mixed-script] [現状: fold後に消える]
+5. ✓DONE(v0.5.0) ★ **zero-width文字除去**: `strip_invisibles` で ZWSP/BiDi制御を normalize_for_match と host matching の前段で除去。[現状: 未対応]
+6. ✓DONE(v0.5.0) ★★ **leetspeak正規化**: `fold_leet_in_words` で v1rus→virus, 1nfected→infected。文字を含むトークンのみ(純数字=電話番号は不変)。[根拠: 一般的回避] [現状: 数字隣接で誤検出回避のみ]
 7. ★ **絵文字/記号の正規化**: ⚠️等を含むtitle。[現状: 未]
 8. ★★ **日本語全角/半角統一**: 全角は対応済だが、日本語blocklist追加時にカナ正規化要。[現状: 全角ラテンのみ]
 9. ★ **RTL override検出**: Unicode BiDi override での偽装。[現状: 未]
@@ -133,7 +133,7 @@
 
 同種: UIGuard, dark-pattern-detection, CPRA/GDPR compliance tools
 
-1. ★★ **Sneaking カテゴリの signal**: 現状マッピング無し(overlay スコープ外だが、隠れ自動DL等は該当しうる)。[根拠: Gray et al. 2018] [現状: 4/5カテゴリのみ]
+1. ✓DONE(v0.5.0) ★★ **Sneaking カテゴリの signal**: `mixed_script`(homoglyph偽装=情報の偽装)を Sneaking にマッピング。5/5カテゴリに到達。[根拠: Gray et al. 2018] [現状: 4/5カテゴリのみ]
 2. ★ **CPRA/FTC レポート様式出力**: 監査ログを規制提出形式に。[根拠: CPRA dark pattern定義] [現状: dark-pattern tagのみ]
 3. ★★ **EU DSA / Cyber Resilience Act 整合**: EU市場向けコンプラ。[現状: 未検討]
 4. ★ **dark pattern 重大度スコア**: カテゴリ別の害の重み。[根拠: Mathur et al. 2019] [現状: 有無のみ]
@@ -170,8 +170,10 @@
 3. **Merkle anchoring + 外部root** (C6-1, C6-2) — 改ざん耐性の検証性とroot保護
 4. ~~多言語(日本語)blocklist (C2-1)~~ ✓実装済 — 21 JP title、IPA/トレンドマイクロ/消費者庁出典
 5. **署名ビルド + SBOM + CI脆弱性スキャン** (C10-1,3,9) — 公開・配布の前提
-6. **CLI `--json` 出力** (C4-2) — SIEM連携の実用性
+6. ~~CLI `--json` 出力 (C4-2)~~ ✓実装済(classify/scareware) — SIEM連携の実用性
 7. ~~host への confusable folding (C8-1)~~ ✓実装済 — typosquat digit fold + homoglyph
+8. ~~回避耐性: mixed-script / zero-width / leetspeak (C8-4/5/6, C9-1)~~ ✓実装済(v0.5.0) — homoglyph偽装の主要回避をオフラインで封じる、Sneaking到達
+9. ~~説明可能性: `Verdict::explain()` (C5-8)~~ ✓実装済(v0.5.0) — 自然文の判定理由
 
 ## スコープ外と判断したもの (I3: 過剰実装回避)
 

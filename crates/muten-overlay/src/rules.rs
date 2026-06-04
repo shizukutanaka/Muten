@@ -102,11 +102,13 @@ impl Ruleset {
     #[must_use]
     pub fn match_host(&self, url: &str) -> Option<String> {
         let host = host_of(url)?;
-        // Fold typosquat/homoglyph confusables (0→o, 1→l, Cyrillic о→o,
-        // …) so `micros0ft.example` / `evіl.example` can't dodge an
+        // Drop any zero-width/BiDi characters first (e.g. `ev\u{200B}il`),
+        // then fold typosquat/homoglyph confusables (0→o, 1→l, Cyrillic
+        // о→o, …) so `micros0ft.example` / `evіl.example` can't dodge an
         // ASCII host blocklist. We compare folded-host suffixes against
         // folded rules, but return the *original* matched rule string
         // for the audit log.
+        let host = crate::confusables::strip_invisibles(&host);
         let folded_host = crate::confusables::fold_host_confusables(&host);
         let labels: Vec<&str> = folded_host.split('.').collect();
         for i in 0..labels.len() {
@@ -127,15 +129,16 @@ impl Ruleset {
 
     /// Does `title` contain a blocked pattern? Returns the pattern.
     ///
-    /// The title is homoglyph-folded (Cyrillic/Greek/full-width
-    /// look-alikes → ASCII) before matching, so a scam that swaps a
-    /// Latin letter for a confusable (e.g. Cyrillic і in "іnfected")
-    /// can't slip past an ASCII substring blocklist. See the
-    /// `confusables` module.
+    /// The title is fully normalized before matching
+    /// ([`normalize_for_match`](crate::confusables::normalize_for_match)):
+    /// zero-width/BiDi characters are stripped, homoglyphs
+    /// (Cyrillic/Greek/full-width look-alikes) are folded to ASCII, and
+    /// leetspeak digits inside words are restored — so a scam that
+    /// writes "у\u{200B}our c0mputer is 1nfected" can't slip past an
+    /// ASCII substring blocklist. See the `confusables` module.
     #[must_use]
     pub fn match_title(&self, title: &str) -> Option<String> {
-        let folded = crate::confusables::fold_confusables(title);
-        let t = folded.to_ascii_lowercase();
+        let t = crate::confusables::normalize_for_match(title);
         self.title_patterns
             .iter()
             .find(|p| t.contains(p.as_str()))

@@ -180,4 +180,47 @@ proptest! {
     fn fold_leaves_ascii_unchanged(s in "[ -~]*") {
         prop_assert_eq!(muten_overlay::confusables::fold_confusables(&s), s);
     }
+
+    /// The full match-normalization pipeline never panics and is
+    /// idempotent for any input.
+    #[test]
+    fn normalize_for_match_is_idempotent(s in ".*") {
+        let once = muten_overlay::confusables::normalize_for_match(&s);
+        let twice = muten_overlay::confusables::normalize_for_match(&once);
+        prop_assert_eq!(once, twice);
+    }
+
+    /// Stripping invisibles never *grows* the string and is
+    /// idempotent (a second pass removes nothing).
+    #[test]
+    fn strip_invisibles_shrinks_and_is_idempotent(s in ".*") {
+        let once = muten_overlay::confusables::strip_invisibles(&s);
+        prop_assert!(once.chars().count() <= s.chars().count());
+        let twice = muten_overlay::confusables::strip_invisibles(&once);
+        prop_assert_eq!(once, twice);
+    }
+
+    /// Mixed-script detection never panics on arbitrary Unicode.
+    #[test]
+    fn has_mixed_script_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_confusable_mixed_script(&s);
+    }
+
+    /// A title that is already a single script (here: any ASCII) is
+    /// never flagged as mixed-script — the signal requires a
+    /// within-token Latin↔Cyrillic/Greek mix.
+    #[test]
+    fn ascii_is_never_mixed_script(s in "[ -~]*") {
+        prop_assert!(!muten_overlay::confusables::has_confusable_mixed_script(&s));
+    }
+
+    /// explain() never panics and is non-empty for any classified
+    /// window; it ends with a period.
+    #[test]
+    fn explain_is_well_formed(w in window_strategy()) {
+        let v = classify(&w, &Ruleset::default());
+        let why = v.explain();
+        prop_assert!(!why.is_empty());
+        prop_assert!(why.ends_with('.'));
+    }
 }

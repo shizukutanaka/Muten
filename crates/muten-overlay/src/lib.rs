@@ -106,6 +106,71 @@ pub struct Verdict {
     pub matched_rule: Option<String>,
 }
 
+impl Verdict {
+    /// A deterministic, plain-language explanation of the verdict,
+    /// assembled from the signals that fired (CLAUDE.md I6 / roadmap
+    /// C5-8). For an operator or a SIEM note this reads better than a
+    /// raw signal list, e.g.:
+    ///
+    /// > Block (score 130): the window covers (almost) the whole
+    /// > screen, hides or fakes the close button, captures all input
+    /// > (modal), appeared with no user action, and shows a support
+    /// > phone number; matched blocklist rule "your computer is
+    /// > infected".
+    ///
+    /// Pure and side-effect-free; the wording is stable so tests and
+    /// downstream consumers can rely on it.
+    #[must_use]
+    pub fn explain(&self) -> String {
+        let verb = match self.decision {
+            Decision::Allow => "Allow",
+            Decision::Suspicious => "Suspicious",
+            Decision::Block => "Block",
+        };
+        let phrases: Vec<&str> = self.signals.iter().map(|s| signal_phrase(s)).collect();
+        let body = if phrases.is_empty() {
+            "no notable signals fired".to_string()
+        } else {
+            format!("the window {}", join_clauses(&phrases))
+        };
+        let mut out = format!("{verb} (score {}): {body}", self.score);
+        if let Some(rule) = &self.matched_rule {
+            out.push_str(&format!("; matched blocklist rule \"{rule}\""));
+        }
+        out.push('.');
+        out
+    }
+}
+
+/// Map one signal name to a human clause for [`Verdict::explain`].
+/// Unknown signals fall back to their raw name (forward-compatible).
+fn signal_phrase(signal: &str) -> &str {
+    match signal {
+        "fullscreen" => "covers (almost) the whole screen",
+        "topmost" => "stays always-on-top",
+        "no_close_button" => "hides or fakes the close button",
+        "blocks_input" => "captures all input (modal)",
+        "unsolicited" => "appeared with no user action",
+        "user_initiated" => "was opened by the user",
+        "very_new" => "just popped up",
+        "blocklist_title" => "matches a known scam title",
+        "blocklist_host" => "is hosted on a blocklisted domain",
+        "phone_number" => "shows a support phone number",
+        "mixed_script" => "mixes character sets to disguise its text",
+        other => other,
+    }
+}
+
+/// Join clauses into "a", "a and b", or "a, b, and c" (Oxford comma).
+fn join_clauses(parts: &[&str]) -> String {
+    match parts {
+        [] => String::new(),
+        [one] => (*one).to_string(),
+        [a, b] => format!("{a} and {b}"),
+        [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Decision {
@@ -133,10 +198,25 @@ const W_UNSOLICITED: i32 = 25; // appeared with no user action
 const W_VERY_NEW: i32 = 10; // < 1s old (just popped up)
 const W_TITLE_HIT: i32 = 40; // title matches a scam pattern
 const W_PHONE_NUMBER: i32 = 35; // a phone number in an OS-alert-like window
+const W_MIXED_SCRIPT: i32 = 30; // title/host mixes Latin with Cyrillic/Greek
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
 /// Coverage at or above this percent counts as "full-screen".
 const FULLSCREEN_COVERAGE: u8 = 85;
+
+/// Extract the host portion of a URL-ish string, scheme/path/port
+/// stripped — used to scope the mixed-script check to the host so a
+/// Cyrillic word in a *path* (`example.com/привет`) can't false-fire.
+/// Mirrors `rules::host_of` intent without allocating.
+fn url_host(url: &str) -> &str {
+    let after = match url.find("://") {
+        Some(i) => &url[i + 3..],
+        None => url,
+    };
+    let authority = after.split(['/', '?', '#']).next().unwrap_or(after);
+    let no_userinfo = authority.rsplit('@').next().unwrap_or(authority);
+    no_userinfo.split(':').next().unwrap_or(no_userinfo)
+}
 
 /// Classify one observed window against a ruleset.
 ///
@@ -223,6 +303,23 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && contains_phone_number(&confusables::fold_confusables(&w.title)) {
         score += W_PHONE_NUMBER;
         signals.push("phone_number");
+    }
+
+    // Mixed-script homoglyph evasion. A single token that mixes Latin
+    // with Cyrillic/Greek letters (e.g. "раypаl", "miсrosoft") is a
+    // strong disguise tell (UTS #39 mixed-script confusables; NDSS 2015
+    // typosquatting). Evaluated on the *raw* title and host, because the
+    // confusable fold used for blocklist matching erases the evidence.
+    // CJK/Kana are ignored, so a legitimate Japanese+Latin title does
+    // not fire (false-positive guard for the JP market). The weight
+    // nudges toward Suspicious; it never blocks on its own.
+    let mixed_script = confusables::has_confusable_mixed_script(&w.title)
+        || w.url
+            .as_deref()
+            .is_some_and(|u| confusables::has_confusable_mixed_script(url_host(u)));
+    if mixed_script {
+        score += W_MIXED_SCRIPT;
+        signals.push("mixed_script");
     }
 
     // Clamp negative scores to 0 (a user-initiated benign window
@@ -322,7 +419,7 @@ pub fn signature(w: &OverlayWindow) -> String {
             after
                 .split(['/', '?', '#'])
                 .next()
-                .map(|h| h.split('@').last().unwrap_or(h).to_string())
+                .map(|h| h.rsplit('@').next().unwrap_or(h).to_string())
         })
         .unwrap_or_default();
     format!("{title}|{host}")
@@ -795,6 +892,128 @@ mod tests {
             "signals={:?}",
             v.signals
         );
+    }
+
+    // ── mixed-script evasion signal (UTS #39 / roadmap C8-4) ─────
+
+    #[test]
+    fn mixed_script_title_fires_signal_and_sneaking_category() {
+        // "раypаl" mixes Cyrillic р/а with Latin — homoglyph disguise.
+        let w = OverlayWindow {
+            title: "sign in to раypаl".into(),
+            coverage_percent: 90,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.contains(&"mixed_script"),
+            "signals={:?}",
+            v.signals
+        );
+        assert!(v.categories.contains(&DarkPatternCategory::Sneaking));
+    }
+
+    #[test]
+    fn mixed_script_host_fires_but_path_does_not() {
+        // Homoglyph host → fires.
+        let w = OverlayWindow {
+            title: "login".into(),
+            url: Some("http://раypal.com/secure".into()),
+            ..Default::default()
+        };
+        assert!(classify(&w, &Ruleset::default())
+            .signals
+            .contains(&"mixed_script"));
+
+        // A Cyrillic word only in the *path* of a Latin host must NOT
+        // fire (the check is scoped to the host).
+        let w2 = OverlayWindow {
+            title: "blog".into(),
+            url: Some("http://example.com/привет".into()),
+            ..Default::default()
+        };
+        assert!(!classify(&w2, &Ruleset::default())
+            .signals
+            .contains(&"mixed_script"));
+    }
+
+    #[test]
+    fn japanese_plus_latin_title_does_not_fire_mixed_script() {
+        // FP guard for the JP market: Japanese is `Other`, not a
+        // confusable script, so a legit bilingual title is clean.
+        let w = OverlayWindow {
+            title: "ウイルス対策 Windows Update".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: true,
+            origin: Origin::UserInitiated,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.contains(&"mixed_script"),
+            "JP+Latin title falsely flagged: {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn mixed_script_alone_is_not_a_block() {
+        // The signal nudges toward Suspicious, never blocks on its own
+        // (W_MIXED_SCRIPT = 30 < SUSPICIOUS_THRESHOLD).
+        let w = OverlayWindow {
+            title: "раypаl".into(),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert_ne!(v.decision, Decision::Block);
+    }
+
+    // ── Verdict::explain (roadmap C5-8) ──────────────────────────
+
+    #[test]
+    fn explain_lists_signals_in_plain_language() {
+        let w = OverlayWindow {
+            title: "Microsoft Alert: call 1-800-555-0100 now".into(),
+            url: None,
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 0,
+        };
+        let v = classify(&w, &Ruleset::default());
+        let why = v.explain();
+        assert!(why.starts_with("Block (score "));
+        assert!(why.contains("covers (almost) the whole screen"));
+        assert!(why.contains("hides or fakes the close button"));
+        assert!(why.contains("shows a support phone number"));
+        assert!(why.ends_with('.'));
+    }
+
+    #[test]
+    fn explain_mentions_matched_rule() {
+        let rules = Ruleset::from_lines(&["host: scam.example"]);
+        let w = OverlayWindow {
+            title: "x".into(),
+            url: Some("http://scam.example/x".into()),
+            ..Default::default()
+        };
+        let why = classify(&w, &rules).explain();
+        assert!(why.contains("matched blocklist rule \"scam.example\""));
+    }
+
+    #[test]
+    fn explain_handles_allow_with_no_signals() {
+        let w = OverlayWindow {
+            title: "notepad".into(),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let why = classify(&w, &Ruleset::default()).explain();
+        assert_eq!(why, "Allow (score 0): no notable signals fired.");
     }
 
     #[test]
