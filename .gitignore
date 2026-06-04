@@ -1,0 +1,24 @@
+# Rust build artifacts
+/target
+**/target
+*.rs.bk
+*.pdb
+
+# Cargo (keep Cargo.lock for the binary crate — it ships a CLI)
+# Cargo.lock is intentionally committed (reproducible builds, CLAUDE.md §8).
+
+# Editor / OS noise
+*.orig
+*.swp
+*~
+.DS_Store
+.idea/
+.vscode/
+
+# muten runtime artifacts (audit logs, locks)
+*.log
+.claude/lock/
+.temp/
+
+# Local env
+.env

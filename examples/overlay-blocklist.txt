@@ -1,0 +1,203 @@
+# muten overlay blocklist — 2026 threat-informed defaults
+#
+# Compiled 2026-05 from public threat intel: FTC consumer advice,
+# Trend Micro, Malwarebytes, Splunk, The Hacker News, Proofpoint TA571,
+# Sekoia, Huntress (KongTuke/CrashFix), Gen Threat Labs.
+#
+# Format:
+#   host: <domain>     block any URL on this host or a subdomain of it
+#   title: <substring> contribute W_TITLE_HIT to the suspicion score
+#   <bare line>        treated as a host rule
+#   # comment
+#
+# SCOPE NOTE: muten's classifier blocks on a CONFIRMED host match or a
+# high heuristic score. Title patterns only CONTRIBUTE to the score —
+# they never auto-block alone, because legitimate windows can contain
+# scary words. This list is meant to be small, auditable, and pushed
+# via MDM. It is NOT a replacement for a network-level ad/DNS filter.
+
+# ─────────────────────────────────────────────────────────────────
+# TITLE / TEXT PATTERNS
+# Fake antivirus & tech-support-scam (TSS) overlays. Sources: FTC,
+# Trend Micro tmka-05037 / tmka-12135, Avast, Norton, FOX5 (Apr 2026).
+# ─────────────────────────────────────────────────────────────────
+title: your computer is infected
+title: your pc is infected
+title: your system is infected
+title: viruses detected
+title: virus detected
+title: threat detected
+title: critical threat detected
+title: critical error
+title: security alert
+title: your computer has been blocked
+title: your computer has been locked
+title: access to this pc has been blocked
+title: windows defender alert
+title: windows security alert
+title: microsoft warning alert
+title: virus alert from microsoft
+
+# Brand-impersonation support-number lures (FTC: scammers impersonate
+# well-known companies and push a phone number).
+title: call microsoft support
+title: call apple support
+title: call windows support
+title: contact microsoft technician
+title: call this number immediately
+title: do not restart your computer
+title: do not close this window
+title: do not ignore this warning
+
+# Fake antivirus / subscription-renewal scareware (Trend Micro,
+# Malwarebytes May 2026 "subscription expired" wave).
+title: your subscription has expired
+title: your antivirus has expired
+title: your protection has expired
+title: your mcafee subscription
+title: your norton subscription
+title: renew your subscription now
+
+# Prize / lottery / reward scams.
+title: you have won
+title: congratulations you won
+title: claim your prize
+title: you are today's winner
+title: gift card winner
+
+# ─────────────────────────────────────────────────────────────────
+# ClickFix / FakeCAPTCHA / "trust-flow" lures (2026's dominant vector;
+# 517% surge H1 2025, ~47% of intrusions per Microsoft). These trick
+# the user into running a command. Sources: The Hacker News (Jan 2026),
+# Splunk, Proofpoint TA571, Sekoia IClickFix, Huntress CrashFix,
+# Trend Micro KongTuke (Mar 2026), startupdefense (Apr 2026).
+# ─────────────────────────────────────────────────────────────────
+title: verify you are human
+title: confirm you are not a robot
+title: i am not a robot
+title: human verification required
+title: press win+r
+title: press windows + r
+title: press ctrl+v then enter
+title: complete the verification steps
+title: verify your audio
+title: browser stopped abnormally
+title: browser has stopped working
+title: chrome stopped abnormally
+title: system font required
+title: missing system font
+title: a font is required to display this page
+title: failed to load font
+title: update your browser to continue
+title: your browser is out of date
+
+# ─────────────────────────────────────────────────────────────────
+# LAW-ENFORCEMENT / GOVERNMENT IMPERSONATION lock-screens.
+# FBI IC3 2025: government-impersonation complaints nearly doubled
+# (17,300 → 32,500), ~$797M lost, top-5 cyber-enabled fraud. Edge
+# security team (Oct 2025) reported scams "posing as law enforcement,
+# accusing users of crimes, demanding payment to unlock the PC".
+# ─────────────────────────────────────────────────────────────────
+title: your computer has been locked by
+title: this device has been locked for security
+title: illegal activity has been detected
+title: illegal content detected
+title: your ip address has been flagged
+title: federal bureau of investigation
+title: department of justice
+title: your computer has been blocked for legal reasons
+title: pay the fine to unlock
+title: penalty must be paid
+
+# ─────────────────────────────────────────────────────────────────
+# FAKE BLUE-SCREEN / SYSTEM-ERROR & FAKE CONTROL-PANEL overlays.
+# Edge security team (2025): "fake blue screens, fake control panels".
+# Imitate Windows stop errors to maximize credibility before the
+# support-number lure.
+# ─────────────────────────────────────────────────────────────────
+title: your pc ran into a problem and needs to restart
+title: stop code: critical process died
+title: your windows license has expired
+title: hardware failure detected
+title: your hard drive will be deleted
+title: do not restart your computer
+title: do not shut down your pc
+
+# ─────────────────────────────────────────────────────────────────
+# 日本語 — サポート詐欺 / 偽セキュリティ警告 (Japanese TSS).
+# muten is a Japan-market product; Japanese support-scam ("サポート
+# 詐欺") is the dominant local variant. Wording from IPA (2024-11/
+# 2025-04 注意喚起), Trend Micro (2025-12), 消費者庁 (Microsoft logo
+# 注意喚起), 東京スター銀行. Matching is confusable-fold + lowercase;
+# Japanese passes through folding unchanged (verified). Substring, so
+# "ウイルスに感染" covers "...しています/しました/感染したPC".
+# ─────────────────────────────────────────────────────────────────
+title: ウイルスに感染
+title: ウィルスに感染
+title: トロイの木馬
+title: スパイウェアに感染
+title: お使いのpcはブロックされています
+title: pcへのアクセスがブロック
+title: アクセスがセキュリティ上の理由
+title: すぐにサポートに電話
+title: 今すぐ電話してください
+title: 今すぐお電話
+title: サポートセンターに電話
+title: マイクロソフトサポートに連絡
+title: セキュリティ警告
+title: 重大なセキュリティ警告
+title: お使いのコンピュータは危険
+title: すべてのファイルが削除されます
+title: 個人情報が漏洩
+title: システムが破損しています
+title: 不正なアクセスが検出されました
+title: お使いのwindowsがブロックされました
+title: ライセンスの有効期限が切れました
+
+# ─────────────────────────────────────────────────────────────────
+# HOST / INFRASTRUCTURE PATTERNS
+# Abused trusted hosting that repeatedly serves TSS/ClickFix pages.
+# Sources: Gen Threat Labs (Azure Blob TSS, *.web.core.windows.net,
+# 100+ rotated domains/week, Feb 2026), Elastic (bincheck.io MIMICRAT
+# via fake Cloudflare page, Feb 2026).
+#
+# CAUTION: these suffixes also host LEGITIMATE content. Because muten
+# only HARD-BLOCKS on host match, blocking a whole cloud suffix would
+# cause false positives. We therefore DO NOT list bare cloud suffixes
+# here; instead, IT should add the specific malicious subdomains their
+# deployment observes. The entries below are illustrative placeholders
+# to be replaced with site-specific intel.
+# ─────────────────────────────────────────────────────────────────
+# host: <specific-scam-subdomain>.z13.web.core.windows.net
+# host: <specific-rotated-domain>.example
+
+# Known-bad illustrative hosts (replace with live intel via MDM):
+host: win-prize-now.example
+host: your-pc-is-infected.example
+host: urgent-security-alert.example
+host: microsoft-security-alert.example
+host: windows-defender-alert.example
+
+# ─────────────────────────────────────────────────────────────────
+# ROGUE-AV / SCAREWARE PROCESS NAMES
+# Installed fake-antivirus that floods the desktop with fake-threat
+# pop-ups and demands payment. Matched space/separator-insensitively,
+# so "pc protector plus" matches PCProtectorPlus.exe. Sources:
+# NordVPN (Jan 2026), Malwarebytes Rogue.* detections, SafetyDetectives
+# 2026 guide. Replace/extend with the specific rogue-AV your fleet
+# encounters; IT pushes updates via MDM.
+# ─────────────────────────────────────────────────────────────────
+process: pc protector plus
+process: advanced mac cleaner
+process: registrysmart
+process: registry smart
+process: systemcare antivirus
+process: system care antivirus
+process: mac auto fixer
+process: smart mac care
+process: driver updater plus
+process: pc accelerate pro
+process: total system care
+process: my pc optimizer
+process: segurazo
+process: one safe pc cleaner

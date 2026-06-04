@@ -1,0 +1,29 @@
+# gitleaks configuration for muten.
+# Extends the default ruleset (broad secret detection) and adds an
+# allowlist for this repo's known false positives. CI runs gitleaks on
+# every PR; locally: `gitleaks detect --source . -c .gitleaks.toml`.
+# CLAUDE.md I4: no secrets in commits.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "muten repo false positives"
+paths = [
+    # The example blocklist contains fake support phone numbers used in
+    # scam titles (e.g. 1-800-555-0100); these are test/sample data,
+    # not secrets.
+    '''examples/overlay-blocklist\.txt''',
+    # Docs cite example phone numbers and hash digests in prose.
+    '''docs/.*\.md''',
+    # Test fixtures embed sample window titles with fake numbers and
+    # SHA-256 hashes from the audit-chain tests.
+    '''.*/tests/.*\.rs''',
+    '''.*/src/.*\.rs''',
+]
+# The audit-chain uses SHA-256 hashes that can look high-entropy;
+# allow 64-hex genesis/hash strings that are clearly chain digests.
+regexes = [
+    '''0{64}''',                 # GENESIS (64 zero hex)
+    '''[0-9a-f]{64}''',          # SHA-256 digests in tests/docs
+]

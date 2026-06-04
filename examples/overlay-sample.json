@@ -1,0 +1,10 @@
+{
+  "title": "⚠ warning: your computer is infected — call microsoft support immediately",
+  "url": "http://your-pc-is-infected.example/alert?id=9981",
+  "coverage_percent": 100,
+  "topmost": true,
+  "has_close_button": false,
+  "blocks_input": true,
+  "origin": "unsolicited",
+  "age_ms": 300
+}

@@ -1,0 +1,41 @@
+# cargo-deny configuration for muten-overlay.
+# Run locally: `cargo deny check` (cargo install cargo-deny).
+# CI runs this on every PR (see .github/workflows/ci.yml).
+
+[advisories]
+# Fail on any known vulnerability. Unmaintained/yanked are warnings so
+# they surface without blocking on transitive churn we don't control.
+version = 2
+yanked = "warn"
+ignore = []
+
+[licenses]
+# Allow-list of permissive licenses. Anything outside this set fails
+# the build, so a new dependency dragging in a copyleft/unknown
+# license is caught before merge (CLAUDE.md I4: license discipline).
+version = 2
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+]
+confidence-threshold = 0.9
+
+[bans]
+# Deny multiple major versions of the same crate (bloat / confusion).
+multiple-versions = "warn"
+wildcard-dependencies = "deny"   # all deps must be version-pinned
+# muten pins exact versions for MSRV 1.75 compatibility; flag any
+# crate that sneaks in unpinned.
+
+[sources]
+# Only crates.io. No git or unknown registries in the dependency tree.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

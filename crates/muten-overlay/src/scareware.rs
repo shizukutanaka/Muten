@@ -1,0 +1,281 @@
+//! Scareware / rogue-antivirus detection.
+//!
+//! A one-off scam overlay is handled by [`crate::classify`]. Rogue
+//! security software ("fake antivirus") behaves differently: once
+//! installed it *persists* and **floods the desktop with the same
+//! fake-threat pop-up over and over**, demanding payment to "fix"
+//! infections that don't exist. Two tells distinguish it from a
+//! single web overlay:
+//!
+//! 1. **Repetition** — the same alert signature reappears many times
+//!    in a short window. A legitimate app does not re-pop an identical
+//!    modal every few seconds.
+//! 2. **An installed process** — unlike a web page, rogue AV runs as
+//!    a local process (often masquerading as "PC Protector Plus",
+//!    "Advanced Mac Cleaner", a registry cleaner, etc.) and re-launches
+//!    via Run-key / scheduled-task persistence.
+//!
+//! This module models both signals as **pure logic**: the daemon's
+//! OS-specific collector feeds in observations (overlay appearances,
+//! the owning process name) and the detector decides. No OS calls, no
+//! network, `forbid(unsafe_code)` — same contract as the rest of the
+//! crate.
+//!
+//! ## Scope (CLAUDE.md I9: least privilege, read-only first)
+//!
+//! muten **detects and audits** scareware; it does not kill processes,
+//! edit the registry, or delete files. Removal is an EDR / antivirus
+//! responsibility and would require privileges and `unsafe` we refuse
+//! to take. The value muten adds is *early, explainable, offline
+//! detection* on managed fleets — surfacing "PC-07 has shown the same
+//! fake-virus pop-up 9 times in 2 minutes and is running
+//! `pcprotectorplus.exe`" into the audit log / SIEM so IT acts before
+//! the user pays.
+
+use crate::rules::Ruleset;
+use serde::Serialize;
+use std::collections::HashMap;
+
+/// A stable fingerprint of an overlay appearance. The OS collector
+/// derives this from the window — typically a normalized title plus
+/// the source host — so that "the same pop-up" maps to "the same key"
+/// across appearances. We don't define the hashing here; the caller
+/// supplies whatever stable string identifies one campaign.
+pub type Signature = String;
+
+/// Verdict from the scareware detector.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ScarewareVerdict {
+    pub decision: ScarewareDecision,
+    /// Why we decided. Listed for the audit log.
+    pub signals: Vec<&'static str>,
+    /// How many times this signature appeared in the window.
+    pub repeat_count: u32,
+    /// Matched rogue-AV process pattern, if any.
+    pub matched_process: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScarewareDecision {
+    /// Nothing notable.
+    Benign,
+    /// Looks like scareware — audit and surface to IT, do not act
+    /// destructively.
+    Scareware,
+}
+
+/// How many identical appearances within the window before we call it
+/// a flood. Three of the exact same modal in the window is already
+/// abnormal for legitimate software.
+pub const REPEAT_THRESHOLD: u32 = 3;
+
+/// Sliding window for repeat counting, milliseconds (default 2 min).
+pub const DEFAULT_WINDOW_MS: u64 = 120_000;
+
+/// Tracks repeated overlay appearances within a sliding time window to
+/// detect the "flood" behavior of installed rogue AV.
+///
+/// The daemon holds one of these and calls [`record`](Self::record)
+/// each time the OS collector reports an overlay, passing the current
+/// time. Appearances older than the window are pruned, so memory is
+/// bounded by the number of *distinct* signatures seen recently.
+#[derive(Debug, Clone)]
+pub struct RepeatTracker {
+    window_ms: u64,
+    /// signature -> timestamps (ms) of recent appearances.
+    seen: HashMap<Signature, Vec<u64>>,
+}
+
+impl RepeatTracker {
+    #[must_use]
+    pub fn new(window_ms: u64) -> Self {
+        Self {
+            window_ms,
+            seen: HashMap::new(),
+        }
+    }
+
+    /// Record one appearance of `sig` at time `now_ms`; returns the
+    /// number of appearances now within the window (including this
+    /// one). Prunes expired entries for this signature.
+    pub fn record(&mut self, sig: &str, now_ms: u64) -> u32 {
+        let cutoff = now_ms.saturating_sub(self.window_ms);
+        let entry = self.seen.entry(sig.to_string()).or_default();
+        entry.retain(|&t| t >= cutoff);
+        entry.push(now_ms);
+        entry.len() as u32
+    }
+
+    /// Current count for a signature without recording a new hit.
+    #[must_use]
+    pub fn count(&self, sig: &str, now_ms: u64) -> u32 {
+        let cutoff = now_ms.saturating_sub(self.window_ms);
+        self.seen
+            .get(sig)
+            .map(|v| v.iter().filter(|&&t| t >= cutoff).count() as u32)
+            .unwrap_or(0)
+    }
+
+    /// Drop all tracking state for signatures with no recent activity,
+    /// keeping memory bounded over long uptimes. Call periodically.
+    pub fn prune(&mut self, now_ms: u64) {
+        let cutoff = now_ms.saturating_sub(self.window_ms);
+        for v in self.seen.values_mut() {
+            v.retain(|&t| t >= cutoff);
+        }
+        self.seen.retain(|_, v| !v.is_empty());
+    }
+}
+
+impl Default for RepeatTracker {
+    fn default() -> Self {
+        Self::new(DEFAULT_WINDOW_MS)
+    }
+}
+
+/// Decide whether the current situation is scareware.
+///
+/// Inputs:
+/// - `repeat_count`: appearances of this overlay signature in the
+///   window (from [`RepeatTracker::record`]).
+/// - `process_name`: the owning process, if the collector attributed
+///   one (an installed rogue AV will have one; a transient web overlay
+///   typically won't, or will be the browser).
+/// - `rules`: the blocklist, consulted for known rogue-AV process
+///   names.
+///
+/// A known rogue-AV **process** match alone is enough (the software is
+/// already installed). Otherwise, a **repeat flood** at or above
+/// [`REPEAT_THRESHOLD`] is the signal.
+#[must_use]
+pub fn assess(repeat_count: u32, process_name: Option<&str>, rules: &Ruleset) -> ScarewareVerdict {
+    let mut signals: Vec<&'static str> = Vec::new();
+
+    let matched_process = process_name.and_then(|p| rules.match_process(p));
+
+    if matched_process.is_some() {
+        signals.push("rogue_av_process");
+    }
+    if repeat_count >= REPEAT_THRESHOLD {
+        signals.push("repeated_flood");
+    }
+
+    let decision = if matched_process.is_some() || repeat_count >= REPEAT_THRESHOLD {
+        ScarewareDecision::Scareware
+    } else {
+        ScarewareDecision::Benign
+    };
+
+    ScarewareVerdict {
+        decision,
+        signals,
+        repeat_count,
+        matched_process,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rogue_rules() -> Ruleset {
+        Ruleset::from_lines(&[
+            "process: pc protector plus",
+            "process: advanced mac cleaner",
+            "process: registrysmart",
+            "process: systemcare antivirus",
+        ])
+    }
+
+    #[test]
+    fn single_appearance_is_benign() {
+        let mut t = RepeatTracker::new(DEFAULT_WINDOW_MS);
+        let n = t.record("fake-virus-alert", 1_000);
+        assert_eq!(n, 1);
+        let v = assess(n, None, &Ruleset::default());
+        assert_eq!(v.decision, ScarewareDecision::Benign);
+    }
+
+    #[test]
+    fn repeated_flood_is_scareware() {
+        let mut t = RepeatTracker::new(DEFAULT_WINDOW_MS);
+        let mut n = 0;
+        for ms in [1_000, 5_000, 9_000] {
+            n = t.record("fake-virus-alert", ms);
+        }
+        assert_eq!(n, 3);
+        let v = assess(n, None, &Ruleset::default());
+        assert_eq!(v.decision, ScarewareDecision::Scareware);
+        assert!(v.signals.contains(&"repeated_flood"));
+    }
+
+    #[test]
+    fn appearances_outside_window_dont_count() {
+        let mut t = RepeatTracker::new(10_000); // 10s window
+        t.record("sig", 1_000);
+        t.record("sig", 2_000);
+        // This one is way past the window from the first two.
+        let n = t.record("sig", 100_000);
+        assert_eq!(n, 1, "old appearances should have been pruned");
+    }
+
+    #[test]
+    fn distinct_signatures_counted_separately() {
+        let mut t = RepeatTracker::new(DEFAULT_WINDOW_MS);
+        t.record("alert-a", 1_000);
+        t.record("alert-a", 2_000);
+        let nb = t.record("alert-b", 3_000);
+        assert_eq!(nb, 1);
+        assert_eq!(t.count("alert-a", 3_000), 2);
+    }
+
+    #[test]
+    fn rogue_av_process_alone_is_scareware() {
+        // Even a single appearance is scareware if the owning process
+        // is a known rogue AV — the software is already installed.
+        let v = assess(1, Some("PCProtectorPlus.exe"), &rogue_rules());
+        assert_eq!(v.decision, ScarewareDecision::Scareware);
+        assert!(v.signals.contains(&"rogue_av_process"));
+        assert_eq!(v.matched_process.as_deref(), Some("pc protector plus"));
+    }
+
+    #[test]
+    fn legit_process_not_flagged() {
+        let v = assess(1, Some("chrome.exe"), &rogue_rules());
+        assert_eq!(v.decision, ScarewareDecision::Benign);
+        assert!(v.matched_process.is_none());
+    }
+
+    #[test]
+    fn both_signals_fire_together() {
+        let mut t = RepeatTracker::new(DEFAULT_WINDOW_MS);
+        let mut n = 0;
+        for ms in [1_000, 2_000, 3_000, 4_000] {
+            n = t.record("registrysmart-alert", ms);
+        }
+        let v = assess(n, Some("RegistrySmart.exe"), &rogue_rules());
+        assert_eq!(v.decision, ScarewareDecision::Scareware);
+        assert!(v.signals.contains(&"rogue_av_process"));
+        assert!(v.signals.contains(&"repeated_flood"));
+        assert_eq!(v.repeat_count, 4);
+    }
+
+    #[test]
+    fn prune_drops_stale_signatures() {
+        let mut t = RepeatTracker::new(10_000);
+        t.record("old", 1_000);
+        t.record("recent", 50_000);
+        t.prune(55_000);
+        assert_eq!(t.count("old", 55_000), 0);
+        assert_eq!(t.count("recent", 55_000), 1);
+    }
+
+    #[test]
+    fn count_does_not_mutate() {
+        let mut t = RepeatTracker::new(DEFAULT_WINDOW_MS);
+        t.record("sig", 1_000);
+        assert_eq!(t.count("sig", 2_000), 1);
+        assert_eq!(t.count("sig", 2_000), 1); // stable, no increment
+    }
+}

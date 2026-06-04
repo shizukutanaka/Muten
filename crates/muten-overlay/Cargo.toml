@@ -1,0 +1,30 @@
+[package]
+name        = "muten-overlay"
+description = "muten — scam/full-screen overlay & rogue-antivirus detection (pure domain layer, no OS, no network)"
+version      = "0.4.0"
+edition      = "2021"
+license      = "MIT"
+rust-version = "1.75.0"
+repository   = "https://github.com/shizukutanaka/muten"
+readme       = "README.md"
+keywords     = ["security", "scam", "overlay", "scareware", "endpoint"]
+categories   = ["command-line-utilities", "os"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[[bin]]
+name = "muten-overlay"
+path = "src/bin/cli.rs"
+
+[dependencies]
+serde      = { version = "=1.0.215", features = ["derive"] }
+serde_json = "=1.0.133"
+thiserror  = "=1.0.69"
+clap       = { version = "=4.5.20", features = ["derive"] }
+sha2 = "=0.10.8"
+hex = "=0.4.3"
+
+[dev-dependencies]
+proptest = { version = "=1.4.0", default-features = false, features = ["std"] }
+tempfile = "=3.13.0"
