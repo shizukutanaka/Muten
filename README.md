@@ -76,6 +76,9 @@ produces these.
 - [`docs/RESEARCH_IMPROVEMENTS_2026H1.md`](docs/RESEARCH_IMPROVEMENTS_2026H1.md) —
   2026-H1 follow-up survey (comparable software + arXiv) of new improvement
   points across detection, Unicode/dark-patterns, audit integrity, and supply chain.
+- [`docs/IMPROVEMENT_CATALOG_2026H2.md`](docs/IMPROVEMENT_CATALOG_2026H2.md) —
+  2026-H2 catalog: 10 categories × 10 improvement points, each grounded in
+  arXiv + GitHub, with status vs v0.5.0 and a cross-cutting shortlist.
 
 ## Status
 

@@ -464,3 +464,147 @@ unicode-rs/unicode-normalization。標準: UTS#39, UTS#46, RFC 8785。
 Sources(C8): https://github.com/unicode-org/icu4x , https://github.com/unicode-rs/unicode-security ,
 https://github.com/mpkorstanje/tr39-confusables , https://github.com/unicode-rs/unicode-normalization ,
 https://unicode.org/reports/tr39/ , arXiv:2111.00169
+
+---
+
+## カテゴリ 9: アンチ詐欺 / ダークパターン / 規制対応
+
+同種OSS: DarkDialogs/OpenScience(cookie ダイアログ 10 種検出), dibollinger/CookieBlock-Consent-Crawler,
+simtape/dark_pattern_research。研究: UIGuard (arXiv:2308.05898), UMBRA (arXiv:2603.21515),
+real-time deceptive patterns (arXiv:2411.07441), Mathur et al. 2019。規制: FTC / CPRA / EU DSA。
+
+1. ✅ ★★ **dark-pattern 5分類タグ(Gray et al. 2018)+ mixed_script→Sneaking**
+   [根拠] Gray et al. CHI 2018。
+   [muten] v0.5.0 で 5/5 カテゴリ到達。以下で severity と規制整合を強化。
+
+2. 🔻 ★★ **カテゴリ別 severity スコア(害の重み)**
+   [根拠] Mathur et al. 2019 / UMBRA は違法性の重い順に位置づけ。
+   [muten] Forced Action/Sneaking=高、Nagging=低の severity 重みを加算へ反映。
+
+3. 🆕 ★★ **規制条項タグ付け(FTC / CPRA / EU DSA)**
+   [根拠] FTC 2024 dark-pattern report / CPRA「ダークパターン経由の同意は無効」/ EU DSA Art.25。
+   [muten] 各検出に `FTC-disguised-ads` / `CPRA-consent` / `DSA-Art25` タグを `explain()`/監査へ付加。
+
+4. 🆕 ★★ **進化型ダークパターン(DP11–DP19)の語彙取り込み**
+   [根拠] UMBRA (arXiv:2603.21515) — pay-to-opt-out / 取消障壁 / fake opt-out を 99% で検出。
+   [muten] overlay 文脈に該当する語彙(fake opt-out / 取消障壁の文言)を title 信号化。
+
+5. 🆕 ★ **同意/cookie ダークパターン検出器の知見転用**
+   [根拠] DarkDialogs/OpenScience(10 種自動検出)/ CookieBlock-Consent-Crawler(OpenWPM)。
+   [muten] overlay の一種としての consent ダークパターン(accept 強調/reject 秘匿)を将来スコープに。
+
+6. 🆕 ★ **リアルタイム deceptive pattern 検出の特徴量転用**
+   [根拠] arXiv:2411.07441 — 測定可能な HCI 特徴でリアルタイム検出。
+   [muten] CV を使わず、muten メタデータで近似できる特徴(被覆・モーダル・close 秘匿)を抽出。
+
+7. 🔻 ★★ **誤検出の異議申立てフロー(正規 window の除外記録)**
+   [根拠] Edge の false-alarm 報告ループ。
+   [muten] 正規 window を Block した際の記録 + MDM 配布の allowlist 除外(監査に残す)。
+
+8. 🆕 ★ **GDPR: 監査ログの PII 最小化/マスキング**
+   [根拠] CLAUDE.md I5 / GDPR データ最小化。
+   [muten] window title に PII が混入し得る → 監査記録時に既知 PII パターンをマスク(オフライン)。
+
+9. 🆕 ★ **CPRA/FTC レポート様式出力**
+   [根拠] CPRA dark-pattern 定義 / 規制提出様式。
+   [muten] 監査ログを規制提出形式(カテゴリ + 条項タグ + 証拠)にエクスポート。
+
+10. 🆕 ★ **法執行なりすましの法域別 tuning**
+    [根拠] FBI IC3 2024 / 各国ブランド(警察庁・FBI 等)。
+    [muten] locker/法執行なりすまし語彙を法域別に(JP/EN/…)。confusable fold 後照合。
+
+Sources(C9): https://github.com/DarkDialogs/OpenScience ,
+https://github.com/dibollinger/CookieBlock-Consent-Crawler ,
+https://github.com/simtape/dark_pattern_research ,
+arXiv:2308.05898, arXiv:2603.21515, arXiv:2411.07441, arXiv:2406.01608
+
+---
+
+## カテゴリ 10: エンタープライズ配布 / 供給チェーンセキュリティ
+
+同種OSS: sigstore/cosign, jedisct1/minisign, theupdateframework/specification,
+CycloneDX/cyclonedx-rust-cargo, slsa-framework/slsa-github-generator, osquery/osquery, wazuh/wazuh。
+研究: Ladisa et al. SoK (Oakland 2023), arXiv:2409.05014。規制: EU CRA, EO 14028。
+
+1. 🆕 ★★★ **per-OS helper スクリプトを署名し exec 前に検証**
+   [根拠] sigstore/cosign(`sign-blob --bundle`、オフライン検証)/ Ladisa et al. SoK。
+   [muten] helper(bash/PS)は exec される未署名コード=最弱リンク。daemon が spawn 前に
+   オフライン検証(埋込 pubkey、Rekor 不要)、不一致で exec 拒否。
+
+2. 🆕 ★★★ **MDM 配布 blocklist の署名 + オフライン検証 + anti-rollback**
+   [根拠] theupdateframework(オフライン鍵・閾値・freshness/rollback 保護)。
+   [muten] blocklist を署名 blob 化、pinned pubkey + 単調増加 `version` + `valid_until` を parse 前検証。
+   高保証に 2-of-N 閾値。config が検出判断を駆動する以上 integrity 必須。
+
+3. 🆕 ★★ **runtime 検証器は minisign/ed25519 で forbid(unsafe)・zero-network 維持**
+   [根拠] jedisct1/minisign(cosign の着想元、ed25519、network 不要)。
+   [muten] publish=cosign(Rekor 公開記録)、runtime=埋込 pure-Rust ed25519。依存の unsafe は cargo-deny gate。
+
+4. 🔻 ★★ **SBOM(CycloneDX)+ SLSA provenance を CI 成果物に**
+   [根拠] CycloneDX/cyclonedx-rust-cargo / slsa-framework/slsa-github-generator(L2–L3)。
+   [muten] `cargo cyclonedx --format json`(出荷 feature)+ signed provenance を Release 添付。CRA 対応。
+
+5. 🔻 ★★ **再現ビルド(determinism ゲート)**
+   [根拠] reproducible-builds.org/rust / RFC 3127 trim-paths。
+   [muten] `[profile.release] trim-paths="all"` + `SOURCE_DATE_EPOCH` + toolchain 固定、CI で2回ビルド diff。
+
+6. 🔻 ★★★ **MDM 配布テンプレート(Intune/Jamf/GPO/Ansible)**
+   [根拠] osquery/osquery, wazuh/wazuh の配布手順。
+   [muten] helper + rules + 鍵 を各 MDM で配布するテンプレートを同梱(roadmap C10-4)。
+
+7. 🆕 ★ **no_std 純検出コアで trusted/攻撃面を最小化**
+   [根拠] secure-design(arXiv:2406.10109 系)。
+   [muten] `muten-core` を no_std 化し IO/exec/署名境界を明示(C3-5 と合流)。
+
+8. ✅ ★★ **cargo-audit + cargo-deny + gitleaks CI ゲート**
+   [根拠] rustsec/rustsec, EmbarkStudios/cargo-deny。
+   [muten] 実装済。SBOM/SLSA/署名で拡張。
+
+9. 🔻 ★ **検証可能リリース文書(CRA 整合 SECURITY.md)**
+   [根拠] EU CRA(SBOM 作成/維持/10年保持 + 脆弱性対応、2027-12 期限)/ osquery の GPG 鍵公開。
+   [muten] `SECURITY.md` + 「リリース検証」doc(公開鍵・検証手順・SBOM 配置・脆弱性 SLA・CRA チェックリスト)。
+
+10. 🔻 ★ **テレメトリの opt-in(匿名集計、PII 最小化)**
+    [根拠] Edge anonymous signals / CLAUDE.md I5。
+    [muten] 検出統計の匿名集計を opt-in、PII 最小化を厳守(オフライン既定)。
+
+Sources(C10): https://github.com/sigstore/cosign , https://github.com/jedisct1/minisign ,
+https://github.com/theupdateframework/specification , https://github.com/CycloneDX/cyclonedx-rust-cargo ,
+https://github.com/slsa-framework/slsa-github-generator , https://github.com/osquery/osquery ,
+https://github.com/wazuh/wazuh , arXiv:2409.05014
+
+---
+
+## 横断的 次sprint候補(★★★ 集約)
+
+製品目標(公開可能・保守性・安全性・法的安定性)への寄与順:
+
+1. **検出メタデータ複合信号**(C1-3/4, C5-2)— `sudden_fullscreen_takeover` / `input_trap` /
+   `coercive_overlay`。既存メタデータの結合のみ、CV不要・blocklist 遅延に強い最高 ROI。
+2. **UTS#39 昇格**(C8-2/3/4/5)— skeleton 衝突 / whole-script / restriction-level / BiDi-present。
+3. **ClickFix 等 新詐欺ファミリ blocklist**(C1-5, C2-3/5)— 2025 最大トレンド + GitHub 由来の蒸留。
+4. **監査の検証性と root 保護**(C6-2/3/4)— Merkle + C2SP checkpoint + canonical serialization(準バグ)。
+5. **未署名攻撃面の封鎖**(C10-1/2, C7-7)— helper / blocklist の署名 + オフライン検証 + anti-rollback。
+6. **crate 品質ゲート**(C3-3/4/6)— semver-checks / feature flags + cargo-hack / fuzz。
+
+## スコープ外(I3: 過剰実装回避)
+
+- **CV / ML 黒箱**(PP3D/Edge の画像モデル, LLM 推論)— I6 説明可能・offline・推論なしを堅持。
+  behavioral tell はメタデータで再現(C1-3/4)。
+- **network / 証明書 / WHOIS / リアルタイム reputation** — offline-first。abuse TLD/host は
+  オフライン蒸留リストで近似(C1-2, C2-4)。
+- **プロセス kill / レジストリ改変** — 検出・監査のみ(除去は EDR)。
+- **ブロックチェーン / consensus 監査** — Merkle + signed checkpoint で split-view/truncation を十分カバー。
+- **完全 UTS#39 テーブル即時導入** — icu4x は依存増/肥大ゆえ #2–#7 を dependency-free 実装後に衡量(C8-9)。
+
+## 出典総覧
+
+各カテゴリ末尾の Sources を参照。arXiv: 2510.18465, 2509.13186, 2401.09824, 1607.06891,
+1909.07539, 2111.00169, 2308.05898, 2603.21515, 2411.07441, 2406.01608, 2306.05816,
+2308.05557, 2605.00065, 2409.05014。GitHub: jarelllama/Scam-Blocklist, CybercentreCanada/CCCS-Yara,
+scamsniffer/scam-database, VirusTotal/yara-x, SigmaHQ/sigma, google/trillian, sigstore/rekor,
+transparency-dev/merkle, C2SP/C2SP, AccessKit/accesskit, unicode-org/icu4x,
+unicode-rs/unicode-security, DarkDialogs/OpenScience, sigstore/cosign, jedisct1/minisign,
+CycloneDX/cyclonedx-rust-cargo, slsa-framework/slsa-github-generator, obi1kenobi/cargo-semver-checks,
+rust-fuzz/cargo-fuzz, EmbarkStudios/cargo-deny ほか。標準: UTS#39, RFC 9162, RFC 8785, C2SP, NO_COLOR,
+SLSA v1.0, EU CRA。
