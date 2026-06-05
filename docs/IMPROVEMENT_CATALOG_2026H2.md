@@ -356,3 +356,111 @@ Sources(C6): https://github.com/google/trillian , https://github.com/sigstore/re
 https://github.com/transparency-dev/merkle , https://github.com/C2SP/C2SP ,
 https://github.com/open-telemetry/opentelemetry-rust , https://github.com/SigmaHQ/sigma ,
 arXiv:2308.05557, arXiv:2605.00065, RFC 9162, RFC 8785
+
+---
+
+## カテゴリ 7: OS 統合 / クロスプラットフォーム window 管理
+
+同種OSS: AccessKit/accesskit (AT-SPI/UIAutomation, Rust), leexgone/uiautomation-rs,
+autopilot-rs/autopilot-rs, rust-windowing/winit, smithay (Wayland), jordansissel/xdotool,
+microsoft/PowerToys, Hammerspoon/hammerspoon。
+
+1. ✅ ★★★ **Wayland helper(ext-foreign-toplevel-list)+ X11/macOS/Windows helper**
+   [根拠] wlroots/ext-foreign-toplevel-list プロトコル。
+   [muten] 実装済。以下で helper のシグナル忠実度を上げる。
+
+2. 🔻 ★★ **macOS close-button / modal を Accessibility API で実取得**
+   [根拠] AccessKit/accesskit — Unix=AT-SPI, macOS/Windows=各 a11y API で role/state を公開。
+   [muten] `has_close_button` は現状 true 固定。a11y の AXCloseButton/AXModal で honest 化。
+
+3. 🔻 ★★ **Windows: UIAutomation で高精度 window 属性**
+   [根拠] leexgone/uiautomation-rs / microsoft windows-rs UIAutomation。
+   [muten] Win32 P/Invoke より UIA の ControlType/IsModal/IsTopmost が高精度。helper を UIA 化。
+
+3-b. 🔻 ★★ **AT-SPI で Linux の role/modal/close を取得**
+   [根拠] AccessKit Unix adapter(AT-SPI D-Bus via zbus)。
+   [muten] Wayland では toplevel 列挙に加え AT-SPI で modal/close affordance を補完。
+
+4. 🔻 ★★ **origin(unsolicited/user-initiated)の実検出(foreground 変化追跡)**
+   [根拠] 過去 session で `unsolicited`+25 が実機で死(常に unknown)。
+   [muten] helper が直近の user input → window 出現の時間相関を取り `origin` を honest 化。
+
+5. 🔻 ★★ **blocks_input(モーダル/入力グラブ)の honest 化**
+   [根拠] UIA `IsModal` / X11 grab / Wayland のフォーカス制約。
+   [muten] 取得可能な OS では false 固定をやめ実値供給。`input_trap`(C1-4)の前提。
+
+6. 🔻 ★ **age_ms 実取得(window 作成時刻)**
+   [根拠] `_NET_WM_*` / UIA / a11y のタイムスタンプ。
+   [muten] very_new / instant_takeover(C1-3)の前提。0 固定をやめる。
+
+7. 🔻 ★★ **helper の署名検証(起動前の完全性確認)**
+   [根拠] 供給チェーン(C10-1 と合流)。
+   [muten] `SubprocessController` が helper を exec する前に ed25519/cosign blob 検証。
+
+8. 🔻 ★ **helper のタイムアウト(enumerate/dismiss のハング対策)**
+   [根拠] 堅牢な subprocess 制御の基本。
+   [muten] 現状無制限。`Command` に deadline、超過で sweep_error 監査。
+
+9. 🔻 ★ **multi-monitor 対応(coverage 計算)**
+   [根拠] 複数ディスプレイ環境での被覆率は単一画面前提だと誤る。
+   [muten] coverage を「アクティブ画面」基準に厳密化、helper が monitor geometry を供給。
+
+10. 🔻 ★ **helper 権限最小化の文書(各 OS の必要権限)**
+    [根拠] macOS Accessibility / Windows UIA の権限要件。
+    [muten] MDM 配布手順に必要権限(macOS Accessibility 許可等)を明記(I9)。
+
+Sources(C7): https://github.com/AccessKit/accesskit , https://github.com/leexgone/uiautomation-rs ,
+https://github.com/autopilot-rs/autopilot-rs , https://github.com/rust-windowing/winit ,
+https://github.com/jordansissel/xdotool , https://github.com/microsoft/PowerToys
+
+---
+
+## カテゴリ 8: テキスト / Unicode 処理
+
+同種OSS: unicode-org/icu4x (Rust ICU), unicode-rs/unicode-security, mpkorstanje/tr39-confusables,
+unicode-rs/unicode-normalization。標準: UTS#39, UTS#46, RFC 8785。
+
+1. ✅ ★★ **confusable folding(title/host)+ mixed-script + zero-width/BiDi strip + leetspeak + 全角**
+   [根拠] UTS#39 confusables(focused subset)。
+   [muten] v0.5.0 実装済。以下で UTS#39 アルゴリズムへ昇格。
+
+2. 🔻 ★★★ **UTS#39 `skeleton()` 衝突照合(既知ブランド表)**
+   [根拠] UTS#39 §4 / mpkorstanje/tr39-confusables / unicode-rs/unicode-security。
+   [muten] `skeleton(host)` を計算しオフライン正規ブランド表と完全一致照合 → 高重み信号。
+
+3. 🔻 ★★★ **Whole-Script Confusable 信号(mixed-script の盲点)**
+   [根拠] UTS#39 §5 / unicode-rs/unicode-security の `whole_script_confusable`。
+   [muten] 全 Cyrillic `"ѕсоре"` 等を捕捉。mixed-script と独立の純関数。
+
+4. 🔻 ★★★ **Restriction-Level 連続スコア化**
+   [根拠] UTS#39 §5.2 / ICU SpoofChecker RESTRICTION_LEVEL。
+   [muten] script 集合からレベル算出、緩いほど段階加点。加算モデルに自然適合。
+
+5. 🔻 ★★★ **BiDi 制御の「存在=信号」化(Trojan Source、isolate 含む)**
+   [根拠] Trojan Source (arXiv:2111.00169, USENIX Sec'23)。
+   [muten] strip 前に検出し `bidi_control_present` 信号化。正規 UI には出ない高信頼。
+
+6. 🔻 ★★ **Mixed-Number-System 検出**
+   [根拠] ICU SpoofChecker MIXED_NUMBERS。
+   [muten] 数字を Unicode ブロック別分類、2種混在で信号。FP 極小。
+
+7. 🔻 ★★ **Combining-Mark / Default-Ignorable 乱用検出**
+   [根拠] UTS#39 INVISIBLE / unicode general-category。
+   [muten] 結合マーク2連・基底なし結合マーク・Default_Ignorable で信号。純関数。
+
+8. 🔻 ★★ **NFKC 正規化と confusable-fold の不一致を弱信号化**
+   [根拠] unicode-rs/unicode-normalization(NFKC)/ confusables.txt と NFKC は31文字相違。
+   [muten] NFKC 後に形が変わったこと自体を `compatibility_chars_present` 弱信号(`ⓟⓐⓨⓟⓐⓛ` 等)。
+
+9. 🆕 ★★ **icu4x への移行検討(完全 UTS#39、ただし依存増・no_std 影響を評価)**
+   [根拠] unicode-org/icu4x — no_std 対応の本格 Unicode、データ駆動。
+   [muten] 現状は手書き subset。完全性 vs 依存増/バイナリ肥大/forbid(unsafe) を I3 で衡量。
+   まずは #2–#7 を dependency-free 実装、必要時のみ icu4x。
+
+10. 🔻 ★ **confusable fold の property test 拡充(mixed-script 不変条件)**
+    [根拠] proptest(既存)。
+    [muten] skeleton 冪等性 / whole-script 判定 / restriction-level 単調性を property test 固定。
+
+Sources(C8): https://github.com/unicode-org/icu4x , https://github.com/unicode-rs/unicode-security ,
+https://github.com/mpkorstanje/tr39-confusables , https://github.com/unicode-rs/unicode-normalization ,
+https://unicode.org/reports/tr39/ , arXiv:2111.00169
