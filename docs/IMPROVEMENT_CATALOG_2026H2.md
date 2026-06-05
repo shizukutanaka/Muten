@@ -140,3 +140,109 @@ Sources(C2): https://github.com/jarelllama/Scam-Blocklist ,
 https://github.com/scamsniffer/scam-database , https://github.com/mradamdavies/number-skid ,
 https://github.com/topics/phone-scam , arXiv:1607.06891, arXiv:1909.07539, arXiv:2509.13186,
 https://www.ic3.gov/AnnualReport/Reports/2024_IC3Report.pdf
+
+---
+
+## カテゴリ 3: Rust システムライブラリ / crate 設計
+
+同種OSS(高品質 Rust crate ツール): obi1kenobi/cargo-semver-checks, rust-fuzz/cargo-fuzz,
+EmbarkStudios/cargo-deny, bheisler/criterion.rs, taiki-e/cargo-hack, Enselic/cargo-public-api,
+crate-ci/typos, foresterre/cargo-msrv, dtolnay/* (crate 設計の規範)。
+
+1. ✅ ★★ **cargo-deny / cargo-audit / MSRV CI / clippy -D warnings / gitleaks**
+   [根拠] EmbarkStudios/cargo-deny, rustsec/rustsec(cargo-audit)。
+   [muten] CI 実装済(供給鎖ゲート)。以下は未実装の品質ゲート。
+
+2. 🔻 ★★★ **`#![deny(missing_docs)]` で公開 API doc 強制**
+   [根拠] dtolnay 系 crate の規範 / docs.rs 文化。
+   [muten] 多くに doc あるが強制なし。pure-core に付与し公開 API を網羅。
+
+3. 🔻 ★★ **cargo-semver-checks で API 破壊を CI 検出**
+   [根拠] obi1kenobi/cargo-semver-checks — rustc 機構で semver 違反を検出、CI Action 同梱。
+   [muten] fleet 自動化が消費する公開 API/blocklist スキーマの破壊を PR + pre-publish で阻止。
+
+4. 🔻 ★★★ **feature flags(cli/monitor/sink/controller を optional 化)**
+   [根拠] taiki-e/cargo-hack — feature 組合せの網羅ビルド/テスト。
+   [muten] 現状「全部入り」。ライブラリ利用者が最小依存に。cargo-hack で feature-combo を CI 検証。
+
+5. 🔻 ★★★ **no_std 純検出コア分離**
+   [根拠] no_std crate 設計の標準(core/alloc 分割)。
+   [muten] classify/rules/confusables は std 不要化可。`muten-core`(no_std/forbid/deny-docs)を分離。
+
+6. 🔻 ★★ **cargo-fuzz で parser をファズ + OSS-Fuzz**
+   [根拠] rust-fuzz/cargo-fuzz — 「parser は高価値ファズ対象」、forbid(unsafe) なら sanitizer 無効で高速。
+   [muten] `fuzz/` に blocklist/メタデータ/署名 bundle parser target。no-panic・有界資源を assert。
+
+7. 🆕 ★★ **cargo-mutants で test スイートの実効性検証**
+   [根拠] sourcefrog/cargo-mutants — コードに mutation を注入しテストが捕捉するか測定。
+   [muten] property test 162 件の「見逃し」を定量化。スコアリング/parser のテスト網羅を補強。
+
+8. 🆕 ★ **cargo-public-api で公開 API スナップショット**
+   [根拠] Enselic/cargo-public-api — 公開 API 差分を CI で可視化。
+   [muten] semver-checks と併用し、意図しない API 露出/削除をレビューで検出。
+
+9. 🔻 ★ **docs.rs メタデータ + criterion ベンチ**
+   [根拠] bheisler/criterion.rs(統計的ベンチ・回帰検出)。
+   [muten] `[package.metadata.docs.rs]` で all-features doc 生成。classify/fold のスループット回帰検出。
+
+10. 🆕 ★ **`#[non_exhaustive]` + typos CI**
+    [根拠] crate-ci/typos(誤字 CI)/ 標準の非破壊 enum 設計。
+    [muten] Decision/DarkPatternCategory/ScarewareDecision に `#[non_exhaustive]`、doc/コメントに typos。
+
+Sources(C3): https://github.com/obi1kenobi/cargo-semver-checks ,
+https://github.com/rust-fuzz/cargo-fuzz , https://github.com/EmbarkStudios/cargo-deny ,
+https://github.com/bheisler/criterion.rs , https://github.com/taiki-e/cargo-hack ,
+https://github.com/sourcefrog/cargo-mutants , https://github.com/Enselic/cargo-public-api ,
+https://github.com/crate-ci/typos , https://github.com/foresterre/cargo-msrv
+
+---
+
+## カテゴリ 4: CLI / 開発者ツール
+
+同種OSS: clap-rs/clap (clap_complete, clap_mangen), console-rs/indicatif, BurntSushi/ripgrep,
+sharkdp/fd, sharkdp/bat, rust-cli/anstyle (anstream), owo-colors/owo-colors。標準: NO_COLOR, clig.dev。
+
+1. ✅ ★★ **classify/scareware `--json` + stdin(`-`)+ 終了コード + `why:` 行**
+   [根拠] NDJSON/JSON 機械可読慣行。
+   [muten] 実装済。以下は未実装の UX/連携。
+
+2. 🔻 ★★ **monitor/enforce の `--json` / NDJSON ストリーミング出力**
+   [根拠] ripgrep `--json`(NDJSON, 1イベント1行)。
+   [muten] SIEM へ sweep 結果を逐次 NDJSON で。enforce のバッチ JSON も。
+
+3. 🔻 ★★★ **stdin ストリーミング classify(helper 出力を pipe で連続処理)**
+   [根拠] ripgrep/fd の stream-first 設計。
+   [muten] 現状 enforce は JSON 配列一括。1行1 window の NDJSON を連続 classify。
+
+4. 🔻 ★★ **シェル補完生成(bash/zsh/fish/pwsh)**
+   [根拠] clap-rs/clap_complete(+ clap_complete_nushell)。
+   [muten] `completions` サブコマンド or build script で生成・配布。
+
+5. 🔻 ★ **man page 生成**
+   [根拠] clap-rs/clap_mangen。
+   [muten] roff man page を生成し配布物に同梱。
+
+6. 🔻 ★★ **カラー出力(Block=赤/Suspicious=黄)+ NO_COLOR 準拠**
+   [根拠] no-color.org 標準 / rust-cli/anstyle(anstream)/ owo-colors。
+   [muten] TTY 検出 + `NO_COLOR`/`--no-color` 尊重。accent `#00C4CC`。
+
+7. 🔻 ★★ **`--quiet`/`--verbose`/`-v` ログレベル + 構造化ログ**
+   [根拠] clig.dev ガイドライン / tracing-rs。
+   [muten] 監査は別経路、診断ログのレベル制御を追加。
+
+8. 🔻 ★★ **終了コードの `--help` 明記 + exitcode 規約**
+   [根拠] clig.dev「終了コードを文書化せよ」。
+   [muten] 0/5/6/7 の意味を help と man に明記。
+
+9. 🔻 ★ **`--version` に build info(commit hash / date)**
+   [根拠] vergen 系のビルド時メタ埋め込み慣行。
+   [muten] SemVer に加え commit/date(再現ビルドの SOURCE_DATE_EPOCH と整合)。
+
+10. 🔻 ★ **設定ファイル(~/.config/muten/overlay.toml)+ 進捗表示**
+    [根拠] console-rs/indicatif(進捗)/ XDG base dir 慣行。
+    [muten] 既定 rules パス等を設定化。大量 window 処理時に進捗(>200ms)。
+
+Sources(C4): https://github.com/clap-rs/clap (clap_complete, clap_mangen) ,
+https://github.com/console-rs/indicatif , https://github.com/BurntSushi/ripgrep ,
+https://github.com/rust-cli/anstyle , https://github.com/owo-colors/owo-colors ,
+https://no-color.org , https://clig.dev
