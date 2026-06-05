@@ -246,3 +246,113 @@ Sources(C4): https://github.com/clap-rs/clap (clap_complete, clap_mangen) ,
 https://github.com/console-rs/indicatif , https://github.com/BurntSushi/ripgrep ,
 https://github.com/rust-cli/anstyle , https://github.com/owo-colors/owo-colors ,
 https://no-color.org , https://clig.dev
+
+---
+
+## カテゴリ 5: ヒューリスティック分類エンジン (説明可能 AI)
+
+同種OSS: VirusTotal/yara-x (Rust 製 YARA), SigmaHQ/sigma, open-policy-agent/opa (rego),
+zmap/zgrab 系の signal 設計。研究: UIGuard (arXiv:2308.05898), ROBOVIC (arXiv:1607.06891)。
+
+1. 🔻 ★★★ **閾値(BLOCK=100 / SUSPICIOUS=50)の根拠文書化 + 実データ A/B**
+   [根拠] ROBOVIC は閾値を実データで tuning。
+   [muten] 現状は設計値。監査ログ(後述 C6)から signal 別発火率を集計し閾値を検証。
+
+2. 🔻 ★★★ **複合ルール(AND 条件)を一級市民に**
+   [根拠] YARA/Sigma は boolean 式(AND/OR/NOT)で表現力を担保。
+   [muten] 現状は線形加算のみ。`coverage 高 ∧ topmost ∧ blocks_input ∧ !close`(= H1 survey の
+   `coercive_overlay`)等の AND ルールを加算より高重みで。説明可能性は維持。
+
+3. 🔻 ★★ **重み設定の外部化(現場チューニング)**
+   [根拠] Sigma/OPA は検知ロジックを config/policy として外部化。
+   [muten] `W_FULLSCREEN` 等を MDM 配布の署名付き config 化(C10 の signed config と合流)。
+
+4. 🆕 ★★ **YARA-X 風ルール言語の検討(Rust 製・safe)**
+   [根拠] VirusTotal/yara-x — YARA の Rust 全面書き直し、メモリ安全・高速。
+   [muten] blocklist を prefix:形式から表現力ある DSL へ。ただし I3(過剰実装回避)と要バランス、
+   まずは #2 の AND ルールで十分か評価。
+
+5. 🔻 ★★ **signal の信頼度重み(helper 取得確度で減衰)**
+   [根拠] 不確実な観測を低重み化する標準的アプローチ。
+   [muten] `origin=unknown` / `age_ms=0`(取得不能)は低信頼 → 加点を減衰。bool 加点を確度付きに。
+
+6. 🔻 ★★ **explainability 出力強化(自然文)**
+   [根拠] UIGuard (arXiv:2308.05898) は「なぜ」を提示。
+   [muten] `Verdict::explain()` 実装済(✅)。複合ルール発火時の文面を拡張(#2 と合流)。
+
+7. 🆕 ★ **per-signal の誤検出率を監査ログから集計**
+   [根拠] 検知-as-code の評価実務(precision/recall を継続測定)。
+   [muten] 監査ログ + IT の誤検出フィードバックから signal 別精度を集計し重み見直しに供給(静的運用維持)。
+
+8. 🔻 ★ **正規表現/glob title マッチ(substring の先)**
+   [根拠] YARA はワイルドカード/正規表現を許可。
+   [muten] 現状 substring。`call .* now` 等の限定的 glob を安全に(ReDoS 回避の有界マッチ)。
+
+9. 🔻 ★ **時間減衰 / ベースライン外れ値(任意・ML黒箱回避)**
+   [根拠] 異常検知の標準だが muten は I6(説明可能)堅持。
+   [muten] 環境の正常 window 分布を「説明可能な統計」(出現頻度の閾値)として外れ値弱信号化。黒箱は使わない。
+
+10. 🆕 ★★ **複合ルールの property test(単調性・境界の保証)**
+    [根拠] proptest による不変条件検証(既存 162 tests の延長)。
+    [muten] AND ルール導入時に「各 suspicious 信号でスコア単調」「閾値整合」を property test で固定。
+
+Sources(C5): https://github.com/VirusTotal/yara-x , https://github.com/SigmaHQ/sigma ,
+https://github.com/open-policy-agent/opa , arXiv:2308.05898, arXiv:1607.06891
+
+---
+
+## カテゴリ 6: 可観測性 / 改ざん耐性監査
+
+同種OSS: google/trillian, sigstore/rekor, transparency-dev/merkle, C2SP/C2SP,
+SigmaHQ/sigma, open-telemetry/opentelemetry-rust。研究: Crosby-Wallach (USENIX 2009),
+RFC 9162, Schneier-Kelsey (TISSEC 1999), arXiv:2308.05557, arXiv:2605.00065。
+
+1. ✅ ★★★ **timestamp 付き linear SHA-256 監査チェーン**
+   [根拠] tamper-evident logging の基礎。
+   [muten] `sink.rs` 実装済(改行/削除/backdate 検出)。以下で検証性・root 保護を強化。
+
+2. 🔻 ★★★ **Merkle history tree で O(n)→O(log n) inclusion/consistency proof**
+   [根拠] Crosby-Wallach (USENIX 2009) / RFC 9162 / transparency-dev/merkle, google/trillian。
+   [muten] 各行 hash を CT 葉 `H(0x00‖entry)` として再利用、right-edge のみ保持で追記 O(log n)。
+   `inclusion_proof(seq)` / `consistency_proof(old,new)` 追加。forbid(unsafe)/no_std 両立。
+
+3. 🔻 ★★★ **外部 root アンカーを C2SP checkpoint(signed note)で offline+MDM**
+   [根拠] C2SP/C2SP tlog-checkpoint(sigstore/Sunlight 本番)/ sigstore/rekor の STH。
+   [muten] sweep 末尾に `origin\ntree_size\nbase64(root)` + Ed25519 署名を別 security domain に保存、
+   MDM が consistency proof 検証で truncation/改竄を中央検出(roadmap C6-2 解消)。
+
+4. 🆕 ★★★ **canonical serialization(JCS/CBOR)で hash 入力を確定**
+   [根拠] RFC 8785 (JCS) / RFC 8949 §4.2 (CBOR canonical) — CT が葉入力をバイト厳密化する理由。
+   [muten] 現 `link_hash` は `serde_json::to_vec(detail)` 依存 → JSON キー順序差で偽 chain break の懸念
+   (workspace audit-chain との interchangeable 制約を破壊)。準バグ、先行価値高。round-trip property test 追加。
+
+5. 🔻 ★★ **forward-secure MAC によるキー進化**
+   [根拠] Schneier-Kelsey (TISSEC 1999) / arXiv:2308.05557, 2605.00065。
+   [muten] `k_{i+1}=SHA256(k_i)`、各行 `mac`、`k_i` ゼロ化。seed は OS 鍵ストア封入。鍵漏洩後の遡及改竄耐性。
+
+6. 🆕 ★★ **4イベント種別の OTel + Sigma 二重マッピング(offline export)**
+   [根拠] open-telemetry/opentelemetry-rust / SigmaHQ/sigma / OTel semantic conventions。
+   [muten] `kind`→`event.name`, `seq`→ULID, file/OTLP-file exporter で offline。Sigma ルール同梱(ATT&CK タグ)。
+
+7. 🔻 ★★ **Prometheus メトリクス(検証性を SLI 化)**
+   [根拠] rekor/CT は STH 発行間隔・witness 鮮度を運用指標化。
+   [muten] `muten_audit_events_total{kind}`, `_chain_verify_seconds`, `_last_checkpoint_age_seconds`,
+   `_chain_broken{file}`(即アラート), `_tree_size`。pull 専用 textfile collector で offline。
+
+8. 🆕 ★★ **追記耐久性 + truncation/クラッシュ区別**
+   [根拠] Schneier-Kelsey の既知弱点=末尾削除 / Balloon (ePrint 2015/007)。
+   [muten] 1行=単一 O_APPEND write + checkpoint 前のみ fsync。`verify_chain` に「末尾半端行=truncation
+   (回復可能)」variant を追加し正常クラッシュと改竄を区別。
+
+9. 🔻 ★ **ログローテーション + チェーン継続**
+   [根拠] RFC 9162 consistency proof / Sunlight tiled-log。
+   [muten] ローテ境界を封印 checkpoint で締め、新 genesis を旧 root に連結。`verify_chain` をマルチファイル対応。
+
+10. 🔻 ★ **署名付き checkpoint で非否認性(sigstore 流)**
+    [根拠] sigstore/rekor(periodic 署名)/ in-toto。
+    [muten] 個別イベント署名は過大 → checkpoint を device key(#5 共用)で Ed25519 署名。
+
+Sources(C6): https://github.com/google/trillian , https://github.com/sigstore/rekor ,
+https://github.com/transparency-dev/merkle , https://github.com/C2SP/C2SP ,
+https://github.com/open-telemetry/opentelemetry-rust , https://github.com/SigmaHQ/sigma ,
+arXiv:2308.05557, arXiv:2605.00065, RFC 9162, RFC 8785
