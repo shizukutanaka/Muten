@@ -38,11 +38,23 @@ in the audit log:
 | blocklist_title | +40 | title matches a known scam phrase |
 | phone_number | +35 | a support number in an alert-shaped window (NDSS 2017) |
 | mixed_script | +30 | title/host mixes Latin with Cyrillic/Greek (homoglyph disguise) |
+| input_trap | +5 | full-screen + topmost + modal "screen lock" (bounded; see below) |
 | user_initiated | −40 | the user opened it → trust more |
 | blocklist_host | → hard Block | confirmed scam host |
 
 A benign user-opened full-screen video scores ~5 (Allow). A classic
 fake-virus overlay scores ~125 (Block).
+
+The `input_trap` composite fires when a window is **full-screen AND
+topmost AND input-grabbing** — the shape of a browser/screen *locker*
+(Keyboard-Lock / Pointer-Lock abuse, and scareware kits like CypherLoc
+whose encrypted in-browser payload evades content scanners but not the
+window-level lock shape). Its bonus is deliberately small: the bare lock
+shape with no content or provenance tell tops out at 95 — still
+`Suspicious`, never an automatic `Block` — so a legitimately locked-down
+full-screen app (a kiosk shell, an exam lockdown browser) with
+unknown origin is observed, not dismissed. Any real scam evidence
+(unsolicited origin, a phone number, a blocklist hit) still blocks it.
 
 ### Text normalization (defeating evasion)
 

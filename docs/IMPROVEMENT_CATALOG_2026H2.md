@@ -53,9 +53,11 @@ iam-py-test/my_filters_001。同種製品: Edge Scareware Blocker, Malwarebytes 
    [根拠] Edge Scareware Blocker (2025) の中核 behavioral tell(CV と独立)/ PP3D arXiv:2510.18465。
    [muten] `origin=unsolicited ∧ coverage→~100% ∧ age_ms 小 ∧ topmost` を加算信号化。blocklist 遅延を ML なしで補う。
 
-4. 🆕 ★★★ **`input_trap` 信号(Keyboard/Pointer-Lock 悪用)**
+4. ✅ ★★★ **`input_trap` 信号(Keyboard/Pointer-Lock 悪用)** — 実装済(v0.5.0, +5)
    [根拠] arXiv:2509.13186(JS-capability で fullscreen+lock が支配的詐欺クラスタ)/ Chrome 131 permission gate。
-   [muten] `blocks_input ∧ coverage 高 ∧ topmost` を高重み複合信号 `input_trap` に昇格、`explain()` 対応。
+   [muten] `blocks_input ∧ coverage 高 ∧ topmost` を複合信号 `input_trap`(ForcedAction)として実装、
+   `explain()`「locks the screen by trapping keyboard/mouse」対応。重みは bounded(+5): 内容/出自の
+   tell が無い純粋 lock shape は 95 = Suspicious 止まりで、kiosk/試験ロックダウンの誤Block を回避。
 
 5. 🆕 ★★ **ClickFix / fake-CAPTCHA タイトル族**
    [根拠] MS Security Blog 2025-08(+517% / 侵入47%)— "verify you are human" / "press Win+R"。

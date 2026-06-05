@@ -70,8 +70,9 @@ impl DarkPatternCategory {
 pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
     use DarkPatternCategory::*;
     match signal {
-        // Modal input capture forces the user to deal with it.
-        "blocks_input" => Some(ForcedAction),
+        // Modal input capture — and the stronger full-screen "screen
+        // lock" composite — force the user to deal with it.
+        "blocks_input" | "input_trap" => Some(ForcedAction),
         // No/fake close button impedes leaving the task.
         "no_close_button" => Some(Obstruction),
         // Mixed-script homoglyphs disguise the true text from the user
@@ -151,6 +152,10 @@ mod tests {
         assert_eq!(
             category_of("mixed_script"),
             Some(DarkPatternCategory::Sneaking)
+        );
+        assert_eq!(
+            category_of("input_trap"),
+            Some(DarkPatternCategory::ForcedAction)
         );
     }
 

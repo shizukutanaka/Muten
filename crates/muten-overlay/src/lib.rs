@@ -157,6 +157,7 @@ fn signal_phrase(signal: &str) -> &str {
         "blocklist_host" => "is hosted on a blocklisted domain",
         "phone_number" => "shows a support phone number",
         "mixed_script" => "mixes character sets to disguise its text",
+        "input_trap" => "locks the screen by trapping keyboard/mouse",
         other => other,
     }
 }
@@ -199,6 +200,7 @@ const W_VERY_NEW: i32 = 10; // < 1s old (just popped up)
 const W_TITLE_HIT: i32 = 40; // title matches a scam pattern
 const W_PHONE_NUMBER: i32 = 35; // a phone number in an OS-alert-like window
 const W_MIXED_SCRIPT: i32 = 30; // title/host mixes Latin with Cyrillic/Greek
+const W_INPUT_TRAP: i32 = 5; // fullscreen+topmost+modal "screen lock" (bounded; see classify)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
 /// Coverage at or above this percent counts as "full-screen".
@@ -320,6 +322,30 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if mixed_script {
         score += W_MIXED_SCRIPT;
         signals.push("mixed_script");
+    }
+
+    // Composite "screen-lock" tell: a window that is full-screen AND
+    // always-on-top AND grabs all input is a browser/screen *locker*,
+    // not an ordinary modal dialog (which is modal but neither
+    // full-screen nor topmost-over-everything). This is the shape of
+    // Keyboard-Lock / Pointer-Lock abuse and of browser-locker
+    // scareware kits like CypherLoc (Barracuda 2026), whose encrypted
+    // in-browser payload evades content scanners but cannot hide the
+    // window-level lock shape. We surface it as a named signal (for the
+    // audit log / `explain()` / dark-pattern category) and add a small
+    // bonus on top of the individual signals it co-occurs with.
+    //
+    // The bonus is deliberately small (W_INPUT_TRAP): the bare lock
+    // shape without any content or provenance tell (origin unknown,
+    // no scam title/number) tops out at 95 — still `Suspicious`, never
+    // an automatic `Block`. That preserves the observe-first guard for
+    // *legitimately* locked-down full-screen apps (kiosk shells, exam
+    // lockdown browsers) whose origin a helper can't always attribute.
+    // Any real content/provenance evidence still pushes it over.
+    let input_trap = w.blocks_input && w.topmost && w.coverage_percent >= FULLSCREEN_COVERAGE;
+    if input_trap {
+        score += W_INPUT_TRAP;
+        signals.push("input_trap");
     }
 
     // Clamp negative scores to 0 (a user-initiated benign window
@@ -968,6 +994,68 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert_ne!(v.decision, Decision::Block);
+    }
+
+    // ── input_trap composite "screen lock" signal ───────────────
+
+    #[test]
+    fn input_trap_fires_on_fullscreen_topmost_modal() {
+        let w = OverlayWindow {
+            title: "loading".into(),
+            coverage_percent: 100,
+            topmost: true,
+            blocks_input: true,
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(v.signals.contains(&"input_trap"), "signals={:?}", v.signals);
+        assert!(v.categories.contains(&DarkPatternCategory::ForcedAction));
+    }
+
+    #[test]
+    fn input_trap_requires_all_three_conditions() {
+        // Missing topmost → not a lock.
+        let mut w = OverlayWindow {
+            title: "x".into(),
+            coverage_percent: 100,
+            topmost: false,
+            blocks_input: true,
+            has_close_button: true,
+            ..Default::default()
+        };
+        assert!(!classify(&w, &Ruleset::default())
+            .signals
+            .contains(&"input_trap"));
+        // Missing fullscreen → not a lock.
+        w.topmost = true;
+        w.coverage_percent = 40;
+        assert!(!classify(&w, &Ruleset::default())
+            .signals
+            .contains(&"input_trap"));
+    }
+
+    #[test]
+    fn input_trap_alone_does_not_block_unknown_origin_lockdown_app() {
+        // FP-aversion invariant: the bare lock shape (full-screen,
+        // topmost, modal, no close) with UNKNOWN provenance and no
+        // content tell must stay Suspicious, not auto-Block — a kiosk
+        // shell / exam lockdown browser looks exactly like this. The
+        // input_trap bonus is bounded so 90 + 5 = 95 < BLOCK_THRESHOLD.
+        let w = OverlayWindow {
+            title: "exam in progress".into(),
+            url: None,
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unknown,
+            age_ms: 0,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(v.signals.contains(&"input_trap"));
+        assert_eq!(v.decision, Decision::Suspicious, "score={}", v.score);
+        assert!(v.score < BLOCK_THRESHOLD);
     }
 
     // ── Verdict::explain (roadmap C5-8) ──────────────────────────

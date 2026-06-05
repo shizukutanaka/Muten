@@ -28,6 +28,13 @@ changes meaning. No new dependencies; still offline, pure,
   leaving pure-digit runs — phone numbers, counts — untouched (C8-6).
   Host matching now also strips invisibles. Phone-number scanning is
   unchanged (it deliberately keeps the original digits).
+- **`input_trap` composite signal** (weight 5, `ForcedAction` category) —
+  fires when a window is full-screen AND topmost AND input-grabbing: the
+  shape of a browser/screen locker (Keyboard-Lock/Pointer-Lock abuse,
+  CypherLoc-style scareware). The bonus is bounded so the bare lock shape
+  with no content/provenance tell stays `Suspicious` (95 < 100) — kiosk
+  shells and exam lockdown browsers with unknown origin are observed, not
+  auto-dismissed. Surfaces the lock in `explain()` and the audit log.
 - **`Verdict::explain()`** — a deterministic, plain-language sentence
   describing why a verdict was reached, assembled from the signals that
   fired (CLAUDE.md I6 / roadmap C5-8).
