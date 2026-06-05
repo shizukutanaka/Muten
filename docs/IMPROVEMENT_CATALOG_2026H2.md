@@ -608,3 +608,43 @@ unicode-rs/unicode-security, DarkDialogs/OpenScience, sigstore/cosign, jedisct1/
 CycloneDX/cyclonedx-rust-cargo, slsa-framework/slsa-github-generator, obi1kenobi/cargo-semver-checks,
 rust-fuzz/cargo-fuzz, EmbarkStudios/cargo-deny ほか。標準: UTS#39, RFC 9162, RFC 8785, C2SP, NO_COLOR,
 SLSA v1.0, EU CRA。
+
+---
+
+## 追補 (Delta) 2026-06 #2 — net-new ソース
+
+前パスの 10×10 後に見つかった**正味新規**の出典のみ。該当カテゴリに追記する形で記録。
+
+D1. 🆕 ★★★ **CypherLoc 型 browser-lock scareware(scanner/sandbox 回避)** → C1
+   [根拠] Barracuda Threat Spotlight 2026-05 — CypherLoc は 2026 年に 280万件、
+   「encrypted, condition-based execution inside the browser」でスキャナ/サンドボックスを回避し
+   偽テクサポへ誘導。
+   [muten] 重要含意: コンテンツ走査を回避されても **window レベルの tell(browser-lock /
+   全画面 / no-close / 偽サポート番号)は残る** → muten のメタデータ先行アプローチの優位を裏付け。
+   `input_trap`(C1-4)/`sudden_fullscreen_takeover`(C1-3)を最優先に。CypherLoc 由来 host/title 族も追加。
+
+D2. 🆕 ★★ **LLM スキャム検出は敵対的入力で破綻 → muten の no-ML を正当化** → C5
+   [根拠] arXiv:2412.00621(Adversarial Scam Detection: LLM Vulnerabilities)/ arXiv:2511.01746
+   (Scam Shield)— 敵対的に改変した scam メッセージが LLM 検出器を回避。
+   [muten] 透明な加算スコア(I6)は敵対的プロンプト/難読化で「説明不能に崩れる」ことがない設計優位。
+   設計判断 ADR の根拠として記録(ML 黒箱を採らない理由を強化)。回避耐性は C8 の正規化で対応。
+
+D3. 🆕 ★★ **長期保持監査の post-quantum 耐性(crypto-agile 署名)** → C6 / C10
+   [根拠] arXiv:2512.00110(PQ-Resilient Audit Evidence for Long-Lived Regulated Systems)/
+   arXiv:2312.16322(PQ Sanitizable Signature for Audit Logs)/ NIST FIPS 204 ML-DSA
+   (署名 2.4kB / 公開鍵 1.3kB)/ C2SP checkpoint は ML-DSA-44 を既に許容。
+   [muten] muten の SHA-256 hash chain は **既に PQ 安全**(ハッシュベース)。一方 checkpoint/
+   MAC 署名(Ed25519, C6-3/10, C10-1/2)は PQ 非対応 → CRA の 10 年保持を見据え、
+   署名方式を **crypto-agile**(Ed25519 ↔ ML-DSA を algorithm-id で切替)に設計。検出パスは不変・offline。
+
+D4. 🆕 ★ **不確実性下のしきい値運用(adversarial 環境での FP/FN バランス)** → C5
+   [根拠] arXiv:2412.00621 系は「敵対的 drift で精度が劣化」と指摘。
+   [muten] 静的しきい値の定期的な実データ検証(C5-1)を回避トレンド(CypherLoc 等)に合わせて
+   四半期レビューする運用を明記。observe-first を維持し FP 増を防ぐ。
+
+Sources(Delta): https://blog.barracuda.com/2026/05/20/threat-spotlight-cypherloc-scareware ,
+arXiv:2412.00621, arXiv:2511.01746, arXiv:2512.00110, arXiv:2312.16322, NIST FIPS 204 (ML-DSA)。
+
+> 収束メモ: 検出ファミリ(CypherLoc)と監査の PQ 耐性は正味新規だったが、構造的な
+> 改善カテゴリ(10×10)はほぼ網羅済み。以降の調査は「新規脅威ファミリの blocklist 反映」と
+> 「新標準(PQC 等)への追従」という**増分更新**が中心になる見込み。
