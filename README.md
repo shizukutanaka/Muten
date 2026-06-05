@@ -73,6 +73,9 @@ produces these.
   landscape and research grounding.
 - [`docs/IMPROVEMENT_ROADMAP.md`](docs/IMPROVEMENT_ROADMAP.md) — 10-category
   improvement roadmap.
+- [`docs/RESEARCH_IMPROVEMENTS_2026H1.md`](docs/RESEARCH_IMPROVEMENTS_2026H1.md) —
+  2026-H1 follow-up survey (comparable software + arXiv) of new improvement
+  points across detection, Unicode/dark-patterns, audit integrity, and supply chain.
 
 ## Status
 
