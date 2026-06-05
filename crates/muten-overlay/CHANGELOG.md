@@ -31,10 +31,11 @@ changes meaning. No new dependencies; still offline, pure,
 - **`Verdict::explain()`** — a deterministic, plain-language sentence
   describing why a verdict was reached, assembled from the signals that
   fired (CLAUDE.md I6 / roadmap C5-8).
-- **`classify --json` and `scareware --json`** CLI flags — emit the full
-  verdict (incl. `explanation`) as machine-readable JSON for SIEM /
-  scripting. Exit codes unchanged. The human-readable `classify` output
-  now also prints a `why:` explanation line. (Roadmap C4-2, partial.)
+- **`classify --json` and `scareware --json`** CLI flags — emit the
+  verdict as machine-readable JSON for SIEM / scripting. The `classify`
+  JSON additionally carries an `explanation` field, and its
+  human-readable output now prints a `why:` line. Exit codes unchanged.
+  (Roadmap C4-2, partial.)
 - New public API: `confusables::{strip_invisibles, normalize_for_match,
   has_confusable_mixed_script, fold_leet_in_words, script_of, Script}`.
 - ~30 new unit + property tests (160 total, up from 141): invisibles

@@ -32,11 +32,22 @@ use std::collections::BTreeSet;
 pub struct Ruleset {
     /// Registered hosts to block (lower-cased, no scheme/path).
     hosts: BTreeSet<String>,
-    /// Title substrings to flag (lower-cased).
-    title_patterns: Vec<String>,
+    /// Title substrings to flag.
+    title_patterns: Vec<TitlePattern>,
     /// Known rogue-AV / scareware process-name substrings (lower-cased).
     /// e.g. "pc protector plus", "advanced mac cleaner", "registrysmart".
     process_patterns: Vec<String>,
+}
+
+/// A blocklist title rule, kept in two forms: `key` is the normalized
+/// string used for matching (symmetric with how titles are normalized
+/// at match time), and `display` is the text as authored, returned as
+/// the matched rule so the audit log shows what the operator wrote
+/// rather than the folded skeleton.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct TitlePattern {
+    key: String,
+    display: String,
 }
 
 impl Ruleset {
@@ -58,9 +69,21 @@ impl Ruleset {
                     hosts.insert(h);
                 }
             } else if let Some(rest) = line.strip_prefix("title:") {
-                let pat = rest.trim().to_ascii_lowercase();
-                if !pat.is_empty() {
-                    title_patterns.push(pat);
+                // Normalize the pattern the SAME way titles are
+                // normalized at match time (strip invisibles, fold
+                // confusables, fold leetspeak, lowercase). Without this
+                // the two sides are asymmetric: a pattern containing a
+                // letter-adjacent digit ("win32", "office365") or a
+                // confusable would never match, because the *title* gets
+                // folded ("win32"→"wine2") while the stored pattern does
+                // not. See `match_title`.
+                let raw = rest.trim();
+                let key = crate::confusables::normalize_for_match(raw);
+                if !key.is_empty() {
+                    title_patterns.push(TitlePattern {
+                        key,
+                        display: raw.to_ascii_lowercase(),
+                    });
                 }
             } else if let Some(rest) = line.strip_prefix("process:") {
                 let pat = rest.trim().to_ascii_lowercase();
@@ -135,14 +158,16 @@ impl Ruleset {
     /// (Cyrillic/Greek/full-width look-alikes) are folded to ASCII, and
     /// leetspeak digits inside words are restored — so a scam that
     /// writes "у\u{200B}our c0mputer is 1nfected" can't slip past an
-    /// ASCII substring blocklist. See the `confusables` module.
+    /// ASCII substring blocklist. See the `confusables` module. The
+    /// stored patterns are normalized the *same* way at parse time, so
+    /// the two sides are symmetric.
     #[must_use]
     pub fn match_title(&self, title: &str) -> Option<String> {
         let t = crate::confusables::normalize_for_match(title);
         self.title_patterns
             .iter()
-            .find(|p| t.contains(p.as_str()))
-            .cloned()
+            .find(|p| t.contains(&p.key))
+            .map(|p| p.display.clone())
     }
 
     /// Does `process_name` contain a known rogue-AV pattern? Used by
@@ -261,6 +286,30 @@ mod tests {
             Some("you have won".to_string())
         );
         assert!(rs.match_title("ordinary window").is_none());
+    }
+
+    #[test]
+    fn title_pattern_with_letter_adjacent_digit_matches_symmetrically() {
+        // Regression: patterns are normalized at parse time the same
+        // way titles are, so a digit-in-word pattern ("win32",
+        // "office365") still matches a title that literally contains it
+        // — the title side gets leet-folded, and now the pattern does
+        // too. Without symmetric normalization this silently never fired.
+        let rs = Ruleset::from_lines(&["title: win32 error", "title: office365"]);
+        assert!(rs.match_title("WIN32 ERROR detected").is_some());
+        assert!(rs.match_title("office365 login page").is_some());
+    }
+
+    #[test]
+    fn title_match_is_robust_to_leet_and_invisibles_on_either_side() {
+        // Clean pattern matches a leet + zero-width title.
+        let rs = Ruleset::from_lines(&["title: your computer is infected"]);
+        assert!(rs
+            .match_title("Y\u{200B}our c0mputer is 1nfected")
+            .is_some());
+        // And a pattern written in leet matches a clean title (symmetry).
+        let rs2 = Ruleset::from_lines(&["title: v1rus"]);
+        assert!(rs2.match_title("virus found on your pc").is_some());
     }
 
     #[test]
