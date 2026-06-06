@@ -83,10 +83,13 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         // The rogue-AV flood is the textbook nagging pattern.
         "repeated_flood" => Some(Nagging),
         // Brand/authority impersonation and the call-this-number lure
-        // steer the user via misdirection.
-        "phone_number" | "blocklist_title" | "blocklist_host" | "rogue_av_process" => {
-            Some(InterfaceInterference)
-        }
+        // steer the user via misdirection. `brand_impersonation` (a
+        // homograph look-alike domain) is the same misdirection strategy.
+        "phone_number"
+        | "blocklist_title"
+        | "blocklist_host"
+        | "rogue_av_process"
+        | "brand_impersonation" => Some(InterfaceInterference),
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }
@@ -156,6 +159,10 @@ mod tests {
         assert_eq!(
             category_of("input_trap"),
             Some(DarkPatternCategory::ForcedAction)
+        );
+        assert_eq!(
+            category_of("brand_impersonation"),
+            Some(DarkPatternCategory::InterfaceInterference)
         );
     }
 

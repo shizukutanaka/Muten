@@ -38,6 +38,7 @@ in the audit log:
 | blocklist_title | +40 | title matches a known scam phrase |
 | phone_number | +35 | a support number in an alert-shaped window (NDSS 2017) |
 | mixed_script | +30 | title/host mixes Latin with Cyrillic/Greek (homoglyph disguise) |
+| brand_impersonation | +40 | host label is a UTS#39 skeleton homograph of a known brand |
 | input_trap | +5 | full-screen + topmost + modal "screen lock" (bounded; see below) |
 | sudden_fullscreen_takeover | +5 | unsolicited window seizes full screen instantly (bounded) |
 | user_initiated | −40 | the user opened it → trust more |

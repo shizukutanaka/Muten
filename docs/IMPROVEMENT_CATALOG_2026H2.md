@@ -428,9 +428,11 @@ unicode-rs/unicode-normalization。標準: UTS#39, UTS#46, RFC 8785。
    [根拠] UTS#39 confusables(focused subset)。
    [muten] v0.5.0 実装済。以下で UTS#39 アルゴリズムへ昇格。
 
-2. 🔻 ★★★ **UTS#39 `skeleton()` 衝突照合(既知ブランド表)**
+2. ✅ ★★★ **UTS#39 `skeleton()` 衝突照合(既知ブランド表)** — 実装済(v0.5.0)
    [根拠] UTS#39 §4 / mpkorstanje/tr39-confusables / unicode-rs/unicode-security。
-   [muten] `skeleton(host)` を計算しオフライン正規ブランド表と完全一致照合 → 高重み信号。
+   [muten] `confusables::skeleton()` + 内蔵 `KNOWN_BRANDS`(20)で `brand_impersonation`
+   信号(+40, InterfaceInterference)。host ラベルの skeleton がブランドに一致しリテラルでない時に発火。
+   `раура1.com`(→paypal)発火、本物 `paypal.com` は不発火(FP ガード)。zero-config の homograph 検出。
 
 3. 🔻 ★★★ **Whole-Script Confusable 信号(mixed-script の盲点)**
    [根拠] UTS#39 §5 / unicode-rs/unicode-security の `whole_script_confusable`。

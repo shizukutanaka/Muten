@@ -163,6 +163,7 @@ fn signal_phrase(signal: &str) -> &str {
         "blocklist_host" => "is hosted on a blocklisted domain",
         "phone_number" => "shows a support phone number",
         "mixed_script" => "mixes character sets to disguise its text",
+        "brand_impersonation" => "uses a look-alike domain impersonating a known brand",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
         other => other,
@@ -209,7 +210,61 @@ const W_PHONE_NUMBER: i32 = 35; // a phone number in an OS-alert-like window
 const W_MIXED_SCRIPT: i32 = 30; // title/host mixes Latin with Cyrillic/Greek
 const W_INPUT_TRAP: i32 = 5; // fullscreen+topmost+modal "screen lock" (bounded; see classify)
 const W_SUDDEN_TAKEOVER: i32 = 5; // unsolicited instant full-screen seizure (bounded)
+const W_BRAND_IMPERSONATION: i32 = 40; // host label is a homograph of a known brand
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
+
+/// Major brands muten ships a built-in homograph guard for (UTS #39
+/// skeleton collision, roadmap C8-2). Chosen to be long/distinctive
+/// enough that an accidental skeleton collision with an *unrelated*
+/// legitimate domain is vanishingly unlikely — short or dictionary-word
+/// brands are intentionally omitted to stay false-positive-averse.
+const KNOWN_BRANDS: &[&str] = &[
+    "paypal",
+    "microsoft",
+    "google",
+    "apple",
+    "amazon",
+    "facebook",
+    "instagram",
+    "whatsapp",
+    "netflix",
+    "linkedin",
+    "outlook",
+    "office365",
+    "windows",
+    "binance",
+    "coinbase",
+    "metamask",
+    "wellsfargo",
+    "bankofamerica",
+    "dropbox",
+    "icloud",
+];
+
+/// If any label of `host` is a homograph/typosquat of a [`KNOWN_BRANDS`]
+/// entry — its confusable skeleton equals the brand but the label is
+/// **not** that brand spelled literally — return the impersonated brand.
+/// `paypal.com` (the real brand) never fires; `раура1.com` (Cyrillic +
+/// digit) does. Pure and offline. This is muten's zero-config homograph
+/// guard for brands a deployment has not (and should not) blocklisted.
+#[must_use]
+fn brand_impersonation(host: &str) -> Option<&'static str> {
+    for label in host.split('.') {
+        if label.is_empty() {
+            continue;
+        }
+        let literal = label.to_ascii_lowercase();
+        let skel = confusables::skeleton(label);
+        // Only a *non-literal* skeleton collision is impersonation.
+        if skel == literal {
+            continue;
+        }
+        if let Some(&brand) = KNOWN_BRANDS.iter().find(|&&b| b == skel) {
+            return Some(brand);
+        }
+    }
+    None
+}
 
 /// Coverage at or above this percent counts as "full-screen".
 const FULLSCREEN_COVERAGE: u8 = 85;
@@ -330,6 +385,22 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if mixed_script {
         score += W_MIXED_SCRIPT;
         signals.push("mixed_script");
+    }
+
+    // Brand-homograph impersonation (UTS #39 skeleton collision): the
+    // host is a look-alike of a major brand it is not — e.g. `раура1.com`
+    // (skeleton "paypal") — that the deployment has not (and would not)
+    // blocklist, since the real brand domain is legitimate. The literal
+    // brand never fires. A strong tell, but additive (not an auto-block),
+    // so a lone homograph host is `Suspicious` pending other evidence.
+    if w.url
+        .as_deref()
+        .map(url_host)
+        .and_then(brand_impersonation)
+        .is_some()
+    {
+        score += W_BRAND_IMPERSONATION;
+        signals.push("brand_impersonation");
     }
 
     // Composite "screen-lock" tell: a window that is full-screen AND
@@ -1020,6 +1091,80 @@ mod tests {
             ..Default::default()
         };
         let v = classify(&w, &Ruleset::default());
+        assert_ne!(v.decision, Decision::Block);
+    }
+
+    // ── brand_impersonation (UTS#39 skeleton collision, C8-2) ────
+
+    #[test]
+    fn brand_impersonation_fires_on_homograph_host() {
+        // "раура1.com": Cyrillic р/а/у + digit 1 → skeleton "paypal".
+        let w = OverlayWindow {
+            title: "sign in".into(),
+            url: Some("http://\u{0440}\u{0430}\u{0443}\u{0440}\u{0430}1.com/login".into()),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.contains(&"brand_impersonation"),
+            "signals={:?}",
+            v.signals
+        );
+        assert!(v
+            .categories
+            .contains(&DarkPatternCategory::InterfaceInterference));
+    }
+
+    #[test]
+    fn legitimate_brand_host_is_not_impersonation() {
+        // The real brand domain MUST NOT fire (false-positive guard).
+        for host in [
+            "http://paypal.com/",
+            "http://login.microsoft.com/",
+            "http://google.com/",
+        ] {
+            let w = OverlayWindow {
+                title: "x".into(),
+                url: Some(host.into()),
+                has_close_button: true,
+                ..Default::default()
+            };
+            let v = classify(&w, &Ruleset::default());
+            assert!(
+                !v.signals.contains(&"brand_impersonation"),
+                "{host} wrongly flagged: {:?}",
+                v.signals
+            );
+        }
+    }
+
+    #[test]
+    fn unrelated_host_is_not_impersonation() {
+        let w = OverlayWindow {
+            title: "x".into(),
+            url: Some("http://example.com/page".into()),
+            has_close_button: true,
+            ..Default::default()
+        };
+        assert!(!classify(&w, &Ruleset::default())
+            .signals
+            .contains(&"brand_impersonation"));
+    }
+
+    #[test]
+    fn brand_impersonation_alone_is_not_auto_block() {
+        // Consistent with blocklist_title: a content/host tell alone
+        // (40 < SUSPICIOUS_THRESHOLD) does not auto-dismiss without
+        // overlay shape. It contributes; it does not unilaterally block.
+        let w = OverlayWindow {
+            title: "hi".into(),
+            url: Some("http://g\u{043E}\u{043E}gle.com/".into()), // Cyrillic о → "google"
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(v.signals.contains(&"brand_impersonation"));
         assert_ne!(v.decision, Decision::Block);
     }
 

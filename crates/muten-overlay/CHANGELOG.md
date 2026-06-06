@@ -35,6 +35,14 @@ changes meaning. No new dependencies; still offline, pure,
   with no content/provenance tell stays `Suspicious` (95 < 100) — kiosk
   shells and exam lockdown browsers with unknown origin are observed, not
   auto-dismissed. Surfaces the lock in `explain()` and the audit log.
+- **`brand_impersonation` signal** (weight 40, `InterfaceInterference`)
+  — a zero-config UTS#39 skeleton-collision guard. A host label whose
+  confusable skeleton equals a built-in known brand but is not the
+  literal brand (e.g. `раура1.com` → `paypal`) is flagged, while the
+  real brand domain never fires. Catches homograph/typosquat domains a
+  deployment hasn't (and shouldn't) blocklisted. New
+  `confusables::skeleton()`. Additive (not an auto-block), consistent
+  with `blocklist_title`. (Roadmap C8-2.)
 - **`sudden_fullscreen_takeover` composite signal** (weight 5) — fires
   when an *unsolicited* window seizes the full screen, on top, the
   instant it appears (real nonzero age < 1s). The behavioural tell Edge

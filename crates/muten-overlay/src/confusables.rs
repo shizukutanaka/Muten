@@ -155,6 +155,17 @@ pub fn fold_host_confusables(s: &str) -> String {
         .collect()
 }
 
+/// The UTS #39 "skeleton" of a host label: fold every confusable
+/// (including the digit/letter typosquat look-alikes) to its ASCII
+/// prototype and lower-case. Two strings that *look* the same collapse
+/// to the same skeleton, so `skeleton("раура1") == skeleton("paypal")`.
+/// This is muten's focused, dependency-free equivalent of the UTS #39
+/// confusable skeleton, used for brand-homograph detection.
+#[must_use]
+pub fn skeleton(s: &str) -> String {
+    fold_host_confusables(s).to_ascii_lowercase()
+}
+
 /// True if `c` is a zero-width, formatting, or BiDi-control character.
 ///
 /// These are invisible to a human but split a word for a naive
