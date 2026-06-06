@@ -35,6 +35,12 @@ changes meaning. No new dependencies; still offline, pure,
   with no content/provenance tell stays `Suspicious` (95 < 100) — kiosk
   shells and exam lockdown browsers with unknown origin are observed, not
   auto-dismissed. Surfaces the lock in `explain()` and the audit log.
+- **`sudden_fullscreen_takeover` composite signal** (weight 5) — fires
+  when an *unsolicited* window seizes the full screen, on top, the
+  instant it appears (real nonzero age < 1s). The behavioural tell Edge
+  Scareware Blocker keys on; muten's no-CV way to flag brand-new scam
+  domains the blocklist hasn't caught yet. Bounded so the bare pattern
+  stays `Suspicious` (85 < 100).
 - **`Verdict::explain()`** — a deterministic, plain-language sentence
   describing why a verdict was reached, assembled from the signals that
   fired (CLAUDE.md I6 / roadmap C5-8).

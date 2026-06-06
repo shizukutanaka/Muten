@@ -39,6 +39,7 @@ in the audit log:
 | phone_number | +35 | a support number in an alert-shaped window (NDSS 2017) |
 | mixed_script | +30 | title/host mixes Latin with Cyrillic/Greek (homoglyph disguise) |
 | input_trap | +5 | full-screen + topmost + modal "screen lock" (bounded; see below) |
+| sudden_fullscreen_takeover | +5 | unsolicited window seizes full screen instantly (bounded) |
 | user_initiated | −40 | the user opened it → trust more |
 | blocklist_host | → hard Block | confirmed scam host |
 
@@ -55,6 +56,15 @@ shape with no content or provenance tell tops out at 95 — still
 full-screen app (a kiosk shell, an exam lockdown browser) with
 unknown origin is observed, not dismissed. Any real scam evidence
 (unsolicited origin, a phone number, a blocklist hit) still blocks it.
+
+The `sudden_fullscreen_takeover` composite fires when an **unsolicited**
+window seizes the **full screen, on top, the instant it appears** (a
+real, small, nonzero age). This is the behavioural tell Microsoft's Edge
+Scareware Blocker keys on, and muten's no-CV way to flag brand-new scam
+domains the blocklist hasn't caught yet — from their shape over time
+rather than their content. Its bonus is likewise bounded (the bare
+pattern tops out at 85, `Suspicious`); a content or provenance tell
+still decides a `Block`.
 
 ### Text normalization (defeating evasion)
 

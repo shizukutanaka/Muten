@@ -49,9 +49,11 @@ iam-py-test/my_filters_001。同種製品: Edge Scareware Blocker, Malwarebytes 
    [muten] offline-first を維持しつつ、こうした大規模リストを muten の「焦点を絞った小型 host
    blocklist」に蒸留する変換器を提供し MDM 配布。検出パスにライブ取得は持ち込まない。
 
-3. 🆕 ★★★ **`sudden_fullscreen_takeover` 信号(突発全画面)**
+3. ✅ ★★★ **`sudden_fullscreen_takeover` 信号(突発全画面)** — 実装済(v0.5.0, +5)
    [根拠] Edge Scareware Blocker (2025) の中核 behavioral tell(CV と独立)/ PP3D arXiv:2510.18465。
-   [muten] `origin=unsolicited ∧ coverage→~100% ∧ age_ms 小 ∧ topmost` を加算信号化。blocklist 遅延を ML なしで補う。
+   [muten] `origin=unsolicited ∧ coverage→~100% ∧ topmost ∧ 0<age_ms<1000` を bounded 加算信号として実装、
+   `explain()`「seized the full screen the instant it appeared」対応。blocklist 遅延を ML なしで補う。
+   bounded(+5): 内容 tell が無ければ 85 = Suspicious 止まり。
 
 4. ✅ ★★★ **`input_trap` 信号(Keyboard/Pointer-Lock 悪用)** — 実装済(v0.5.0, +5)
    [根拠] arXiv:2509.13186(JS-capability で fullscreen+lock が支配的詐欺クラスタ)/ Chrome 131 permission gate。

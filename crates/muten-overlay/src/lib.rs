@@ -158,6 +158,7 @@ fn signal_phrase(signal: &str) -> &str {
         "phone_number" => "shows a support phone number",
         "mixed_script" => "mixes character sets to disguise its text",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
+        "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
         other => other,
     }
 }
@@ -201,6 +202,7 @@ const W_TITLE_HIT: i32 = 40; // title matches a scam pattern
 const W_PHONE_NUMBER: i32 = 35; // a phone number in an OS-alert-like window
 const W_MIXED_SCRIPT: i32 = 30; // title/host mixes Latin with Cyrillic/Greek
 const W_INPUT_TRAP: i32 = 5; // fullscreen+topmost+modal "screen lock" (bounded; see classify)
+const W_SUDDEN_TAKEOVER: i32 = 5; // unsolicited instant full-screen seizure (bounded)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
 /// Coverage at or above this percent counts as "full-screen".
@@ -346,6 +348,25 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if input_trap {
         score += W_INPUT_TRAP;
         signals.push("input_trap");
+    }
+
+    // Composite "sudden takeover" tell: an *unsolicited* window that
+    // seizes the full screen, on top, the instant it appears. This is
+    // the behavioural signature Microsoft's Edge Scareware Blocker keys
+    // on (abrupt full-screen takeover), and the answer to blocklist lag
+    // — it flags brand-new, not-yet-listed scam domains from their
+    // *shape over time* rather than their content. Like `input_trap`
+    // the bonus is bounded (W_SUDDEN_TAKEOVER): the bare pattern with no
+    // content tell tops out at 85, still `Suspicious`. Requires a real
+    // nonzero age (age 0 = "enumerator couldn't tell", not "instant").
+    let sudden_takeover = w.origin == Origin::Unsolicited
+        && w.topmost
+        && w.coverage_percent >= FULLSCREEN_COVERAGE
+        && w.age_ms > 0
+        && w.age_ms < 1000;
+    if sudden_takeover {
+        score += W_SUDDEN_TAKEOVER;
+        signals.push("sudden_fullscreen_takeover");
     }
 
     // Clamp negative scores to 0 (a user-initiated benign window
@@ -1054,6 +1075,69 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(v.signals.contains(&"input_trap"));
+        assert_eq!(v.decision, Decision::Suspicious, "score={}", v.score);
+        assert!(v.score < BLOCK_THRESHOLD);
+    }
+
+    // ── sudden_fullscreen_takeover composite signal ─────────────
+
+    #[test]
+    fn sudden_takeover_fires_on_unsolicited_instant_fullscreen() {
+        let w = OverlayWindow {
+            title: "loading".into(),
+            url: None,
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.contains(&"sudden_fullscreen_takeover"),
+            "signals={:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn sudden_takeover_needs_unsolicited_and_nonzero_age() {
+        // age 0 = "couldn't tell", not "instant" → must not fire.
+        let mut w = OverlayWindow {
+            title: "x".into(),
+            coverage_percent: 100,
+            topmost: true,
+            origin: Origin::Unsolicited,
+            age_ms: 0,
+            ..Default::default()
+        };
+        assert!(!classify(&w, &Ruleset::default())
+            .signals
+            .contains(&"sudden_fullscreen_takeover"));
+        // Unknown origin (helper couldn't attribute) → must not fire.
+        w.age_ms = 200;
+        w.origin = Origin::Unknown;
+        assert!(!classify(&w, &Ruleset::default())
+            .signals
+            .contains(&"sudden_fullscreen_takeover"));
+    }
+
+    #[test]
+    fn sudden_takeover_alone_stays_suspicious() {
+        // unsolicited(25)+fullscreen(30)+topmost(15)+very_new(10)+takeover(5)
+        // = 85 → Suspicious, never an automatic Block without a content tell.
+        let w = OverlayWindow {
+            title: "welcome".into(),
+            url: None,
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        };
+        let v = classify(&w, &Ruleset::default());
         assert_eq!(v.decision, Decision::Suspicious, "score={}", v.score);
         assert!(v.score < BLOCK_THRESHOLD);
     }
