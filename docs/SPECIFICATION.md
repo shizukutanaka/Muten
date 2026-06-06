@@ -137,7 +137,11 @@ window_id ‖ 0x00 ‖ json(detail) ‖ 0x00 ‖ be(seq))`. First event's
 `prev_hash` = `GENESIS` (64 `0`). `verify_chain(text) -> (count, head)`
 detects any edit, deletion, reordering, or back/forward-dating, and the
 sink MUST refuse to append onto an already-broken log. `timestamp_ms` is
-part of the hash (events cannot be backdated).
+part of the hash (events cannot be backdated). A **torn final line** (a
+crash mid-`emit`, i.e. content with no trailing newline) is the one
+recoverable break: `open` drops the unverifiable partial tail and
+resumes from the surviving prefix **iff that prefix itself verifies**;
+any tampered *complete* line (which ends in a newline) still refuses.
 
 ## 9. OS controller / helper protocol
 
@@ -189,6 +193,14 @@ skeleton, etc.).
    and `monitor --json` (events document / verifiable summary), plus
    `tests/cli_contract.rs` end-to-end tests of the JSON schema and exit
    codes for all four decision subcommands.
+4. **§8 a crash mid-write bricked the log.** A torn final line made
+   `ChainedFileSink::open` refuse forever — a single crash, not an
+   attack, denied all further appends. **Fixed:** `open` recovers a torn
+   final line (no trailing newline) by dropping it and resuming from the
+   surviving prefix iff that prefix verifies; a tampered complete line
+   still refuses. Tests cover recovery, lone-torn-line→empty, and
+   tampered-prefix-still-refuses.
 
 Open (tracked in the catalog, not in this change): `#[non_exhaustive]` on
-public enums (C3-5), audit `truncation` vs crash distinction (C6-8).
+public enums (C3-5) — deferred (forces `_` arms downstream; the enums are
+conceptually closed).

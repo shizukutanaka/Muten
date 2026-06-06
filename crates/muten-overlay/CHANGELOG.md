@@ -55,6 +55,12 @@ changes meaning. No new dependencies; still offline, pure,
   `docs/SPECIFICATION.md`; `OverlayWindow` now `#[serde(default)]` so
   partial window JSON (a helper omitting an undeterminable field) parses
   instead of erroring.
+- **Audit log survives a crash mid-write.** `ChainedFileSink::open` now
+  recovers a *torn final line* (a partial append with no trailing
+  newline) by dropping it and resuming from the surviving prefix — iff
+  that prefix still verifies. A tampered *complete* line still refuses to
+  open, so tamper-evidence (S3) is preserved. Previously a single crash
+  bricked the log forever.
 - New public API: `confusables::{strip_invisibles, normalize_for_match,
   has_confusable_mixed_script, fold_leet_in_words, script_of, Script}`.
 - ~30 new unit + property tests (160 total, up from 141): invisibles

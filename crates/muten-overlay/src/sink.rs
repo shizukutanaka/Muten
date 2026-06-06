@@ -74,14 +74,36 @@ struct ChainState {
 impl ChainedFileSink {
     /// Open (or create) a chained log at `path`. If the file already
     /// exists and verifies, we resume from its head; if it's missing
-    /// we start at GENESIS. A pre-existing *broken* file is an error —
-    /// we refuse to append onto a tampered log.
+    /// we start at GENESIS.
+    ///
+    /// A **torn final line** — the signature of a crash mid-`emit`,
+    /// before the terminating newline — is recovered: the unverifiable
+    /// partial line is dropped and we resume from the surviving prefix,
+    /// but only if that prefix is itself an intact chain. Any other
+    /// break (a tampered *complete* line, which always ends in a
+    /// newline) is still an error: we refuse to append onto a tampered
+    /// log, preserving tamper-evidence (threat-model S3).
     pub fn open(path: impl Into<PathBuf>) -> Result<Self, ChainError> {
         let path = path.into();
         let (head, seq) = if path.is_file() {
             let text = std::fs::read_to_string(&path).map_err(|e| ChainError::Io(e.to_string()))?;
-            let (count, head) = verify_chain(&text)?;
-            (head, count)
+            match verify_chain(&text) {
+                Ok((count, head)) => (head, count),
+                Err(e) => match recover_torn_tail(&text) {
+                    Some((prefix, count, head)) => {
+                        // Truncate the partial tail so the next append
+                        // continues a verifiable chain.
+                        std::fs::write(&path, &prefix)
+                            .map_err(|e| ChainError::Io(e.to_string()))?;
+                        eprintln!(
+                            "muten-overlay: recovered torn audit tail in {} (resuming at seq {count})",
+                            path.display()
+                        );
+                        (head, count)
+                    }
+                    None => return Err(e),
+                },
+            }
         } else {
             (GENESIS.to_string(), 0)
         };
@@ -158,6 +180,29 @@ pub enum ChainError {
     },
     #[error("io: {0}")]
     Io(String),
+}
+
+/// If `text` ends in a torn (incomplete) final line — the signature of a
+/// crash mid-append: content with **no trailing newline** — return the
+/// intact prefix (up to and including the last newline) plus its verified
+/// `(count, head)`. Returns `None` if the file ends cleanly (so any break
+/// is real tampering of a complete line) or if the surviving prefix does
+/// not itself verify (so the break is not merely in the torn tail). Pure;
+/// does no I/O.
+fn recover_torn_tail(text: &str) -> Option<(String, u64, String)> {
+    if text.ends_with('\n') {
+        // The last line was fully written (newline present) → not a torn
+        // write; the failure is genuine tampering. Do not recover.
+        return None;
+    }
+    // Drop everything after the last newline (the partial line). With no
+    // newline at all, the whole file is one torn line → empty prefix.
+    let prefix = match text.rfind('\n') {
+        Some(nl) => text[..=nl].to_string(),
+        None => String::new(),
+    };
+    let (count, head) = verify_chain(&prefix).ok()?;
+    Some((prefix, count, head))
 }
 
 /// Verify a chained log's integrity. Returns `(event_count, head)` on
@@ -363,5 +408,64 @@ mod tests {
         let text = std::fs::read_to_string(&p).unwrap();
         std::fs::write(&p, text.replacen("\"x\":\"w1\"", "\"x\":\"evil\"", 1)).unwrap();
         assert!(ChainedFileSink::open(&p).is_err());
+    }
+
+    #[test]
+    fn recovers_from_torn_final_line() {
+        // A crash mid-`emit` leaves a partial last line with no newline.
+        // Re-open must recover (drop the torn tail) and keep appending.
+        let dir = TempDir::new().unwrap();
+        let p = dir.path().join("audit.log");
+        {
+            let sink = ChainedFileSink::open(&p).unwrap();
+            sink.emit(&ev("a", "w1"));
+            sink.emit(&ev("b", "w2"));
+        }
+        // Simulate a torn append: a partial JSON fragment, no trailing \n.
+        let mut text = std::fs::read_to_string(&p).unwrap();
+        text.push_str("{\"seq\":2,\"prev_hash\":\"deadbeef\",\"kind\":\"ov");
+        std::fs::write(&p, &text).unwrap();
+
+        let sink = ChainedFileSink::open(&p).expect("torn tail should be recoverable");
+        // The partial line was truncated; we resume at seq 2.
+        sink.emit(&ev("c", "w3"));
+        let final_text = std::fs::read_to_string(&p).unwrap();
+        let (count, head) = verify_chain(&final_text).unwrap();
+        assert_eq!(count, 3, "should have w1,w2,w3 after recovery");
+        assert_eq!(head, sink.head());
+    }
+
+    #[test]
+    fn recovers_single_torn_line_to_empty() {
+        let dir = TempDir::new().unwrap();
+        let p = dir.path().join("audit.log");
+        // A lone torn first line (crash before the very first newline).
+        std::fs::write(&p, "{\"seq\":0,\"prev_ha").unwrap();
+        let sink = ChainedFileSink::open(&p).expect("lone torn line recovers to empty");
+        sink.emit(&ev("a", "w1"));
+        let (count, _) = verify_chain(&std::fs::read_to_string(&p).unwrap()).unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn torn_tail_over_tampered_prefix_still_refuses() {
+        // A torn tail does NOT excuse tampering of an earlier complete
+        // line: the surviving prefix must itself verify, or we refuse.
+        let dir = TempDir::new().unwrap();
+        let p = dir.path().join("audit.log");
+        {
+            let sink = ChainedFileSink::open(&p).unwrap();
+            sink.emit(&ev("a", "w1"));
+            sink.emit(&ev("b", "w2"));
+        }
+        let mut text = std::fs::read_to_string(&p).unwrap();
+        // Tamper a complete prior line AND append a torn tail.
+        text = text.replacen("\"x\":\"w1\"", "\"x\":\"evil\"", 1);
+        text.push_str("{\"seq\":2,\"prev_ha");
+        std::fs::write(&p, &text).unwrap();
+        assert!(
+            ChainedFileSink::open(&p).is_err(),
+            "tampered prefix must still refuse even with a torn tail"
+        );
     }
 }
