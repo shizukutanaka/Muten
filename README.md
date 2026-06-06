@@ -65,6 +65,8 @@ produces these.
 
 ## Documentation
 
+- [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md) — normative spec: types,
+  classifier contract, blocklist grammar, audit chain, controller & CLI contract.
 - [`docs/OVERLAY_BLOCKING.md`](docs/OVERLAY_BLOCKING.md) — scoring, controllers,
   helper protocol, monitor loop, audit chain.
 - [`docs/SCAREWARE_DETECTION.md`](docs/SCAREWARE_DETECTION.md) — rogue-AV
@@ -82,7 +84,7 @@ produces these.
 
 ## Status
 
-`muten-overlay` v0.5.0 — 168 tests, `clippy -D warnings` clean, MSRV 1.75.0.
+`muten-overlay` v0.5.0 — 169 tests, `clippy -D warnings` clean, MSRV 1.75.0.
 CI runs format/lint/test, an MSRV build, and a supply-chain gate
 (cargo-audit + cargo-deny + gitleaks) on every PR.
 

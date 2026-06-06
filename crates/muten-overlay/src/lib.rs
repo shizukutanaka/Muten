@@ -68,7 +68,13 @@ pub enum Origin {
 /// are best-effort; the enumerator fills what it can and leaves the
 /// rest at defaults. `coverage_percent` is the fraction of the active
 /// display the window occupies (0..=100).
+///
+/// `#[serde(default)]`: because the contract is "fill what you can,
+/// default the rest", a helper (or a hand-written sample) MAY omit any
+/// field it cannot determine and the value falls back to its type
+/// default — partial window JSON deserializes rather than erroring.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct OverlayWindow {
     /// Window title or document title. Lower-cased by the enumerator.
     pub title: String,
@@ -1015,6 +1021,33 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert_ne!(v.decision, Decision::Block);
+    }
+
+    // ── §2.2 partial-window deserialization (spec conformance) ───
+
+    #[test]
+    fn partial_window_json_deserializes_with_defaults() {
+        // The contract is "fill what you can, default the rest" — a
+        // helper that can't determine a field omits it. Missing fields
+        // MUST fall back to type defaults instead of erroring.
+        let w: OverlayWindow =
+            serde_json::from_str(r#"{"title":"x","coverage_percent":90}"#).unwrap();
+        assert_eq!(w.title, "x");
+        assert_eq!(w.coverage_percent, 90);
+        assert_eq!(w.url, None);
+        assert!(!w.topmost);
+        assert!(!w.has_close_button);
+        assert!(!w.blocks_input);
+        assert_eq!(w.origin, Origin::Unknown);
+        assert_eq!(w.age_ms, 0);
+        // An empty object is also valid → all defaults.
+        let empty: OverlayWindow = serde_json::from_str("{}").unwrap();
+        assert_eq!(empty, OverlayWindow::default());
+        // And it still classifies (no panic, Allow on an empty window).
+        assert_eq!(
+            classify(&empty, &Ruleset::default()).decision,
+            Decision::Allow
+        );
     }
 
     // ── input_trap composite "screen lock" signal ───────────────

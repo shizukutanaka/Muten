@@ -19,11 +19,21 @@ use muten_overlay::{
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+/// Stable exit codes, documented in `--help` (see SPECIFICATION.md §10).
+const EXIT_CODES: &str = "\
+Exit codes:
+  0  Allow / benign / OK
+  5  Suspicious (classify: window flagged for review, not dismissed)
+  6  Block (classify, or enforce: at least one window blocked)
+  7  Scareware (scareware: rogue-AV / repeat-flood detected)
+  1  error (bad input, I/O, or a broken audit log)";
+
 #[derive(Parser)]
 #[command(
     name = "muten-overlay",
     version,
-    about = "muten — overlay classifier (dry-run)"
+    about = "muten — overlay classifier (dry-run)",
+    after_help = EXIT_CODES
 )]
 struct Cli {
     #[command(subcommand)]

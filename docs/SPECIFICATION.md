@@ -1,0 +1,186 @@
+# muten-overlay — Specification (v0.5.0)
+
+Normative specification of the `muten-overlay` pure-domain layer: the
+types, the classifier contract, the offline blocklist grammar, the
+text-normalization pipeline, scareware detection, the monitor/enforce
+loop, the tamper-evident audit chain, the OS-controller/helper protocol,
+and the CLI contract. Keywords **MUST / SHOULD / MUST NOT** are used in
+the RFC 2119 sense. Where the implementation diverged from this spec, the
+gap is listed in [§13](#13-conformance-gaps) and fixed in the same change.
+
+## 1. Scope & invariants
+
+muten-overlay decides, **offline and deterministically**, whether an
+observed window is a scam/scareware overlay, and emits a tamper-evident
+audit trail. Global invariants (hold for every public function):
+
+- **Pure & offline.** No network, no clock, no filesystem in the
+  detection path (`classify`, `assess`, normalization). Time is injected.
+- **`#![forbid(unsafe_code)]`.** All OS/FFI work lives in helper scripts.
+- **No ML, no computer vision.** Reasoning is over window *metadata* and
+  text only, via a transparent additive score with named weights (I6).
+- **Total / never-panic.** Every public function MUST return for any
+  input (property-tested). Parsers MUST NOT abort on malformed input.
+- **False-positive-averse (observe-first).** Only a confirmed host
+  blocklist hit, or accumulated evidence reaching `BLOCK_THRESHOLD`,
+  yields `Block`. No single behavioural signal — and no bounded
+  composite — auto-blocks on its own.
+- **Detect & audit, don't destroy.** No process kill, no registry edits.
+
+## 2. Domain types
+
+### 2.1 `Origin` (serde `snake_case`)
+`unknown` (default) | `user_initiated` | `unsolicited`.
+
+### 2.2 `OverlayWindow`
+A best-effort observation. **The enumerator fills what it can and leaves
+the rest at type defaults; therefore deserialization MUST supply defaults
+for any missing field** (a helper that cannot determine a field omits it).
+
+| field | type | meaning / spec |
+|---|---|---|
+| `title` | String | window/document title, lower-cased by the enumerator |
+| `url` | Option\<String\> | source URL/host if a browser surface, lower-cased |
+| `coverage_percent` | u8 | percent of active display covered; domain `0..=100`; `≥ 85` counts as full-screen. Values `> 100` are treated as full-screen (saturating), never as an error |
+| `topmost` | bool | always-on-top |
+| `has_close_button` | bool | a usable close affordance exists |
+| `blocks_input` | bool | modal / input-grab |
+| `origin` | Origin | how it appeared |
+| `age_ms` | u64 | ms on screen; **`0` means "unknown"**, not "brand new" |
+
+### 2.3 `Verdict`
+`{ decision, score: i32 (≥0), signals: [&str], categories: [DarkPatternCategory] (sorted, deduped), matched_rule: Option<String> }`.
+`Decision` ∈ `allow | suspicious | block`. `Verdict::explain()` MUST return
+a deterministic, non-empty, period-terminated sentence for any verdict.
+
+## 3. Classifier contract (`classify(&OverlayWindow, &Ruleset) -> Verdict`)
+
+Precedence:
+1. **Hard host block.** If `url`'s host matches the blocklist, return
+   `Block`, `score = BLOCK_THRESHOLD`, `signals = [blocklist_host]`,
+   `matched_rule = Some(rule)`. (Highest trust; short-circuits.)
+2. Otherwise compute the **additive score** from the signals below and
+   threshold it.
+
+### 3.1 Signal weights (named constants, I6)
+
+| signal | weight | condition |
+|---|--:|---|
+| `fullscreen` | +30 | `coverage_percent ≥ 85` |
+| `topmost` | +15 | `topmost` |
+| `no_close_button` | +25 | `!has_close_button` |
+| `blocks_input` | +20 | `blocks_input` |
+| `unsolicited` | +25 | `origin = unsolicited` |
+| `user_initiated` | −40 | `origin = user_initiated` |
+| `very_new` | +10 | `0 < age_ms < 1000` |
+| `blocklist_title` | +40 | normalized title contains a `title:` pattern |
+| `phone_number` | +35 | alert-shaped **and** a 7–15-digit phone number in the title |
+| `mixed_script` | +30 | raw title or host token mixes Latin with Cyrillic/Greek |
+| `input_trap` | +5 | `fullscreen ∧ topmost ∧ blocks_input` (bounded composite) |
+| `sudden_fullscreen_takeover` | +5 | `unsolicited ∧ fullscreen ∧ topmost ∧ 0<age_ms<1000` (bounded composite) |
+
+`alert_shaped` ≜ `coverage ≥ 85 ∨ blocks_input ∨ !has_close_button`.
+Final `score = max(0, Σ weights)`.
+
+### 3.2 Thresholds & monotonicity
+`score ≥ BLOCK_THRESHOLD (100)` → Block; `≥ SUSPICIOUS_THRESHOLD (50)` →
+Suspicious; else Allow. The score MUST be **monotone non-decreasing** in
+each "more suspicious" signal. **Bounded-composite cap (FP-aversion):** a
+window with no content/provenance tell MUST NOT reach `Block` from a
+bounded composite alone — the lock shape caps at 95, the takeover shape at
+85, both `< BLOCK_THRESHOLD`.
+
+## 4. Text normalization (`confusables`)
+
+`normalize_for_match(s)` ≜ `strip_invisibles ∘ fold_confusables ∘
+fold_leet_in_words ∘ to_ascii_lowercase`, idempotent. Used **symmetrically**
+for both stored `title:` patterns (at parse) and titles (at match), so the
+two sides cannot drift. `strip_invisibles` removes zero-width / BiDi
+controls and MUST NOT lengthen the string. `fold_leet_in_words` folds leet
+digits only inside tokens containing a letter (pure-digit runs — phone
+numbers — survive). The phone-number scan runs on `fold_confusables` only
+(it needs the original digits). `has_confusable_mixed_script` is evaluated
+on the **raw** string (folding erases the evidence) and ignores CJK/Kana.
+
+## 5. Blocklist grammar (`Ruleset::parse`)
+
+Plain text, one rule per line; `#` starts a comment. A malformed line MUST
+be skipped, never abort the load. Prefixes: `host:` (host + any
+subdomain), `title:` (substring on the normalized title), `process:`
+(separator-insensitive substring). A bare line is a `host:` rule. Host
+matching strips invisibles and folds typosquat/homoglyph confusables; the
+**original** authored rule text is returned as `matched_rule`.
+
+## 6. Scareware (`assess(repeat_count, process_name, &Ruleset)`)
+
+Returns `Scareware` iff a known rogue-AV **process** matches
+(`rogue_av_process`) **or** `repeat_count ≥ REPEAT_THRESHOLD`
+(`repeated_flood`); else `Benign`. `RepeatTracker` is a sliding window
+(default 2 min). `signature(&OverlayWindow)` = normalized title + host,
+the stable key for repeat counting across re-pops.
+
+## 7. Monitor / enforce loop
+
+`enforce(controller, rules)` = enumerate → classify each → `dismiss` only
+on `Block` → one `EnforceOutcome` per window. `Monitor::sweep(now_ms,
+process_of)` additionally folds in scareware and emits one audit event per
+notable outcome: `overlay_blocked`, `overlay_suspicious`,
+`scareware_detected`, `overlay_sweep_error`. **`Allow` is not audited.**
+The clock and `process_of` are injected (determinism). A single dismiss or
+controller error MUST NOT abort the sweep.
+
+## 8. Audit chain (`sink`, format-compatible with `muten-audit-chain`)
+
+One JSON object per line. Link hash:
+`hash = SHA256(prev_hash ‖ 0x00 ‖ be(timestamp_ms) ‖ 0x00 ‖ kind ‖ 0x00 ‖
+window_id ‖ 0x00 ‖ json(detail) ‖ 0x00 ‖ be(seq))`. First event's
+`prev_hash` = `GENESIS` (64 `0`). `verify_chain(text) -> (count, head)`
+detects any edit, deletion, reordering, or back/forward-dating, and the
+sink MUST refuse to append onto an already-broken log. `timestamp_ms` is
+part of the hash (events cannot be backdated).
+
+## 9. OS controller / helper protocol
+
+`OverlayController { name, enumerate() -> Result<[EnumeratedWindow]>,
+dismiss(&WindowId) -> Result<bool> }`. `dismiss` MUST be called only for
+`Block`. `NullController` is the dry-run default (records, touches no real
+window). `SubprocessController` spawns a per-OS helper that emits the
+window JSON (so partial JSON per §2.2 MUST parse). `ControllerError` ∈
+`Enumerate | Dismiss | Unsupported`.
+
+## 10. CLI contract
+
+Subcommands: `classify`, `rules`, `scareware`, `enforce`, `monitor`.
+`classify`/`scareware` accept `--json` (machine-readable verdict; the
+`classify` JSON additionally carries `explanation`). Window input accepts
+`-` for stdin.
+
+**Exit codes (stable):** `0` Allow / benign / OK · `5` Suspicious · `6`
+Block (or any window blocked) · `7` Scareware · `1` error. These MUST be
+documented in `--help`.
+
+## 11. JSON output schema (`classify --json`)
+`{ decision: "allow|suspicious|block", score: int, signals: [string],
+categories: [string], matched_rule: string|null, explanation: string }`.
+
+## 12. Non-goals (I3)
+ML/CV black boxes; network/certificate/WHOIS signals; process termination
+or registry edits; blockchain audit. See `docs/IMPROVEMENT_CATALOG_2026H2.md`
+for researched future work (Merkle anchoring, signed config, UTS#39
+skeleton, etc.).
+
+## 13. Conformance gaps (found by this spec; fixed in the same change)
+
+1. **§2.2 partial-window deserialization.** The doc contract said fields
+   are best-effort with defaults, but `OverlayWindow` had no
+   `#[serde(default)]`, so any JSON missing a field (a helper that can't
+   determine one; a minimal hand-written sample) failed to parse. **Fixed:**
+   `#[serde(default)]` on the struct + a regression test that partial JSON
+   deserializes to type defaults.
+2. **§10 exit codes undocumented.** The stable exit codes existed only in
+   code. **Fixed:** added an `after_help` exit-code table to the CLI so
+   `--help` documents `0/5/6/7/1`.
+
+Open (tracked in the catalog, not in this change): `--json` for
+`monitor`/`enforce` (C4-2), `#[non_exhaustive]` on public enums (C3-5),
+audit `truncation` vs crash distinction (C6-8).
