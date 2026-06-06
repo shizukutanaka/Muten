@@ -86,6 +86,10 @@ enum Cmd {
         windows: String,
         #[arg(long)]
         rules: Option<PathBuf>,
+        /// Emit a JSON array of per-window outcomes instead of the
+        /// human-readable table. Exit code unchanged.
+        #[arg(long)]
+        json: bool,
     },
     /// Run N sweeps over a JSON window list, writing a tamper-evident
     /// chained audit log and printing an event summary. Demonstrates
@@ -102,6 +106,10 @@ enum Cmd {
         /// sink is used and the log is not persisted.
         #[arg(long)]
         audit_log: Option<PathBuf>,
+        /// Emit a JSON document on stdout (the audit events, or a
+        /// summary when `--audit-log` is set) instead of the text table.
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -130,13 +138,24 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             rules,
             json,
         } => cmd_scareware(repeats, process.as_deref(), rules.as_deref(), json),
-        Cmd::Enforce { windows, rules } => cmd_enforce(&windows, rules.as_deref()),
+        Cmd::Enforce {
+            windows,
+            rules,
+            json,
+        } => cmd_enforce(&windows, rules.as_deref(), json),
         Cmd::Monitor {
             windows,
             rules,
             sweeps,
             audit_log,
-        } => cmd_monitor(&windows, rules.as_deref(), sweeps, audit_log.as_deref()),
+            json,
+        } => cmd_monitor(
+            &windows,
+            rules.as_deref(),
+            sweeps,
+            audit_log.as_deref(),
+            json,
+        ),
     }
 }
 
@@ -281,37 +300,46 @@ fn parse_windows(windows: &str) -> Result<Vec<EnumeratedWindow>, String> {
     Ok(enumerated)
 }
 
-fn cmd_enforce(windows: &str, rules: Option<&std::path::Path>) -> Result<ExitCode, String> {
+fn cmd_enforce(
+    windows: &str,
+    rules: Option<&std::path::Path>,
+    json: bool,
+) -> Result<ExitCode, String> {
     let enumerated = parse_windows(windows)?;
 
     let rs = load_rules(rules)?;
     let ctrl = NullController::with_windows(enumerated);
     let outcomes = enforce(&ctrl, &rs).map_err(|e| format!("enforce: {e}"))?;
 
-    let mut any_block = false;
-    for o in &outcomes {
-        if o.decision == Decision::Block {
-            any_block = true;
-        }
+    let any_block = outcomes.iter().any(|o| o.decision == Decision::Block);
+
+    if json {
         println!(
-            "{:10} {:?} score={} dismissed={} signals=[{}]{}",
-            o.window_id,
-            o.decision,
-            o.score,
-            o.dismissed,
-            o.signals.join(", "),
-            o.matched_rule
-                .as_ref()
-                .map(|r| format!(" matched={r}"))
-                .unwrap_or_default(),
+            "{}",
+            serde_json::to_string_pretty(&outcomes).map_err(|e| format!("encoding json: {e}"))?
+        );
+    } else {
+        for o in &outcomes {
+            println!(
+                "{:10} {:?} score={} dismissed={} signals=[{}]{}",
+                o.window_id,
+                o.decision,
+                o.score,
+                o.dismissed,
+                o.signals.join(", "),
+                o.matched_rule
+                    .as_ref()
+                    .map(|r| format!(" matched={r}"))
+                    .unwrap_or_default(),
+            );
+        }
+        let dismissed = ctrl.dismissed();
+        eprintln!(
+            "{} window(s) assessed, {} dismissed",
+            outcomes.len(),
+            dismissed.len()
         );
     }
-    let dismissed = ctrl.dismissed();
-    eprintln!(
-        "{} window(s) assessed, {} dismissed",
-        outcomes.len(),
-        dismissed.len()
-    );
     Ok(if any_block {
         ExitCode::from(6)
     } else {
@@ -324,6 +352,7 @@ fn cmd_monitor(
     rules: Option<&std::path::Path>,
     sweeps: u64,
     audit_log: Option<&std::path::Path>,
+    json: bool,
 ) -> Result<ExitCode, String> {
     let enumerated = parse_windows(windows)?;
     let rs = load_rules(rules)?;
@@ -350,35 +379,70 @@ fn cmd_monitor(
     if let Some(path) = audit_log {
         let sink = ChainedFileSink::open(path).map_err(|e| format!("opening audit log: {e}"))?;
         total = mon.run(&ctrl, &sink, &cfg, clock, no_proc, || false);
-        summary_head = Some(sink.head());
+        let head = sink.head();
+        summary_head = Some(head.clone());
         // Verify what we just wrote.
         let text = std::fs::read_to_string(path).map_err(|e| format!("reading log: {e}"))?;
-        match verify_chain(&text) {
+        let count = match verify_chain(&text) {
             Ok((count, head)) => {
-                eprintln!("audit log: {count} event(s), head={head}, verified OK");
+                if !json {
+                    eprintln!("audit log: {count} event(s), head={head}, verified OK");
+                }
+                count
             }
             Err(e) => return Err(format!("written log failed verification: {e}")),
+        };
+        if json {
+            // With a persisted chain we don't hold events in memory;
+            // emit a verifiable summary object instead.
+            let summary = serde_json::json!({
+                "sweeps": sweeps,
+                "dismissals": total,
+                "event_count": count,
+                "head": head,
+                "verified": true,
+            });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&summary)
+                    .map_err(|e| format!("encoding json: {e}"))?
+            );
         }
     } else {
         let sink = MemorySink::new();
         total = mon.run(&ctrl, &sink, &cfg, clock, no_proc, || false);
-        for ev in sink.events() {
+        let events = sink.events();
+        if json {
+            let doc = serde_json::json!({
+                "sweeps": sweeps,
+                "dismissals": total,
+                "events": events,
+            });
             println!(
-                "t={:<8} {:20} {:10} {}",
-                ev.timestamp_ms,
-                ev.kind,
-                ev.window_id,
-                serde_json::to_string(&ev.detail).unwrap_or_default()
+                "{}",
+                serde_json::to_string_pretty(&doc).map_err(|e| format!("encoding json: {e}"))?
             );
+        } else {
+            for ev in &events {
+                println!(
+                    "t={:<8} {:20} {:10} {}",
+                    ev.timestamp_ms,
+                    ev.kind,
+                    ev.window_id,
+                    serde_json::to_string(&ev.detail).unwrap_or_default()
+                );
+            }
         }
         summary_head = None;
     }
 
-    eprintln!(
-        "{sweeps} sweep(s), {total} dismissal(s){}",
-        summary_head
-            .map(|h| format!(", head={h}"))
-            .unwrap_or_default()
-    );
+    if !json {
+        eprintln!(
+            "{sweeps} sweep(s), {total} dismissal(s){}",
+            summary_head
+                .map(|h| format!(", head={h}"))
+                .unwrap_or_default()
+        );
+    }
     Ok(ExitCode::from(0))
 }

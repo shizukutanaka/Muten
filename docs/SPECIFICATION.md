@@ -151,9 +151,12 @@ window JSON (so partial JSON per §2.2 MUST parse). `ControllerError` ∈
 ## 10. CLI contract
 
 Subcommands: `classify`, `rules`, `scareware`, `enforce`, `monitor`.
-`classify`/`scareware` accept `--json` (machine-readable verdict; the
-`classify` JSON additionally carries `explanation`). Window input accepts
-`-` for stdin.
+All decision subcommands accept `--json`: `classify`/`scareware` emit a
+verdict object (the `classify` JSON additionally carries `explanation`);
+`enforce` emits a JSON array of per-window outcomes; `monitor` emits the
+audit-event document (or a verifiable summary `{sweeps, dismissals,
+event_count, head, verified}` when `--audit-log` is set). Window input
+accepts `-` for stdin.
 
 **Exit codes (stable):** `0` Allow / benign / OK · `5` Suspicious · `6`
 Block (or any window blocked) · `7` Scareware · `1` error. These MUST be
@@ -180,7 +183,12 @@ skeleton, etc.).
 2. **§10 exit codes undocumented.** The stable exit codes existed only in
    code. **Fixed:** added an `after_help` exit-code table to the CLI so
    `--help` documents `0/5/6/7/1`.
+3. **§10 `--json` only on `classify`/`scareware`.** `enforce` and
+   `monitor` had no machine-readable output, an inconsistent CLI
+   contract for SIEM use. **Fixed:** `enforce --json` (array of outcomes)
+   and `monitor --json` (events document / verifiable summary), plus
+   `tests/cli_contract.rs` end-to-end tests of the JSON schema and exit
+   codes for all four decision subcommands.
 
-Open (tracked in the catalog, not in this change): `--json` for
-`monitor`/`enforce` (C4-2), `#[non_exhaustive]` on public enums (C3-5),
-audit `truncation` vs crash distinction (C6-8).
+Open (tracked in the catalog, not in this change): `#[non_exhaustive]` on
+public enums (C3-5), audit `truncation` vs crash distinction (C6-8).

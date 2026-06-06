@@ -44,11 +44,17 @@ changes meaning. No new dependencies; still offline, pure,
 - **`Verdict::explain()`** — a deterministic, plain-language sentence
   describing why a verdict was reached, assembled from the signals that
   fired (CLAUDE.md I6 / roadmap C5-8).
-- **`classify --json` and `scareware --json`** CLI flags — emit the
-  verdict as machine-readable JSON for SIEM / scripting. The `classify`
-  JSON additionally carries an `explanation` field, and its
-  human-readable output now prints a `why:` line. Exit codes unchanged.
-  (Roadmap C4-2, partial.)
+- **`--json` on every decision subcommand** — `classify`/`scareware`
+  emit a verdict object (classify adds an `explanation` field and a
+  `why:` line in text mode); `enforce` emits a JSON array of per-window
+  outcomes; `monitor` emits the audit-event document, or a verifiable
+  `{sweeps, dismissals, event_count, head, verified}` summary with
+  `--audit-log`. Exit codes unchanged. `tests/cli_contract.rs` covers the
+  JSON schema + exit codes end to end. (Roadmap C4-2.)
+- **Documented exit codes in `--help`** and a normative
+  `docs/SPECIFICATION.md`; `OverlayWindow` now `#[serde(default)]` so
+  partial window JSON (a helper omitting an undeterminable field) parses
+  instead of erroring.
 - New public API: `confusables::{strip_invisibles, normalize_for_match,
   has_confusable_mixed_script, fold_leet_in_words, script_of, Script}`.
 - ~30 new unit + property tests (160 total, up from 141): invisibles
