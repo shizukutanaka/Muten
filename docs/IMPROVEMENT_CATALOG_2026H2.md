@@ -157,9 +157,10 @@ crate-ci/typos, foresterre/cargo-msrv, dtolnay/* (crate 設計の規範)。
    [根拠] EmbarkStudios/cargo-deny, rustsec/rustsec(cargo-audit)。
    [muten] CI 実装済(供給鎖ゲート)。以下は未実装の品質ゲート。
 
-2. 🔻 ★★★ **`#![deny(missing_docs)]` で公開 API doc 強制**
+2. ✅ ★★★ **`#![deny(missing_docs)]` で公開 API doc 強制** — 実装済(v0.5.0)
    [根拠] dtolnay 系 crate の規範 / docs.rs 文化。
-   [muten] 多くに doc あるが強制なし。pure-core に付与し公開 API を網羅。
+   [muten] 全公開 API(struct field / enum variant / trait / const)に doc を追加し
+   `#![deny(missing_docs)]` を lib.rs に付与。`cargo doc --no-deps` が警告ゼロ。(C3-2 ✓DONE)
 
 3. 🔻 ★★ **cargo-semver-checks で API 破壊を CI 検出**
    [根拠] obi1kenobi/cargo-semver-checks — rustc 機構で semver 違反を検出、CI Action 同梱。

@@ -233,9 +233,13 @@ pub fn has_bidi_override(s: &str) -> bool {
 /// token is the homoglyph-evasion tell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Script {
+    /// ASCII + Latin-1/Extended-A/B letters.
     Latin,
+    /// Cyrillic block (U+0400–U+04FF).
     Cyrillic,
+    /// Greek and Coptic block (U+0370–U+03FF).
     Greek,
+    /// Everything else (CJK, Kana, Hangul, digits, punctuation, …).
     Other,
 }
 

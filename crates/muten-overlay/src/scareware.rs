@@ -46,6 +46,7 @@ pub type Signature = String;
 /// Verdict from the scareware detector.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ScarewareVerdict {
+    /// The scareware classification (Benign or Scareware).
     pub decision: ScarewareDecision,
     /// Why we decided. Listed for the audit log.
     pub signals: Vec<&'static str>,
@@ -55,6 +56,7 @@ pub struct ScarewareVerdict {
     pub matched_process: Option<String>,
 }
 
+/// The scareware detector's classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScarewareDecision {
@@ -88,6 +90,7 @@ pub struct RepeatTracker {
 }
 
 impl RepeatTracker {
+    /// Create a tracker with a custom sliding-window duration in milliseconds.
     #[must_use]
     pub fn new(window_ms: u64) -> Self {
         Self {

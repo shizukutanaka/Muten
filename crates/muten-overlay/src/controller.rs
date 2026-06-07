@@ -35,8 +35,11 @@ use serde::{Deserialize, Serialize};
 /// than crashing — a transient window-manager hiccup is not fatal.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum ControllerError {
+    /// The helper's `enumerate` verb failed; payload is the error description.
     Enumerate(String),
+    /// The helper's `dismiss` verb failed; payload is the error description.
     Dismiss(String),
+    /// This controller is not supported on the current host.
     Unsupported,
 }
 
@@ -61,10 +64,15 @@ pub type WindowId = String;
 /// daemon can pass the handle back to [`OverlayController::dismiss`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EnumeratedWindow {
+    /// The controller's opaque, stable handle for this window.
     pub id: WindowId,
+    /// The observed window metadata.
     pub window: OverlayWindow,
 }
 
+/// Abstracts over OS window-management backends (Win32, macOS, X11/Wayland).
+/// Both `enumerate` and `dismiss` are allowed to fail transiently — the
+/// caller logs the error and retries next sweep rather than aborting.
 pub trait OverlayController: Send + Sync {
     /// Human-readable name for diagnostics, e.g. "null", "win32".
     fn name(&self) -> &'static str;
@@ -94,6 +102,7 @@ pub struct NullController {
 }
 
 impl NullController {
+    /// Create an empty dry-run controller (enumerates nothing).
     #[must_use]
     pub fn new() -> Self {
         Self::default()

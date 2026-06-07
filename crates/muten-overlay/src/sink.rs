@@ -160,24 +160,36 @@ impl AuditSink for ChainedFileSink {
     }
 }
 
+/// An error that can occur while opening or verifying the audit chain.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ChainError {
+    /// A line in the log is not valid JSON.
     #[error("invalid JSON on line {0}: {1}")]
     InvalidJson(usize, String),
+    /// A required field is absent from a log line.
     #[error("missing field {0} on line {1}")]
     MissingField(&'static str, usize),
+    /// The hash chain is broken at the given line.
     #[error("chain broken at line {line}: expected prev_hash {expected}, got {actual}")]
     Broken {
+        /// 1-based line number where the break was detected.
         line: usize,
+        /// The hash value expected at this position.
         expected: String,
+        /// The hash value actually found.
         actual: String,
     },
+    /// The seq field is out of order.
     #[error("seq out of order at line {line}: expected {expected}, got {actual}")]
     SeqGap {
+        /// 1-based line number where the gap was detected.
         line: usize,
+        /// Expected seq value.
         expected: u64,
+        /// Actual seq value found.
         actual: u64,
     },
+    /// An IO error occurred while opening or writing the log file.
     #[error("io: {0}")]
     Io(String),
 }

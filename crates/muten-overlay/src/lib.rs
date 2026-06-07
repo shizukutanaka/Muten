@@ -28,6 +28,7 @@
 //! audio side's `pilot-observe` philosophy.
 
 #![forbid(unsafe_code)]
+#![deny(missing_docs)]
 
 pub mod categories;
 pub mod confusables;
@@ -101,8 +102,11 @@ pub struct OverlayWindow {
 /// signal weight; `signals` lists which fired (for the audit log).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Verdict {
+    /// The classifier's final decision (Allow / Suspicious / Block).
     pub decision: Decision,
+    /// Sum of all signal weights; always ≥ 0.
     pub score: i32,
+    /// Names of the signals that fired, in evaluation order.
     pub signals: Vec<&'static str>,
     /// Dark-pattern strategy categories (Gray et al. 2018) implied by
     /// the signals that fired, deduped and sorted. Empty when only
@@ -183,6 +187,7 @@ fn join_clauses(parts: &[&str]) -> String {
     }
 }
 
+/// The classifier's verdict on a window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Decision {
@@ -200,6 +205,7 @@ pub enum Decision {
 /// At or above this score → Block. Below `SUSPICIOUS_THRESHOLD` →
 /// Allow. In between → Suspicious.
 pub const BLOCK_THRESHOLD: i32 = 100;
+/// At or above this score → Suspicious (audited, not dismissed). Below → Allow.
 pub const SUSPICIOUS_THRESHOLD: i32 = 50;
 
 const W_FULLSCREEN: i32 = 30; // covers (almost) the whole display
@@ -609,10 +615,15 @@ pub fn signature(w: &OverlayWindow) -> String {
 /// and whether we dismissed it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EnforceOutcome {
+    /// Controller's stable handle for this window.
     pub window_id: String,
+    /// Classifier decision for this window.
     pub decision: Decision,
+    /// Additive score (≥ 0) that produced the decision.
     pub score: i32,
+    /// Signal names that contributed to the score.
     pub signals: Vec<&'static str>,
+    /// Blocklist rule that matched, if any.
     pub matched_rule: Option<String>,
     /// True only when the controller actually dismissed the window.
     pub dismissed: bool,

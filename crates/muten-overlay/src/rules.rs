@@ -28,6 +28,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
+/// The parsed offline blocklist. Parse with [`Ruleset::parse`] (or
+/// [`Ruleset::from_lines`] in tests). An empty `Ruleset::default()`
+/// matches nothing and is safe to use as a no-op placeholder.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Ruleset {
     /// Registered hosts to block (lower-cased, no scheme/path).
@@ -110,12 +113,15 @@ impl Ruleset {
         Self::parse(&lines.join("\n"))
     }
 
+    /// Number of host rules loaded.
     pub fn host_count(&self) -> usize {
         self.hosts.len()
     }
+    /// Number of title-substring patterns loaded.
     pub fn title_count(&self) -> usize {
         self.title_patterns.len()
     }
+    /// Number of process-name patterns loaded.
     pub fn process_count(&self) -> usize {
         self.process_patterns.len()
     }

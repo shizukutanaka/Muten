@@ -45,14 +45,18 @@ pub struct AuditEvent {
     /// daemon supply wall-clock time in production. Required for
     /// incident-timeline reconstruction (see IMPROVEMENT_ROADMAP C6-7).
     pub timestamp_ms: u64,
+    /// Event type identifier (e.g. `"overlay_blocked"`, `"scareware_detected"`).
     pub kind: &'static str,
+    /// Controller's window handle, or `"n/a"` when there's no specific window.
     pub window_id: String,
+    /// Event-specific payload (title, score, signals, …) as a JSON object.
     pub detail: serde_json::Value,
 }
 
 /// Where audit events go. The daemon implements this over the real
 /// chained JSONL sink; tests use [`MemorySink`].
 pub trait AuditSink {
+    /// Record one audit event. Implementations MUST NOT block or panic.
     fn emit(&self, ev: &AuditEvent);
 }
 
@@ -63,14 +67,17 @@ pub struct MemorySink {
 }
 
 impl MemorySink {
+    /// Create an empty in-memory sink.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
+    /// Snapshot all events recorded so far, in emission order.
     #[must_use]
     pub fn events(&self) -> Vec<AuditEvent> {
         self.events.lock().unwrap().clone()
     }
+    /// Count events with a given `kind` string.
     #[must_use]
     pub fn count_of(&self, kind: &str) -> usize {
         self.events
@@ -96,6 +103,7 @@ pub struct Monitor {
 }
 
 impl Monitor {
+    /// Create a monitor with the default 2-minute repeat-flood window.
     #[must_use]
     pub fn new(rules: Ruleset) -> Self {
         Self {

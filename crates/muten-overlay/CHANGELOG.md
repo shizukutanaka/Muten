@@ -13,6 +13,9 @@ changes meaning. No new dependencies; still offline, pure,
 `forbid(unsafe_code)`.
 
 ### Added
+- **`#![deny(missing_docs)]`** enforced on the crate. All public items
+  (struct fields, enum variants, trait methods, constants) now carry doc
+  comments; `cargo doc --no-deps` builds cleanly at error level. (C3-2.)
 - **Enclosed/circled letter signal** (`compat_chars_present`, weight 20,
   `Sneaking` category). Detects and folds enclosed/circled Latin letters
   (Ⓐ–Ⓩ / ⓐ–ⓩ, U+24B6–U+24E9) used in phishing to evade plain-text
