@@ -163,6 +163,7 @@ fn signal_phrase(signal: &str) -> &str {
         "blocklist_host" => "is hosted on a blocklisted domain",
         "phone_number" => "shows a support phone number",
         "mixed_script" => "mixes character sets to disguise its text",
+        "bidi_override" => "uses a right-to-left override to disguise its text",
         "brand_impersonation" => "uses a look-alike domain impersonating a known brand",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -208,6 +209,7 @@ const W_VERY_NEW: i32 = 10; // < 1s old (just popped up)
 const W_TITLE_HIT: i32 = 40; // title matches a scam pattern
 const W_PHONE_NUMBER: i32 = 35; // a phone number in an OS-alert-like window
 const W_MIXED_SCRIPT: i32 = 30; // title/host mixes Latin with Cyrillic/Greek
+const W_BIDI_OVERRIDE: i32 = 30; // title/host uses an LRO/RLO directional override (Trojan Source)
 const W_INPUT_TRAP: i32 = 5; // fullscreen+topmost+modal "screen lock" (bounded; see classify)
 const W_SUDDEN_TAKEOVER: i32 = 5; // unsolicited instant full-screen seizure (bounded)
 const W_BRAND_IMPERSONATION: i32 = 40; // host label is a homograph of a known brand
@@ -385,6 +387,19 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if mixed_script {
         score += W_MIXED_SCRIPT;
         signals.push("mixed_script");
+    }
+
+    // BiDi directional override (Trojan Source, arXiv:2111.00169): an
+    // LRO/RLO control forces the displayed reading order to differ from
+    // the logical text. We strip these before matching, but their mere
+    // presence in a title/host is itself a high-confidence spoofing tell
+    // — overrides have no honest use in a window title. Read on the raw
+    // strings, before stripping erases them.
+    let bidi_override = confusables::has_bidi_override(&w.title)
+        || w.url.as_deref().is_some_and(confusables::has_bidi_override);
+    if bidi_override {
+        score += W_BIDI_OVERRIDE;
+        signals.push("bidi_override");
     }
 
     // Brand-homograph impersonation (UTS #39 skeleton collision): the
@@ -1092,6 +1107,48 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert_ne!(v.decision, Decision::Block);
+    }
+
+    // ── bidi_override (Trojan Source, C8-5) ─────────────────────
+
+    #[test]
+    fn bidi_override_fires_and_maps_to_sneaking() {
+        // A right-to-left override (U+202E) in the title.
+        let w = OverlayWindow {
+            title: "invoice \u{202E}gpj.exe".into(),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.contains(&"bidi_override"),
+            "signals={:?}",
+            v.signals
+        );
+        assert!(v.categories.contains(&DarkPatternCategory::Sneaking));
+    }
+
+    #[test]
+    fn legit_rtl_text_does_not_fire_bidi_override() {
+        // Arabic/Hebrew titles use RTL *letters* and at most LRM/RLM
+        // marks or isolates — never an override. Must not flag.
+        for title in [
+            "مرحبا بك",                     // plain Arabic
+            "\u{200F}مرحبا",                // with an RLM mark
+            "user \u{2068}content\u{2069}", // with FSI/PDI isolates
+        ] {
+            let w = OverlayWindow {
+                title: title.into(),
+                has_close_button: true,
+                ..Default::default()
+            };
+            assert!(
+                !classify(&w, &Ruleset::default())
+                    .signals
+                    .contains(&"bidi_override"),
+                "{title:?} wrongly flagged"
+            );
+        }
     }
 
     // ── brand_impersonation (UTS#39 skeleton collision, C8-2) ────

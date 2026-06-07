@@ -43,6 +43,14 @@ changes meaning. No new dependencies; still offline, pure,
   deployment hasn't (and shouldn't) blocklisted. New
   `confusables::skeleton()`. Additive (not an auto-block), consistent
   with `blocklist_title`. (Roadmap C8-2.)
+- **`bidi_override` signal** (weight 30, `Sneaking`) — flags a BiDi
+  directional **override** (`U+202D`/`U+202E`) in the raw title or host:
+  the "Trojan Source" (arXiv:2111.00169) / RLO filename-spoof vector that
+  makes displayed text read differently from the logical bytes. muten
+  already strips these for matching; this surfaces their *presence* as a
+  distinct, near-zero-false-positive tell (overrides have no honest use
+  in a title — legit RTL text uses letters/marks/isolates, which do not
+  fire). New `confusables::has_bidi_override()`. (Roadmap C8-5.)
 - **`sudden_fullscreen_takeover` composite signal** (weight 5) — fires
   when an *unsolicited* window seizes the full screen, on top, the
   instant it appears (real nonzero age < 1s). The behavioural tell Edge

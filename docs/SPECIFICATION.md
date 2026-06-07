@@ -76,6 +76,7 @@ Precedence:
 | `blocklist_title` | +40 | normalized title contains a `title:` pattern |
 | `phone_number` | +35 | alert-shaped **and** a 7–15-digit phone number in the title |
 | `mixed_script` | +30 | raw title or host token mixes Latin with Cyrillic/Greek |
+| `bidi_override` | +30 | raw title or host contains an LRO/RLO BiDi directional override (Trojan Source); isolates/marks used by legit RTL text do not fire |
 | `brand_impersonation` | +40 | a host label's UTS#39 skeleton equals a built-in known brand but is not the literal brand (homograph/typosquat); the real brand domain never fires |
 | `input_trap` | +5 | `fullscreen ∧ topmost ∧ blocks_input` (bounded composite) |
 | `sudden_fullscreen_takeover` | +5 | `unsolicited ∧ fullscreen ∧ topmost ∧ 0<age_ms<1000` (bounded composite) |

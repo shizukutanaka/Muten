@@ -78,8 +78,9 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         // Mixed-script homoglyphs disguise the true text from the user
         // and from a naive matcher — the textbook "sneaking" strategy
         // (information disguised). Fills the prior Sneaking gap
-        // (IMPROVEMENT_ROADMAP C9-1).
-        "mixed_script" => Some(Sneaking),
+        // (IMPROVEMENT_ROADMAP C9-1). A BiDi override likewise disguises
+        // the true reading order of the text (Trojan Source).
+        "mixed_script" | "bidi_override" => Some(Sneaking),
         // The rogue-AV flood is the textbook nagging pattern.
         "repeated_flood" => Some(Nagging),
         // Brand/authority impersonation and the call-this-number lure
@@ -154,6 +155,10 @@ mod tests {
         );
         assert_eq!(
             category_of("mixed_script"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+        assert_eq!(
+            category_of("bidi_override"),
             Some(DarkPatternCategory::Sneaking)
         );
         assert_eq!(

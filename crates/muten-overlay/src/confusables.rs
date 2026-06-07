@@ -193,6 +193,20 @@ pub fn strip_invisibles(s: &str) -> String {
     s.chars().filter(|&c| !is_invisible(c)).collect()
 }
 
+/// True if `s` contains a BiDi **directional override** — `U+202D`
+/// (LRO) or `U+202E` (RLO). These force a reading direction and are the
+/// classic "Trojan Source" / filename-extension spoofing vector
+/// (arXiv:2111.00169): the displayed text can be made to read entirely
+/// differently from the logical bytes. Unlike the LRM/RLM marks and the
+/// directional *isolates* (which legitimate RTL text and modern apps do
+/// use), an explicit override has essentially no honest use in a window
+/// title — so its mere presence is a high-confidence, low-false-positive
+/// spoofing tell. Evaluated on the **raw** string, before stripping.
+#[must_use]
+pub fn has_bidi_override(s: &str) -> bool {
+    s.chars().any(|c| matches!(c, '\u{202D}' | '\u{202E}'))
+}
+
 /// The (confusable-bearing) script of a character. Only the three
 /// scripts that supply Latin look-alikes are named; everything else —
 /// digits, punctuation, **and CJK / Kana / Hangul** — is `Other` and
