@@ -457,9 +457,12 @@ unicode-rs/unicode-normalization。標準: UTS#39, UTS#46, RFC 8785。
    [根拠] UTS#39 INVISIBLE / unicode general-category。
    [muten] 結合マーク2連・基底なし結合マーク・Default_Ignorable で信号。純関数。
 
-8. 🔻 ★★ **NFKC 正規化と confusable-fold の不一致を弱信号化**
+8. ✅ ★★ **NFKC 正規化と confusable-fold の不一致を弱信号化** — 実装済(v0.5.0, +20)
    [根拠] unicode-rs/unicode-normalization(NFKC)/ confusables.txt と NFKC は31文字相違。
-   [muten] NFKC 後に形が変わったこと自体を `compatibility_chars_present` 弱信号(`ⓟⓐⓨⓟⓐⓛ` 等)。
+   [muten] 囲み文字(Enclosed Latin Letters U+24B6-U+24E9: Ⓐ-Ⓩ/ⓐ-ⓩ)を `fold_char()` に
+   追加し、`normalize_for_match` 経由のブロックリスト照合が自動的に恩恵を受ける。
+   `confusables::has_compat_alpha()` で raw 文字列の存在を `compat_chars_present` 信号化
+   (weight +20, Sneaking)。201 tests。(Roadmap C8-8 ✓DONE)
 
 9. 🆕 ★★ **icu4x への移行検討(完全 UTS#39、ただし依存増・no_std 影響を評価)**
    [根拠] unicode-org/icu4x — no_std 対応の本格 Unicode、データ駆動。

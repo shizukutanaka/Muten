@@ -13,6 +13,15 @@ changes meaning. No new dependencies; still offline, pure,
 `forbid(unsafe_code)`.
 
 ### Added
+- **Enclosed/circled letter signal** (`compat_chars_present`, weight 20,
+  `Sneaking` category). Detects and folds enclosed/circled Latin letters
+  (Ⓐ–Ⓩ / ⓐ–ⓩ, U+24B6–U+24E9) used in phishing to evade plain-text
+  blocklist matching: `ⓟⓐⓨⓟⓐⓛ` looks like "paypal" but `str::contains`
+  misses it. `fold_char()` now folds this range so `normalize_for_match`
+  automatically catches these in title matching; `has_compat_alpha()` detects
+  their presence in raw text as a high-confidence, near-zero-FP signal
+  (enclosed letters have essentially no legitimate use in window/document
+  titles). New public function `confusables::has_compat_alpha()`. (C8-8.)
 - **Whole-script confusable signal** (`whole_script_confusable`, weight 30,
   `Sneaking` category). Catches the blind spot of `mixed_script`: a token
   (or URL host label) that is entirely Cyrillic or Greek where **every**

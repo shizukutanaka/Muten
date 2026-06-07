@@ -75,12 +75,15 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         "blocks_input" | "input_trap" => Some(ForcedAction),
         // No/fake close button impedes leaving the task.
         "no_close_button" => Some(Obstruction),
-        // Mixed-script, whole-script, and BiDi-override homoglyphs all
-        // disguise the true text — the textbook "sneaking" strategy
-        // (information disguised). mixed_script/whole_script_confusable
-        // swap characters to look Latin; bidi_override reverses the
-        // visual reading order (Trojan Source).
-        "mixed_script" | "whole_script_confusable" | "bidi_override" => Some(Sneaking),
+        // Mixed-script, whole-script, BiDi-override, and enclosed-letter
+        // homoglyphs all disguise the true text — the textbook "sneaking"
+        // strategy (information disguised). mixed_script/whole_script_confusable
+        // swap characters to look Latin; bidi_override reverses the visual
+        // reading order (Trojan Source); compat_chars_present uses
+        // enclosed/circled letters to evade plain-text filters.
+        "mixed_script" | "whole_script_confusable" | "bidi_override" | "compat_chars_present" => {
+            Some(Sneaking)
+        }
         // The rogue-AV flood is the textbook nagging pattern.
         "repeated_flood" => Some(Nagging),
         // Brand/authority impersonation and the call-this-number lure
@@ -163,6 +166,10 @@ mod tests {
         );
         assert_eq!(
             category_of("bidi_override"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+        assert_eq!(
+            category_of("compat_chars_present"),
             Some(DarkPatternCategory::Sneaking)
         );
         assert_eq!(

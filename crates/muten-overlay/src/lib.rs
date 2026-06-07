@@ -164,6 +164,7 @@ fn signal_phrase(signal: &str) -> &str {
         "phone_number" => "shows a support phone number",
         "mixed_script" => "mixes character sets to disguise its text",
         "whole_script_confusable" => "uses an all-lookalike script to disguise its text",
+        "compat_chars_present" => "uses enclosed/circled letters to disguise its text",
         "bidi_override" => "uses a right-to-left override to disguise its text",
         "brand_impersonation" => "uses a look-alike domain impersonating a known brand",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
@@ -211,6 +212,7 @@ const W_TITLE_HIT: i32 = 40; // title matches a scam pattern
 const W_PHONE_NUMBER: i32 = 35; // a phone number in an OS-alert-like window
 const W_MIXED_SCRIPT: i32 = 30; // title/host mixes Latin with Cyrillic/Greek
 const W_WHOLE_SCRIPT: i32 = 30; // title/host is all-Cyrillic/Greek but reads as Latin (whole-script confusable)
+const W_COMPAT_CHARS: i32 = 20; // title/host contains enclosed/circled letters Ⓐ-Ⓩ / ⓐ-ⓩ (compatibility evasion)
 const W_BIDI_OVERRIDE: i32 = 30; // title/host uses an LRO/RLO directional override (Trojan Source)
 const W_INPUT_TRAP: i32 = 5; // fullscreen+topmost+modal "screen lock" (bounded; see classify)
 const W_SUDDEN_TAKEOVER: i32 = 5; // unsolicited instant full-screen seizure (bounded)
@@ -411,6 +413,21 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if whole_script {
         score += W_WHOLE_SCRIPT;
         signals.push("whole_script_confusable");
+    }
+
+    // Enclosed/circled Latin letters (Ⓐ-Ⓩ / ⓐ-ⓩ, U+24B6-U+24E9): used in
+    // phishing titles to bypass plain-text blocklist matching
+    // (`ⓟⓐⓨⓟⓐⓛ` evades `str::contains("paypal")`). `normalize_for_match`
+    // now folds these so blocklist matching catches them; the presence of
+    // these characters in a raw title is itself a near-zero-FP tell —
+    // enclosed LETTERS have essentially no legitimate use in a window title
+    // (circled numerals ①②③ in lists are distinct and don't fire). Checked
+    // on raw strings before normalization strips the evidence. (C8-8.)
+    let compat_chars = confusables::has_compat_alpha(&w.title)
+        || w.url.as_deref().is_some_and(confusables::has_compat_alpha);
+    if compat_chars {
+        score += W_COMPAT_CHARS;
+        signals.push("compat_chars_present");
     }
 
     // BiDi directional override (Trojan Source, arXiv:2111.00169): an
@@ -1240,6 +1257,70 @@ mod tests {
                 "{title:?} wrongly flagged"
             );
         }
+    }
+
+    // ── compat_chars_present (enclosed letters, C8-8) ─────────────
+
+    #[test]
+    fn compat_chars_fires_on_enclosed_letter_title() {
+        // ⓟⓐⓨⓟⓐⓛ — all enclosed letters — bypasses plain-text matching
+        // but is flagged by has_compat_alpha on the raw title.
+        let w = OverlayWindow {
+            title: "ⓟⓐⓨⓟⓐⓛ alert".into(),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.contains(&"compat_chars_present"),
+            "signals={:?}",
+            v.signals
+        );
+        assert!(v.categories.contains(&DarkPatternCategory::Sneaking));
+    }
+
+    #[test]
+    fn compat_chars_alone_is_not_a_block() {
+        let w = OverlayWindow {
+            title: "ⓟⓐⓨⓟⓐⓛ".into(),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert_ne!(
+            v.decision,
+            Decision::Block,
+            "compat_chars alone must not block"
+        );
+    }
+
+    #[test]
+    fn plain_text_does_not_fire_compat_chars() {
+        let w = OverlayWindow {
+            title: "paypal login".into(),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(!v.signals.contains(&"compat_chars_present"));
+    }
+
+    #[test]
+    fn compat_chars_also_matches_blocklist_after_normalize() {
+        // ⓟⓐⓨⓟⓐⓛ folds to "paypal" via normalize_for_match, so a
+        // title: paypal blocklist rule would hit even with enclosed letters.
+        let rules = Ruleset::from_lines(&["title: paypal"]);
+        let w = OverlayWindow {
+            title: "ⓟⓐⓨⓟⓐⓛ login".into(),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.contains(&"blocklist_title"),
+            "normalized enclosed letters should match blocklist: {:?}",
+            v.signals
+        );
     }
 
     // ── brand_impersonation (UTS#39 skeleton collision, C8-2) ────

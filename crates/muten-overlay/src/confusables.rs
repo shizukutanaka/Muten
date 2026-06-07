@@ -108,10 +108,26 @@ pub fn fold_char(c: char) -> char {
         '\u{0131}' => 'i', // dotless i
         '0' => '0',        // (kept; digits handled elsewhere)
         _ => {
-            // Full-width ASCII block U+FF01..U+FF5E maps to U+0021..U+007E.
             let u = c as u32;
+            // Full-width ASCII block U+FF01..U+FF5E → U+0021..U+007E.
             if (0xFF01..=0xFF5E).contains(&u) {
                 if let Some(ascii) = char::from_u32(u - 0xFEE0) {
+                    return ascii;
+                }
+            }
+            // Enclosed/circled Capital Latin Letters Ⓐ(U+24B6)..Ⓩ(U+24CF).
+            // Used in phishing to bypass text filters: ⓟⓐⓨⓟⓐⓛ → paypal.
+            // Both uppercase (24B6-24CF) and lowercase (24D0-24E9) blocks fold to
+            // their a-z counterpart (1:1; char count preserved).
+            if (0x24B6..=0x24CF).contains(&u) {
+                // Ⓐ→a … Ⓩ→z  (25 chars, same offset for both blocks)
+                if let Some(ascii) = char::from_u32(u - 0x24B6 + b'a' as u32) {
+                    return ascii;
+                }
+            }
+            if (0x24D0..=0x24E9).contains(&u) {
+                // ⓐ→a … ⓩ→z
+                if let Some(ascii) = char::from_u32(u - 0x24D0 + b'a' as u32) {
                     return ascii;
                 }
             }
@@ -234,6 +250,20 @@ pub fn script_of(c: char) -> Script {
         0x0400..=0x04FF => Script::Cyrillic,        // Cyrillic
         _ => Script::Other,
     }
+}
+
+/// True if `s` contains an enclosed/circled Latin letter (Ⓐ–Ⓩ /
+/// ⓐ–ⓩ, U+24B6–U+24E9). These are used in phishing titles to evade
+/// plain-text blocklist matching — `ⓟⓐⓨⓟⓐⓛ` is invisible to
+/// `str::contains("paypal")` but looks like "paypal" to a human.
+/// `normalize_for_match` now folds them (via [`fold_char`]), so blocklist
+/// matching catches them; this function allows detecting their mere
+/// *presence* in a raw title as a high-confidence, low-FP evasion tell.
+/// Enclosed letters have essentially no legitimate use in a window title
+/// (contrast with the circled *numerals* ①②③ which appear in lists).
+#[must_use]
+pub fn has_compat_alpha(s: &str) -> bool {
+    s.chars().any(|c| matches!(c as u32, 0x24B6..=0x24E9))
 }
 
 /// True if any single whitespace-delimited token consists entirely of
@@ -573,5 +603,51 @@ mod tests {
         // continue 'token — whole_script doesn't fire (mixed_script does).
         // аlеrт: а,е,т are Cyrillic but l,r are Latin → no whole_script fire.
         assert!(!has_whole_script_confusable("аlеrт"));
+    }
+
+    // ── has_compat_alpha / enclosed letters ──────────────────────
+
+    #[test]
+    fn fold_char_handles_enclosed_uppercase() {
+        // Ⓐ(U+24B6)→'a', Ⓩ(U+24CF)→'z', Ⓟ(U+24C5)→'p'.
+        assert_eq!(fold_char('\u{24B6}'), 'a'); // Ⓐ
+        assert_eq!(fold_char('\u{24CF}'), 'z'); // Ⓩ
+        assert_eq!(fold_char('\u{24C5}'), 'p'); // Ⓟ
+    }
+
+    #[test]
+    fn fold_char_handles_enclosed_lowercase() {
+        // ⓐ(U+24D0)→'a', ⓟ(U+24DF)→'p', ⓩ(U+24E9)→'z'.
+        assert_eq!(fold_char('\u{24D0}'), 'a'); // ⓐ
+        assert_eq!(fold_char('\u{24DF}'), 'p'); // ⓟ
+        assert_eq!(fold_char('\u{24E9}'), 'z'); // ⓩ
+    }
+
+    #[test]
+    fn fold_confusables_maps_enclosed_letters_to_ascii() {
+        // ⓟⓐⓨⓟⓐⓛ folds to "paypal".
+        assert_eq!(fold_confusables("ⓟⓐⓨⓟⓐⓛ"), "paypal");
+    }
+
+    #[test]
+    fn normalize_for_match_collapses_enclosed_letters() {
+        assert_eq!(normalize_for_match("ⓟⓐⓨⓟⓐⓛ ALERT"), "paypal alert");
+    }
+
+    #[test]
+    fn has_compat_alpha_fires_on_enclosed_letters() {
+        assert!(has_compat_alpha("ⓟⓐⓨⓟⓐⓛ"));
+        assert!(has_compat_alpha("Ⓐ")); // uppercase enclosed
+        assert!(has_compat_alpha("normal text ⓩ mixed in"));
+    }
+
+    #[test]
+    fn has_compat_alpha_does_not_fire_on_plain_text() {
+        assert!(!has_compat_alpha("paypal"));
+        assert!(!has_compat_alpha(
+            "your computer is infected call 1-800-555-0100"
+        ));
+        // Circled NUMERALS ① ② (U+2460-U+2473) are not enclosed letters — don't fire.
+        assert!(!has_compat_alpha("step ① complete ②"));
     }
 }
