@@ -75,12 +75,12 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         "blocks_input" | "input_trap" => Some(ForcedAction),
         // No/fake close button impedes leaving the task.
         "no_close_button" => Some(Obstruction),
-        // Mixed-script homoglyphs disguise the true text from the user
-        // and from a naive matcher — the textbook "sneaking" strategy
-        // (information disguised). Fills the prior Sneaking gap
-        // (IMPROVEMENT_ROADMAP C9-1). A BiDi override likewise disguises
-        // the true reading order of the text (Trojan Source).
-        "mixed_script" | "bidi_override" => Some(Sneaking),
+        // Mixed-script, whole-script, and BiDi-override homoglyphs all
+        // disguise the true text — the textbook "sneaking" strategy
+        // (information disguised). mixed_script/whole_script_confusable
+        // swap characters to look Latin; bidi_override reverses the
+        // visual reading order (Trojan Source).
+        "mixed_script" | "whole_script_confusable" | "bidi_override" => Some(Sneaking),
         // The rogue-AV flood is the textbook nagging pattern.
         "repeated_flood" => Some(Nagging),
         // Brand/authority impersonation and the call-this-number lure
@@ -155,6 +155,10 @@ mod tests {
         );
         assert_eq!(
             category_of("mixed_script"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+        assert_eq!(
+            category_of("whole_script_confusable"),
             Some(DarkPatternCategory::Sneaking)
         );
         assert_eq!(

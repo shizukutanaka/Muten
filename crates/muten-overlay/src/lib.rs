@@ -163,6 +163,7 @@ fn signal_phrase(signal: &str) -> &str {
         "blocklist_host" => "is hosted on a blocklisted domain",
         "phone_number" => "shows a support phone number",
         "mixed_script" => "mixes character sets to disguise its text",
+        "whole_script_confusable" => "uses an all-lookalike script to disguise its text",
         "bidi_override" => "uses a right-to-left override to disguise its text",
         "brand_impersonation" => "uses a look-alike domain impersonating a known brand",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
@@ -209,6 +210,7 @@ const W_VERY_NEW: i32 = 10; // < 1s old (just popped up)
 const W_TITLE_HIT: i32 = 40; // title matches a scam pattern
 const W_PHONE_NUMBER: i32 = 35; // a phone number in an OS-alert-like window
 const W_MIXED_SCRIPT: i32 = 30; // title/host mixes Latin with Cyrillic/Greek
+const W_WHOLE_SCRIPT: i32 = 30; // title/host is all-Cyrillic/Greek but reads as Latin (whole-script confusable)
 const W_BIDI_OVERRIDE: i32 = 30; // title/host uses an LRO/RLO directional override (Trojan Source)
 const W_INPUT_TRAP: i32 = 5; // fullscreen+topmost+modal "screen lock" (bounded; see classify)
 const W_SUDDEN_TAKEOVER: i32 = 5; // unsolicited instant full-screen seizure (bounded)
@@ -387,6 +389,28 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if mixed_script {
         score += W_MIXED_SCRIPT;
         signals.push("mixed_script");
+    }
+
+    // Whole-script confusable (UTS #39 §5): a token where every letter
+    // comes from a single non-Latin script (Cyrillic or Greek) AND every
+    // one of those letters folds to an ASCII look-alike — e.g. `ѕсоре`
+    // (all Cyrillic, reads "scope"). `mixed_script` misses this because
+    // there are zero Latin letters to trigger a cross-script mix. The FP
+    // guard: legitimate Cyrillic/Greek text uses letters that do NOT have
+    // ASCII confusable mappings (п, и, λ, θ…), so they fail the fold-to-
+    // ASCII-only check and are silently passed over. Evaluated on raw text.
+    // For URL hosts: check each label individually (split on '.'), since a
+    // TLD like `.com` always contains Latin letters and would otherwise
+    // prevent the per-token analysis from seeing a pure-Cyrillic label.
+    let whole_script = confusables::has_whole_script_confusable(&w.title)
+        || w.url.as_deref().is_some_and(|u| {
+            url_host(u)
+                .split('.')
+                .any(confusables::has_whole_script_confusable)
+        });
+    if whole_script {
+        score += W_WHOLE_SCRIPT;
+        signals.push("whole_script_confusable");
     }
 
     // BiDi directional override (Trojan Source, arXiv:2111.00169): an
@@ -1107,6 +1131,73 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert_ne!(v.decision, Decision::Block);
+    }
+
+    // ── whole_script_confusable (UTS#39 §5, C8-3) ───────────────
+
+    #[test]
+    fn whole_script_confusable_title_fires_signal_and_sneaking() {
+        // ѕсоре — all Cyrillic, folds to "scope" — no Latin letters at all.
+        let w = OverlayWindow {
+            title: "ѕсоре detected".into(),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.contains(&"whole_script_confusable"),
+            "expected whole_script_confusable in {:?}",
+            v.signals
+        );
+        assert!(v.categories.contains(&DarkPatternCategory::Sneaking));
+    }
+
+    #[test]
+    fn whole_script_confusable_host_fires() {
+        // A host whose label is all-Cyrillic-lookalike chars.
+        // ѕсоре = Cyrillic, all fold to ASCII.
+        let w = OverlayWindow {
+            title: "login".into(),
+            url: Some("http://ѕсоре.com/".into()),
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.contains(&"whole_script_confusable"),
+            "expected whole_script_confusable from host in {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn whole_script_alone_is_not_a_block() {
+        // Weight 30 < SUSPICIOUS_THRESHOLD (50) for a minimal window.
+        let w = OverlayWindow {
+            title: "ѕсоре".into(),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert_ne!(
+            v.decision,
+            Decision::Block,
+            "whole_script alone must not block"
+        );
+    }
+
+    #[test]
+    fn real_cyrillic_text_does_not_fire_whole_script() {
+        // привет мир — legit Russian; п has no ASCII fold → won't fire.
+        let w = OverlayWindow {
+            title: "привет мир".into(),
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.contains(&"whole_script_confusable"),
+            "legitimate Cyrillic text falsely flagged: {:?}",
+            v.signals
+        );
     }
 
     // ── bidi_override (Trojan Source, C8-5) ─────────────────────

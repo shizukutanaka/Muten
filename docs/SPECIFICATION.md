@@ -76,6 +76,7 @@ Precedence:
 | `blocklist_title` | +40 | normalized title contains a `title:` pattern |
 | `phone_number` | +35 | alert-shaped **and** a 7–15-digit phone number in the title |
 | `mixed_script` | +30 | raw title or host token mixes Latin with Cyrillic/Greek |
+| `whole_script_confusable` | +30 | raw title or host **label** (dot-split for URLs) is entirely Cyrillic or Greek where every letter folds to an ASCII Latin look-alike (UTS#39 §5 whole-script confusable; blind spot of `mixed_script`). The FP guard: legitimate Cyrillic/Greek text uses letters without ASCII folds (п, θ…), which fail the fold-to-ASCII check |
 | `bidi_override` | +30 | raw title or host contains an LRO/RLO BiDi directional override (Trojan Source); isolates/marks used by legit RTL text do not fire |
 | `brand_impersonation` | +40 | a host label's UTS#39 skeleton equals a built-in known brand but is not the literal brand (homograph/typosquat); the real brand domain never fires |
 | `input_trap` | +5 | `fullscreen ∧ topmost ∧ blocks_input` (bounded composite) |

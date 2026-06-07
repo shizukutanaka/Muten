@@ -286,7 +286,6 @@ mod tests {
     #[cfg(unix)]
     fn fake_helper(dir: &std::path::Path) -> String {
         use std::io::Write;
-        use std::os::unix::fs::PermissionsExt;
         let path = dir.join("helper.sh");
         let json = r#"[{"id":"w1","window":{"title":"your computer is infected","url":"http://scam.example/x","coverage_percent":100,"topmost":true,"has_close_button":false,"blocks_input":true,"origin":"unsolicited","age_ms":200}}]"#;
         let script = format!(
@@ -298,11 +297,19 @@ mod tests {
              *) exit 1 ;;\n\
              esac\n"
         );
-        let mut f = std::fs::File::create(&path).unwrap();
-        f.write_all(script.as_bytes()).unwrap();
-        let mut perms = f.metadata().unwrap().permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&path, perms).unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut f = std::fs::File::create(&path).unwrap();
+            f.write_all(script.as_bytes()).unwrap();
+            // fsync before chmod: guarantees the kernel sees a fully written,
+            // closed inode before exec — prevents ETXTBSY under parallel tests.
+            f.sync_all().unwrap();
+            let mut perms = f.metadata().unwrap().permissions();
+            perms.set_mode(0o755);
+            // Close first, then chmod via path — file is closed before exec.
+            drop(f);
+            std::fs::set_permissions(&path, perms).unwrap();
+        }
         path.to_string_lossy().into_owned()
     }
 

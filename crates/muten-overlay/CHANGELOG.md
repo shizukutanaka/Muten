@@ -13,6 +13,19 @@ changes meaning. No new dependencies; still offline, pure,
 `forbid(unsafe_code)`.
 
 ### Added
+- **Whole-script confusable signal** (`whole_script_confusable`, weight 30,
+  `Sneaking` category). Catches the blind spot of `mixed_script`: a token
+  (or URL host label) that is entirely Cyrillic or Greek where **every**
+  letter folds to an ASCII look-alike — e.g. `ѕсоре` (all Cyrillic, reads
+  "scope") — contains zero Latin characters so a cross-script mix never
+  fires, yet is indistinguishable from English to a human (UTS#39 §5). The
+  FP guard: legitimate Cyrillic/Greek text contains letters without ASCII
+  confusable mappings (`п`, `θ`, …), which fail the fold-to-ASCII check
+  and are silently skipped. For URLs the check operates per dot-separated
+  label (the TLD otherwise supplies Latin letters). New public function
+  `confusables::has_whole_script_confusable()`. Also fixes a pre-existing
+  ETXTBSY race in controller tests (fsync before exec under parallel
+  threads). (Roadmap C8-3.)
 - **Mixed-script evasion signal** (`mixed_script`, weight 30). A single
   token mixing Latin with Cyrillic/Greek letters (e.g. `раypаl`,
   `miсrosoft`) is flagged as a homoglyph-disguise tell (UTS #39

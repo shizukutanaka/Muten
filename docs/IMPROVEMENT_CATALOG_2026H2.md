@@ -434,9 +434,12 @@ unicode-rs/unicode-normalization。標準: UTS#39, UTS#46, RFC 8785。
    信号(+40, InterfaceInterference)。host ラベルの skeleton がブランドに一致しリテラルでない時に発火。
    `раура1.com`(→paypal)発火、本物 `paypal.com` は不発火(FP ガード)。zero-config の homograph 検出。
 
-3. 🔻 ★★★ **Whole-Script Confusable 信号(mixed-script の盲点)**
+3. ✅ ★★★ **Whole-Script Confusable 信号(mixed-script の盲点)** — 実装済(v0.5.0, +30)
    [根拠] UTS#39 §5 / unicode-rs/unicode-security の `whole_script_confusable`。
-   [muten] 全 Cyrillic `"ѕсоре"` 等を捕捉。mixed-script と独立の純関数。
+   [muten] `confusables::has_whole_script_confusable()` + `whole_script_confusable` 信号(+30,
+   Sneaking)。全 Cyrillic `ѕсоре`(→"scope")等を捕捉。URL は label 単位でチェック(TLD の
+   Latin 文字による誤判定を防ぐ)。FP ガード: ASCII fold を持たない文字(п, θ…)を含む
+   legitimate なテキストは発火しない。191 tests。(Roadmap C8-3 ✓DONE)
 
 4. 🔻 ★★★ **Restriction-Level 連続スコア化**
    [根拠] UTS#39 §5.2 / ICU SpoofChecker RESTRICTION_LEVEL。

@@ -236,6 +236,60 @@ pub fn script_of(c: char) -> Script {
     }
 }
 
+/// True if any single whitespace-delimited token consists entirely of
+/// letters from one confusable script (Cyrillic or Greek) where every
+/// letter folds to an ASCII counterpart — i.e. the whole word is
+/// *designed* to look Latin but contains no Latin characters at all.
+/// This is the "whole-script confusable" blind spot of mixed-script
+/// detection: `ѕсоре` (all Cyrillic) fools `mixed_script` because there
+/// are no Latin letters to trigger a cross-script mix, yet it looks
+/// exactly like "scope" to a human (UTS #39 §5).
+///
+/// The FP guard: legitimate Cyrillic text (Russian, Ukrainian, …)
+/// almost always contains Cyrillic letters that do *not* have ASCII
+/// confusable mappings in muten's table (e.g. `п`, `и`, `л`, `д` …).
+/// `привет` will not fire because `п` has no ASCII fold. Evaluated on
+/// the **raw** string before normalization erases the evidence.
+#[must_use]
+pub fn has_whole_script_confusable(s: &str) -> bool {
+    'token: for token in s.split_whitespace() {
+        let mut script = Script::Other; // the single non-Latin script seen so far
+        let mut has_letter = false;
+
+        for c in token.chars() {
+            let sc = script_of(c);
+            match sc {
+                Script::Other => continue, // digits, punctuation — skip for script analysis
+                Script::Latin => {
+                    // Any Latin letter means mixed-script already covers it,
+                    // or it's genuinely Latin — not a whole-script confusable.
+                    continue 'token;
+                }
+                Script::Cyrillic | Script::Greek => {
+                    has_letter = true;
+                    if script == Script::Other {
+                        script = sc;
+                    } else if script != sc {
+                        // Mixed Cyrillic+Greek in one token — unusual; skip.
+                        continue 'token;
+                    }
+                    // Key guard: does this letter have an ASCII confusable?
+                    // If not, the word uses non-confusable Cyrillic/Greek and
+                    // is likely legitimate text, not a disguise.
+                    if !fold_char(c).is_ascii_alphabetic() {
+                        continue 'token;
+                    }
+                }
+            }
+        }
+
+        if has_letter && script != Script::Other {
+            return true;
+        }
+    }
+    false
+}
+
 /// True if any single whitespace-delimited token mixes Latin with
 /// Cyrillic or Greek letters — e.g. `"раypаl"` (Cyrillic р,а + Latin
 /// y,p,l) or `"miсrosoft"` (Cyrillic с among Latin). This is a strong
@@ -465,5 +519,59 @@ mod tests {
         let once = normalize_for_match("V1rus DETECTED оn paypа1");
         let twice = normalize_for_match(&once);
         assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn whole_script_confusable_fires_on_all_cyrillic_lookalike() {
+        // ѕсоре — all Cyrillic, every letter folds to ASCII (s,c,o,p,e).
+        // Crucially: NO Latin letters → mixed_script would miss this.
+        assert!(
+            has_whole_script_confusable("ѕсоре"),
+            "ѕсоре looks like 'scope'"
+        );
+        // Same lookalike in a longer sentence (other tokens are Latin, but
+        // the per-token check only needs one whole-script token to fire).
+        assert!(has_whole_script_confusable("detected ѕсоре found"));
+    }
+
+    #[test]
+    fn whole_script_does_not_fire_on_real_cyrillic_text() {
+        // привет — contains п (U+043F), not in fold_char table → fold_char('п')='п'
+        // → NOT ascii_alphabetic → continue 'token → no fire. ✓
+        assert!(!has_whole_script_confusable("привет мир"));
+        // Pure Latin — no Cyrillic/Greek letters at all.
+        assert!(!has_whole_script_confusable("your computer is infected"));
+        // Mixed-script token (has Latin 'y','p','l') — whole_script hits
+        // Latin → continue 'token → no fire; mixed_script catches this.
+        assert!(!has_whole_script_confusable("раypаl"));
+        // Japanese + Latin — Japanese is Script::Other, Latin is Latin →
+        // no fire from whole_script (Latin kills it). mixed_script also OK.
+        assert!(!has_whole_script_confusable("ウイルス Alert"));
+    }
+
+    #[test]
+    fn whole_script_fires_on_all_greek_lookalike() {
+        // Α(U+0391)→a, ρ(U+03C1)→p, ρ, Ι(U+0399)→i, ε(U+03B5)→e.
+        // All Greek, all fold to ASCII → looks like "apple" → fire.
+        assert!(
+            has_whole_script_confusable("ΑρρΙε"),
+            "'ΑρρΙε' looks like 'apple'"
+        );
+    }
+
+    #[test]
+    fn whole_script_ignores_digits_in_token() {
+        // ѕсоре2024 — Cyrillic letters + digits. Digits are Script::Other
+        // (ignored for the script analysis). All Cyrillic letters fold to
+        // ASCII → the token is still a whole-script confusable.
+        assert!(has_whole_script_confusable("ѕсоре2024"));
+    }
+
+    #[test]
+    fn whole_script_mixed_with_latin_does_not_fire() {
+        // A token with both Cyrillic AND Latin letters hits Latin →
+        // continue 'token — whole_script doesn't fire (mixed_script does).
+        // аlеrт: а,е,т are Cyrillic but l,r are Latin → no whole_script fire.
+        assert!(!has_whole_script_confusable("аlеrт"));
     }
 }
