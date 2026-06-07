@@ -223,4 +223,55 @@ proptest! {
         prop_assert!(!why.is_empty());
         prop_assert!(why.ends_with('.'));
     }
+
+    // ── v0.5.0 new-signal invariants ───────────────────────────────
+
+    /// Whole-script confusable detection never panics on arbitrary input.
+    #[test]
+    fn has_whole_script_confusable_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_whole_script_confusable(&s);
+    }
+
+    /// Pure ASCII can never be a whole-script confusable (no Cyrillic or
+    /// Greek letters can appear in a pure-ASCII string).
+    #[test]
+    fn ascii_is_never_whole_script_confusable(s in "[ -~]*") {
+        prop_assert!(!muten_overlay::confusables::has_whole_script_confusable(&s));
+    }
+
+    /// BiDi override detection never panics on arbitrary input.
+    #[test]
+    fn has_bidi_override_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_bidi_override(&s);
+    }
+
+    /// Pure ASCII (U+0000-U+007F) contains no BiDi override characters.
+    #[test]
+    fn ascii_has_no_bidi_override(s in "[ -~]*") {
+        prop_assert!(!muten_overlay::confusables::has_bidi_override(&s));
+    }
+
+    /// Compatibility-alpha detection never panics on arbitrary input.
+    #[test]
+    fn has_compat_alpha_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_compat_alpha(&s);
+    }
+
+    /// Pure ASCII (U+0020-U+007E) contains no enclosed letters (which
+    /// start at U+24B6, well above the ASCII range).
+    #[test]
+    fn ascii_has_no_compat_alpha(s in "[ -~]*") {
+        prop_assert!(!muten_overlay::confusables::has_compat_alpha(&s));
+    }
+
+    /// `fold_char` is idempotent: folding a char twice equals folding once.
+    /// This covers the new enclosed-letter ranges added in v0.5.0.
+    #[test]
+    fn fold_char_is_idempotent(s in ".*") {
+        for c in s.chars() {
+            let once = muten_overlay::confusables::fold_char(c);
+            let twice = muten_overlay::confusables::fold_char(once);
+            prop_assert_eq!(once, twice);
+        }
+    }
 }
