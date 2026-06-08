@@ -169,6 +169,7 @@ fn signal_phrase(signal: &str) -> &str {
         "mixed_script" => "mixes character sets to disguise its text",
         "whole_script_confusable" => "uses an all-lookalike script to disguise its text",
         "compat_chars_present" => "uses enclosed/circled letters to disguise its text",
+        "mixed_number_systems" => "mixes two numeric scripts to disguise a number",
         "bidi_override" => "uses a right-to-left override to disguise its text",
         "brand_impersonation" => "uses a look-alike domain impersonating a known brand",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
@@ -219,6 +220,7 @@ const W_PHONE_NUMBER: i32 = 35; // a phone number in an OS-alert-like window
 const W_MIXED_SCRIPT: i32 = 30; // title/host mixes Latin with Cyrillic/Greek
 const W_WHOLE_SCRIPT: i32 = 30; // title/host is all-Cyrillic/Greek but reads as Latin (whole-script confusable)
 const W_COMPAT_CHARS: i32 = 20; // title/host contains enclosed/circled letters Ⓐ-Ⓩ / ⓐ-ⓩ (compatibility evasion)
+const W_MIXED_NUMBERS: i32 = 20; // a token mixes two decimal numbering systems (ICU MIXED_NUMBERS)
 const W_BIDI_OVERRIDE: i32 = 30; // title/host uses an LRO/RLO directional override (Trojan Source)
 const W_INPUT_TRAP: i32 = 5; // fullscreen+topmost+modal "screen lock" (bounded; see classify)
 const W_SUDDEN_TAKEOVER: i32 = 5; // unsolicited instant full-screen seizure (bounded)
@@ -434,6 +436,20 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if compat_chars {
         score += W_COMPAT_CHARS;
         signals.push("compat_chars_present");
+    }
+
+    // Mixed numbering systems (ICU MIXED_NUMBERS): a single token with
+    // decimal digits from two different scripts (e.g. ASCII `5` beside
+    // Arabic-Indic `٥`) is never a legitimate number. ASCII and full-width
+    // digits count as the same system, so legitimate Japanese text using
+    // full-width numerals is not flagged (JP FP guard). Read on raw text.
+    let mixed_numbers = confusables::has_mixed_number_systems(&w.title)
+        || w.url
+            .as_deref()
+            .is_some_and(confusables::has_mixed_number_systems);
+    if mixed_numbers {
+        score += W_MIXED_NUMBERS;
+        signals.push("mixed_number_systems");
     }
 
     // BiDi directional override (Trojan Source, arXiv:2111.00169): an
@@ -1268,6 +1284,52 @@ mod tests {
                 "{title:?} wrongly flagged"
             );
         }
+    }
+
+    // ── mixed_number_systems (ICU MIXED_NUMBERS, C8-6) ────────────
+
+    #[test]
+    fn mixed_number_systems_fires_and_maps_to_sneaking() {
+        // A token mixing ASCII and Arabic-Indic digits.
+        let w = OverlayWindow {
+            title: "verify code 1\u{0665}9".into(),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.contains(&"mixed_number_systems"),
+            "signals={:?}",
+            v.signals
+        );
+        assert!(v.categories.contains(&DarkPatternCategory::Sneaking));
+    }
+
+    #[test]
+    fn plain_phone_number_does_not_fire_mixed_numbers() {
+        let w = OverlayWindow {
+            title: "call 1-800-555-0100".into(),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(!v.signals.contains(&"mixed_number_systems"));
+    }
+
+    #[test]
+    fn fullwidth_plus_ascii_digits_do_not_fire_mixed_numbers() {
+        // JP FP guard: full-width digits and ASCII are the same system.
+        let w = OverlayWindow {
+            title: "請求番号 \u{FF11}\u{FF12}34".into(),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.contains(&"mixed_number_systems"),
+            "JP full-width+ASCII falsely flagged: {:?}",
+            v.signals
+        );
     }
 
     // ── compat_chars_present (enclosed letters, C8-8) ─────────────

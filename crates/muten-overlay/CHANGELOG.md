@@ -16,6 +16,14 @@ changes meaning. No new dependencies; still offline, pure,
 - **`#![deny(missing_docs)]`** enforced on the crate. All public items
   (struct fields, enum variants, trait methods, constants) now carry doc
   comments; `cargo doc --no-deps` builds cleanly at error level. (C3-2.)
+- **Mixed-number-system signal** (`mixed_number_systems`, weight 20,
+  `Sneaking` category). Fires when one whitespace-delimited token mixes
+  decimal digits from two numbering systems — e.g. ASCII `5` beside
+  Arabic-Indic `٥` (U+0665) — which no legitimate number does (ICU
+  `SpoofChecker.MIXED_NUMBERS`). ASCII and full-width digits are treated
+  as the same system, so legitimate Japanese full-width numerals beside
+  ASCII are not flagged (JP false-positive guard). New public functions
+  `confusables::{digit_system, has_mixed_number_systems}`. (C8-6.)
 - **Enclosed/circled letter signal** (`compat_chars_present`, weight 20,
   `Sneaking` category). Detects and folds enclosed/circled Latin letters
   (Ⓐ–Ⓩ / ⓐ–ⓩ, U+24B6–U+24E9) used in phishing to evade plain-text

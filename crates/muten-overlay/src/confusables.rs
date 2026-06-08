@@ -270,6 +270,54 @@ pub fn has_compat_alpha(s: &str) -> bool {
     s.chars().any(|c| matches!(c as u32, 0x24B6..=0x24E9))
 }
 
+/// Identify the decimal-digit *numbering system* of `c`, or `None` if
+/// `c` is not a decimal digit. Each system is one contiguous 0–9 block.
+/// ASCII and full-width digits share the same id (full-width folds to
+/// ASCII anyway, and full-width digits appear in legitimate Japanese
+/// text) so mixing them is *not* treated as a spoof — the JP false-
+/// positive guard. A focused, dependency-free subset of the Unicode
+/// decimal-digit blocks that actually appear in spoofing.
+#[must_use]
+pub fn digit_system(c: char) -> Option<u8> {
+    match c as u32 {
+        // "Western" Arabic numerals: ASCII *and* full-width forms.
+        0x0030..=0x0039 | 0xFF10..=0xFF19 => Some(0),
+        0x0660..=0x0669 => Some(1), // Arabic-Indic
+        0x06F0..=0x06F9 => Some(2), // Extended Arabic-Indic (Persian/Urdu)
+        0x0966..=0x096F => Some(3), // Devanagari
+        0x09E6..=0x09EF => Some(4), // Bengali
+        0x0BE6..=0x0BEF => Some(5), // Tamil
+        0x0E50..=0x0E59 => Some(6), // Thai
+        0x2460..=0x2468 => Some(7), // Circled digits ①–⑨ (no 0)
+        _ => None,
+    }
+}
+
+/// True if any single whitespace-delimited token mixes decimal digits
+/// from **two different numbering systems** — e.g. ASCII `5` next to
+/// Arabic-Indic `٥` (U+0665) inside one token. No legitimate number
+/// mixes numbering systems (ICU `SpoofChecker.MIXED_NUMBERS`), so this
+/// is a near-zero-false-positive spoofing tell. ASCII and full-width
+/// digits count as the same system (see [`digit_system`]), so a
+/// legitimate Japanese title using full-width digits alongside ASCII is
+/// *not* flagged. Evaluated on the **raw** string before folding.
+#[must_use]
+pub fn has_mixed_number_systems(s: &str) -> bool {
+    for token in s.split_whitespace() {
+        let mut seen: Option<u8> = None;
+        for c in token.chars() {
+            if let Some(sys) = digit_system(c) {
+                match seen {
+                    None => seen = Some(sys),
+                    Some(prev) if prev != sys => return true,
+                    _ => {}
+                }
+            }
+        }
+    }
+    false
+}
+
 /// True if any single whitespace-delimited token consists entirely of
 /// letters from one confusable script (Cyrillic or Greek) where every
 /// letter folds to an ASCII counterpart — i.e. the whole word is
@@ -653,5 +701,37 @@ mod tests {
         ));
         // Circled NUMERALS ① ② (U+2460-U+2473) are not enclosed letters — don't fire.
         assert!(!has_compat_alpha("step ① complete ②"));
+    }
+
+    // ── digit_system / has_mixed_number_systems ──────────────────
+
+    #[test]
+    fn digit_system_classifies_known_blocks() {
+        assert_eq!(digit_system('5'), Some(0)); // ASCII
+        assert_eq!(digit_system('\u{FF15}'), Some(0)); // full-width ５ == ASCII system
+        assert_eq!(digit_system('\u{0665}'), Some(1)); // Arabic-Indic ٥
+        assert_eq!(digit_system('\u{06F5}'), Some(2)); // Ext Arabic-Indic ۵
+        assert_eq!(digit_system('a'), None); // letter, not a digit
+        assert_eq!(digit_system('-'), None);
+    }
+
+    #[test]
+    fn mixed_number_systems_fires_on_cross_script_digits() {
+        // ASCII 1 + Arabic-Indic ٥ in one token → mixed.
+        assert!(has_mixed_number_systems("call1\u{0665}00"));
+        // ASCII + Extended Arabic-Indic.
+        assert!(has_mixed_number_systems("9\u{06F9}"));
+    }
+
+    #[test]
+    fn mixed_number_systems_does_not_fire_on_single_system() {
+        // Pure ASCII phone number.
+        assert!(!has_mixed_number_systems("call 1-800-555-0100"));
+        // Pure Arabic-Indic digits.
+        assert!(!has_mixed_number_systems("\u{0661}\u{0662}\u{0663}"));
+        // JP FP guard: full-width digits + ASCII = same system → no fire.
+        assert!(!has_mixed_number_systems("\u{FF11}\u{FF12} 34"));
+        // Two systems in *separate* tokens do not fire (per-token check).
+        assert!(!has_mixed_number_systems("5 \u{0665}"));
     }
 }

@@ -257,6 +257,19 @@ proptest! {
         let _ = muten_overlay::confusables::has_compat_alpha(&s);
     }
 
+    /// Mixed-number-system detection never panics on arbitrary input.
+    #[test]
+    fn has_mixed_number_systems_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_mixed_number_systems(&s);
+    }
+
+    /// Pure ASCII can never mix numbering systems (all its digits are the
+    /// single "western" system).
+    #[test]
+    fn ascii_never_mixes_number_systems(s in "[ -~]*") {
+        prop_assert!(!muten_overlay::confusables::has_mixed_number_systems(&s));
+    }
+
     /// Pure ASCII (U+0020-U+007E) contains no enclosed letters (which
     /// start at U+24B6, well above the ASCII range).
     #[test]

@@ -81,9 +81,11 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         // swap characters to look Latin; bidi_override reverses the visual
         // reading order (Trojan Source); compat_chars_present uses
         // enclosed/circled letters to evade plain-text filters.
-        "mixed_script" | "whole_script_confusable" | "bidi_override" | "compat_chars_present" => {
-            Some(Sneaking)
-        }
+        "mixed_script"
+        | "whole_script_confusable"
+        | "bidi_override"
+        | "compat_chars_present"
+        | "mixed_number_systems" => Some(Sneaking),
         // The rogue-AV flood is the textbook nagging pattern.
         "repeated_flood" => Some(Nagging),
         // Brand/authority impersonation and the call-this-number lure
@@ -170,6 +172,10 @@ mod tests {
         );
         assert_eq!(
             category_of("compat_chars_present"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+        assert_eq!(
+            category_of("mixed_number_systems"),
             Some(DarkPatternCategory::Sneaking)
         );
         assert_eq!(

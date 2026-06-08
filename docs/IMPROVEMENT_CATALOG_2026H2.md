@@ -450,9 +450,11 @@ unicode-rs/unicode-normalization。標準: UTS#39, UTS#46, RFC 8785。
    [根拠] Trojan Source (arXiv:2111.00169, USENIX Sec'23)。
    [muten] strip 前に検出し `bidi_control_present` 信号化。正規 UI には出ない高信頼。
 
-6. 🔻 ★★ **Mixed-Number-System 検出**
+6. ✅ ★★ **Mixed-Number-System 検出** — 実装済(v0.5.0, +20)
    [根拠] ICU SpoofChecker MIXED_NUMBERS。
-   [muten] 数字を Unicode ブロック別分類、2種混在で信号。FP 極小。
+   [muten] `digit_system()` で数字を numbering system 別分類し、`has_mixed_number_systems()` で
+   1トークン内 2種混在を `mixed_number_systems` 信号化(+20, Sneaking)。ASCII と全角は同一
+   system 扱いで JP の全角数字を誤検出しない(FP ガード)。216 tests。(Roadmap C8-6 ✓DONE)
 
 7. 🔻 ★★ **Combining-Mark / Default-Ignorable 乱用検出**
    [根拠] UTS#39 INVISIBLE / unicode general-category。

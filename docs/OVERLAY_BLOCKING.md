@@ -40,6 +40,7 @@ in the audit log:
 | mixed_script | +30 | title/host mixes Latin with Cyrillic/Greek (homoglyph disguise) |
 | whole_script_confusable | +30 | title/host label is all-Cyrillic or all-Greek but every letter folds to a Latin look-alike (blind spot of mixed_script; UTS#39 §5) |
 | compat_chars_present | +20 | title/host uses enclosed/circled Latin letters Ⓐ-Ⓩ/ⓐ-ⓩ (U+24B6-U+24E9) — evades plain-text matching; normalized automatically so blocklist matching still works |
+| mixed_number_systems | +20 | one token mixes two decimal numbering systems, e.g. ASCII `5` + Arabic-Indic `٥` (ICU MIXED_NUMBERS); full-width digits count as ASCII so JP text isn't flagged |
 | bidi_override | +30 | title/host uses an LRO/RLO directional override (Trojan Source) |
 | brand_impersonation | +40 | host label is a UTS#39 skeleton homograph of a known brand |
 | input_trap | +5 | full-screen + topmost + modal "screen lock" (bounded; see below) |
