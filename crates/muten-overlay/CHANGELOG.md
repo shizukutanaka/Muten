@@ -16,6 +16,15 @@ changes meaning. No new dependencies; still offline, pure,
 - **`#![deny(missing_docs)]`** enforced on the crate. All public items
   (struct fields, enum variants, trait methods, constants) now carry doc
   comments; `cargo doc --no-deps` builds cleanly at error level. (C3-2.)
+- **Excessive-combining-mark signal** (`excessive_combining_marks`, weight
+  20, `Sneaking` category). Fires when the raw title or host stacks **3 or
+  more** combining marks on a single base character — the "Zalgo" text
+  obfuscation used to corrupt a UI or evade substring matching. The
+  threshold of 3 is the false-positive guard: legitimate scripts
+  (Vietnamese, Arabic, Indic, IPA) stack at most one or two combining
+  marks, and precomposed accented text (`café`) has none. New public
+  functions `confusables::{is_combining_mark, has_excessive_combining_marks}`.
+  (C8-7.)
 - **Mixed-number-system signal** (`mixed_number_systems`, weight 20,
   `Sneaking` category). Fires when one whitespace-delimited token mixes
   decimal digits from two numbering systems — e.g. ASCII `5` beside

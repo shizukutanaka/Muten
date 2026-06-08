@@ -293,6 +293,47 @@ pub fn digit_system(c: char) -> Option<u8> {
     }
 }
 
+/// True if `c` is a combining mark (a zero-advance diacritic that
+/// stacks onto the preceding base character). A focused, dependency-free
+/// subset of the Unicode combining-mark blocks: Combining Diacritical
+/// Marks and their three extension/supplement/symbol blocks, plus the
+/// combining half marks. Enough to spot the abuse this detects; not a
+/// complete `Mn`/`Mc` general-category table.
+#[must_use]
+pub fn is_combining_mark(c: char) -> bool {
+    matches!(c as u32,
+        0x0300..=0x036F | // Combining Diacritical Marks
+        0x1AB0..=0x1AFF | // Combining Diacritical Marks Extended
+        0x1DC0..=0x1DFF | // Combining Diacritical Marks Supplement
+        0x20D0..=0x20FF | // Combining Diacritical Marks for Symbols
+        0xFE20..=0xFE2F   // Combining Half Marks
+    )
+}
+
+/// True if `s` stacks an **abnormal run of combining marks** on a single
+/// base character — three or more in a row — the signature of "Zalgo"
+/// text used to obfuscate a title past a substring matcher or to
+/// visually corrupt a UI. The threshold of 3 is the false-positive
+/// guard: legitimate scripts (Vietnamese, Arabic, Indic, IPA, …) stack
+/// at most one or two combining marks on a base, so they never fire. A
+/// leading combining mark with no base also counts (malformed/abusive).
+/// Evaluated on the **raw** string.
+#[must_use]
+pub fn has_excessive_combining_marks(s: &str) -> bool {
+    let mut run = 0u32;
+    for c in s.chars() {
+        if is_combining_mark(c) {
+            run += 1;
+            if run >= 3 {
+                return true;
+            }
+        } else {
+            run = 0;
+        }
+    }
+    false
+}
+
 /// True if any single whitespace-delimited token mixes decimal digits
 /// from **two different numbering systems** — e.g. ASCII `5` next to
 /// Arabic-Indic `٥` (U+0665) inside one token. No legitimate number
@@ -733,5 +774,37 @@ mod tests {
         assert!(!has_mixed_number_systems("\u{FF11}\u{FF12} 34"));
         // Two systems in *separate* tokens do not fire (per-token check).
         assert!(!has_mixed_number_systems("5 \u{0665}"));
+    }
+
+    // ── is_combining_mark / has_excessive_combining_marks ─────────
+
+    #[test]
+    fn combining_mark_classification() {
+        assert!(is_combining_mark('\u{0301}')); // combining acute accent
+        assert!(is_combining_mark('\u{20DD}')); // combining enclosing circle
+        assert!(!is_combining_mark('a'));
+        assert!(!is_combining_mark('5'));
+    }
+
+    #[test]
+    fn excessive_combining_marks_fires_on_zalgo() {
+        // 'e' + 4 stacked combining marks → Zalgo.
+        assert!(has_excessive_combining_marks(
+            "e\u{0301}\u{0302}\u{0303}\u{0304}"
+        ));
+        // Exactly 3 in a row → fires (threshold).
+        assert!(has_excessive_combining_marks("a\u{0300}\u{0301}\u{0302}"));
+    }
+
+    #[test]
+    fn excessive_combining_marks_does_not_fire_on_normal_diacritics() {
+        // Plain ASCII — no combining marks at all.
+        assert!(!has_excessive_combining_marks("your computer is infected"));
+        // A single combining mark (legitimate decomposed accent).
+        assert!(!has_excessive_combining_marks("e\u{0301}"));
+        // Two combining marks (Vietnamese-style stacking) — still under threshold.
+        assert!(!has_excessive_combining_marks("a\u{0302}\u{0301}"));
+        // Precomposed accented text never fires (no combining chars).
+        assert!(!has_excessive_combining_marks("café résumé naïve"));
     }
 }

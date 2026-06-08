@@ -270,6 +270,18 @@ proptest! {
         prop_assert!(!muten_overlay::confusables::has_mixed_number_systems(&s));
     }
 
+    /// Excessive-combining-mark detection never panics on arbitrary input.
+    #[test]
+    fn has_excessive_combining_marks_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_excessive_combining_marks(&s);
+    }
+
+    /// Pure ASCII has no combining marks, so it never trips the Zalgo signal.
+    #[test]
+    fn ascii_has_no_excessive_combining_marks(s in "[ -~]*") {
+        prop_assert!(!muten_overlay::confusables::has_excessive_combining_marks(&s));
+    }
+
     /// Pure ASCII (U+0020-U+007E) contains no enclosed letters (which
     /// start at U+24B6, well above the ASCII range).
     #[test]

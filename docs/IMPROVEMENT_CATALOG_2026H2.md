@@ -456,8 +456,12 @@ unicode-rs/unicode-normalization。標準: UTS#39, UTS#46, RFC 8785。
    1トークン内 2種混在を `mixed_number_systems` 信号化(+20, Sneaking)。ASCII と全角は同一
    system 扱いで JP の全角数字を誤検出しない(FP ガード)。216 tests。(Roadmap C8-6 ✓DONE)
 
-7. 🔻 ★★ **Combining-Mark / Default-Ignorable 乱用検出**
+7. ✅ ★★ **Combining-Mark / Default-Ignorable 乱用検出** — 実装済(v0.5.0, +20)
    [根拠] UTS#39 INVISIBLE / unicode general-category。
+   [muten] `is_combining_mark()` + `has_excessive_combining_marks()` で 1 基底文字に
+   3 個以上の結合マークが積まれた "Zalgo" を `excessive_combining_marks` 信号化(+20, Sneaking)。
+   閾値 3 が FP ガード(ベトナム語/アラビア語/Indic は 1-2 個まで)。223 tests。(Roadmap C8-7 ✓DONE)
+   [補足] default-ignorable は既存 `strip_invisibles` が網羅。
    [muten] 結合マーク2連・基底なし結合マーク・Default_Ignorable で信号。純関数。
 
 8. ✅ ★★ **NFKC 正規化と confusable-fold の不一致を弱信号化** — 実装済(v0.5.0, +20)

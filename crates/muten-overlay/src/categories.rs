@@ -85,7 +85,8 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         | "whole_script_confusable"
         | "bidi_override"
         | "compat_chars_present"
-        | "mixed_number_systems" => Some(Sneaking),
+        | "mixed_number_systems"
+        | "excessive_combining_marks" => Some(Sneaking),
         // The rogue-AV flood is the textbook nagging pattern.
         "repeated_flood" => Some(Nagging),
         // Brand/authority impersonation and the call-this-number lure
@@ -176,6 +177,10 @@ mod tests {
         );
         assert_eq!(
             category_of("mixed_number_systems"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+        assert_eq!(
+            category_of("excessive_combining_marks"),
             Some(DarkPatternCategory::Sneaking)
         );
         assert_eq!(

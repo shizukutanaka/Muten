@@ -170,6 +170,7 @@ fn signal_phrase(signal: &str) -> &str {
         "whole_script_confusable" => "uses an all-lookalike script to disguise its text",
         "compat_chars_present" => "uses enclosed/circled letters to disguise its text",
         "mixed_number_systems" => "mixes two numeric scripts to disguise a number",
+        "excessive_combining_marks" => "stacks combining marks to obfuscate its text",
         "bidi_override" => "uses a right-to-left override to disguise its text",
         "brand_impersonation" => "uses a look-alike domain impersonating a known brand",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
@@ -221,6 +222,7 @@ const W_MIXED_SCRIPT: i32 = 30; // title/host mixes Latin with Cyrillic/Greek
 const W_WHOLE_SCRIPT: i32 = 30; // title/host is all-Cyrillic/Greek but reads as Latin (whole-script confusable)
 const W_COMPAT_CHARS: i32 = 20; // title/host contains enclosed/circled letters Ⓐ-Ⓩ / ⓐ-ⓩ (compatibility evasion)
 const W_MIXED_NUMBERS: i32 = 20; // a token mixes two decimal numbering systems (ICU MIXED_NUMBERS)
+const W_ZALGO: i32 = 20; // 3+ stacked combining marks (Zalgo obfuscation)
 const W_BIDI_OVERRIDE: i32 = 30; // title/host uses an LRO/RLO directional override (Trojan Source)
 const W_INPUT_TRAP: i32 = 5; // fullscreen+topmost+modal "screen lock" (bounded; see classify)
 const W_SUDDEN_TAKEOVER: i32 = 5; // unsolicited instant full-screen seizure (bounded)
@@ -450,6 +452,19 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if mixed_numbers {
         score += W_MIXED_NUMBERS;
         signals.push("mixed_number_systems");
+    }
+
+    // Excessive combining marks ("Zalgo"): 3+ diacritics stacked on one
+    // base character never occurs in legitimate text (even Vietnamese /
+    // Arabic / Indic stack at most one or two), so it's a near-zero-FP
+    // obfuscation tell. Read on raw text before any normalization.
+    let zalgo = confusables::has_excessive_combining_marks(&w.title)
+        || w.url
+            .as_deref()
+            .is_some_and(confusables::has_excessive_combining_marks);
+    if zalgo {
+        score += W_ZALGO;
+        signals.push("excessive_combining_marks");
     }
 
     // BiDi directional override (Trojan Source, arXiv:2111.00169): an
@@ -1330,6 +1345,35 @@ mod tests {
             "JP full-width+ASCII falsely flagged: {:?}",
             v.signals
         );
+    }
+
+    // ── excessive_combining_marks (Zalgo, C8-7) ───────────────────
+
+    #[test]
+    fn zalgo_fires_and_maps_to_sneaking() {
+        let w = OverlayWindow {
+            title: "a\u{0300}\u{0301}\u{0302}\u{0303} alert".into(),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.contains(&"excessive_combining_marks"),
+            "signals={:?}",
+            v.signals
+        );
+        assert!(v.categories.contains(&DarkPatternCategory::Sneaking));
+    }
+
+    #[test]
+    fn normal_accented_text_does_not_fire_zalgo() {
+        let w = OverlayWindow {
+            title: "café résumé über señor".into(),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(!v.signals.contains(&"excessive_combining_marks"));
     }
 
     // ── compat_chars_present (enclosed letters, C8-8) ─────────────
