@@ -229,6 +229,14 @@ mod tests {
     use super::*;
     use crate::Origin;
 
+    // Serialize all SubprocessController tests within this binary.
+    // The Linux kernel can return ETXTBSY when multiple threads concurrently
+    // create + exec shell scripts, even in distinct temp directories (a kernel
+    // inode-refcount quirk under high parallelism). Running them under one
+    // mutex costs nothing in wall-clock time (each test is a single exec).
+    #[cfg(unix)]
+    static SUBPROCESS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     fn win(id: &str, title: &str) -> EnumeratedWindow {
         EnumeratedWindow {
             id: id.into(),
@@ -325,6 +333,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn subprocess_available_when_helper_probes_ok() {
+        let _guard = SUBPROCESS_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let helper = fake_helper(dir.path());
         let c = SubprocessController::new(helper);
@@ -342,6 +351,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn subprocess_enumerate_parses_helper_json() {
+        let _guard = SUBPROCESS_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let helper = fake_helper(dir.path());
         let c = SubprocessController::new(helper);
@@ -355,6 +365,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn subprocess_dismiss_maps_exit_codes() {
+        let _guard = SUBPROCESS_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let helper = fake_helper(dir.path());
         let c = SubprocessController::new(helper);
@@ -369,6 +380,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn subprocess_enforce_end_to_end_dismisses_scam() {
+        let _guard = SUBPROCESS_LOCK.lock().unwrap();
         use crate::{enforce, Decision, Ruleset};
         let dir = tempfile::tempdir().unwrap();
         let helper = fake_helper(dir.path());

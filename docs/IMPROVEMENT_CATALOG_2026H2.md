@@ -61,9 +61,13 @@ iam-py-test/my_filters_001。同種製品: Edge Scareware Blocker, Malwarebytes 
    `explain()`「locks the screen by trapping keyboard/mouse」対応。重みは bounded(+5): 内容/出自の
    tell が無い純粋 lock shape は 95 = Suspicious 止まりで、kiosk/試験ロックダウンの誤Block を回避。
 
-5. 🆕 ★★ **ClickFix / fake-CAPTCHA タイトル族**
+5. ✅ ★★ **ClickFix / fake-CAPTCHA タイトル族** — 実装済(v0.5.0)
    [根拠] MS Security Blog 2025-08(+517% / 侵入47%)— "verify you are human" / "press Win+R"。
-   [muten] title blocklist 族 + `clickfix_instruction` 信号(JP 含む)。純 blocklist + 加算。
+   [muten] 18 件の title blocklist 族(例: "verify you are human", "press win+r") + 構造信号
+   `clickfix_instruction`(weight 20, ForcedAction): alert_shaped ∧ normalized title が
+   キーボード命令/CAPTCHA フレーミングを含む。leet/homoglyph 回避は normalize_for_match で吸収。
+   alert_shaped ガードで正規 reCAPTCHA タブ(フルスクリーンでも modal でもない)を FP 除外。
+   新公開関数 `confusables::has_clickfix_instruction()`。(C1-5 ✓DONE)
 
 6. 🆕 ★★ **antimalware hosts フィードのオフライン蒸留**
    [根拠] iam-py-test/my_filters_001(antimalware_hosts.txt — scam/phishing/PUP/stalkerware)。

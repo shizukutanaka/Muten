@@ -13,6 +13,25 @@ changes meaning. No new dependencies; still offline, pure,
 `forbid(unsafe_code)`.
 
 ### Added
+- **`clickfix_instruction` signal** (weight 20, `ForcedAction` category). Fires
+  when a window is `alert_shaped` (full-screen, modal, or no-close) **and** its
+  normalized title contains ClickFix / fake-CAPTCHA instruction tokens: keyboard-
+  shortcut references (`win+r`, `ctrl+v`), run-dialog phrases (`open run`,
+  `paste the command`), or CAPTCHA / human-verification framing (`captcha`,
+  `verify`+`human`, `not a robot`). The blocklist's `title:` entries already
+  catch known exact phrases; this structural signal catches novel variants that
+  haven't been blocklisted yet (defense-in-depth). The `alert_shaped` guard
+  prevents false positives on legitimate reCAPTCHA browser tabs (not fullscreen /
+  modal / no-close). Leet-substitution and homoglyph evasion (`c4ptcha`,
+  `v3rify`) are defeated by `normalize_for_match` before the check. Example
+  blocklist updated in an earlier commit (lines 69–92) with 18 known ClickFix
+  / fake-CAPTCHA phrase families. New public function
+  `confusables::has_clickfix_instruction()`. (C1-5; MS Security Blog 2025:
+  +517 % ClickFix surge, ~47 % of intrusions.)
+- **Subprocess-test race fix.** A per-module mutex serializes the four
+  `SubprocessController` unit tests within the lib binary, eliminating the
+  intermittent ETXTBSY ("Text file busy") failure that appeared when the Rust
+  test runner spawned helper scripts in parallel under high concurrency.
 - **NO_COLOR-compliant colored CLI output.** The human-readable
   `classify` and `enforce` decisions are now tinted (Block=red,
   Suspicious=yellow, Allow=green) so an operator spots a Block at a

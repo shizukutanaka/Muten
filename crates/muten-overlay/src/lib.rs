@@ -227,6 +227,7 @@ const W_BIDI_OVERRIDE: i32 = 30; // title/host uses an LRO/RLO directional overr
 const W_INPUT_TRAP: i32 = 5; // fullscreen+topmost+modal "screen lock" (bounded; see classify)
 const W_SUDDEN_TAKEOVER: i32 = 5; // unsolicited instant full-screen seizure (bounded)
 const W_BRAND_IMPERSONATION: i32 = 40; // host label is a homograph of a known brand
+const W_CLICKFIX: i32 = 20; // ClickFix/fake-CAPTCHA keyboard-instruction pattern (alert_shaped guard)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
 /// Major brands muten ships a built-in homograph guard for (UTS #39
@@ -384,6 +385,29 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && contains_phone_number(&confusables::fold_confusables(&w.title)) {
         score += W_PHONE_NUMBER;
         signals.push("phone_number");
+    }
+
+    // ClickFix / fake-CAPTCHA instruction signal (C1-5).
+    //
+    // ClickFix attacks (Proofpoint TA571, Huntress CrashFix, Trend Micro
+    // KongTuke; MS Security Blog 2025: +517 % in H1 2025) display a fake
+    // CAPTCHA or browser-error overlay and ask the user to press Win+R /
+    // Ctrl+V or open a run-dialog to "fix" the problem. The title of these
+    // overlays contains structural tells — keyboard-shortcut instructions and
+    // CAPTCHA framing — that almost never appear in legitimate app titles.
+    //
+    // The blocklist's `title:` entries catch known exact phrases; this
+    // structural signal fires for novel variants not yet blocklisted, using
+    // the normalized title so leet and homoglyph evasions are defeated first.
+    //
+    // The `alert_shaped` guard is the primary false-positive fence: a
+    // legitimate reCAPTCHA page that happens to have "captcha" in its title
+    // is not modal / full-screen / no-close, so this never fires for it.
+    if alert_shaped
+        && confusables::has_clickfix_instruction(&confusables::normalize_for_match(&w.title))
+    {
+        score += W_CLICKFIX;
+        signals.push("clickfix_instruction");
     }
 
     // Mixed-script homoglyph evasion. A single token that mixes Latin
@@ -1843,5 +1867,92 @@ mod tests {
         let ctrl = NullController::new();
         let outcomes = enforce(&ctrl, &Ruleset::default()).unwrap();
         assert!(outcomes.is_empty());
+    }
+
+    // ── clickfix_instruction signal (C1-5) ──────────────────────────
+
+    #[test]
+    fn clickfix_fires_on_alert_shaped_captcha_title() {
+        // A modal ClickFix page titled "Verify you are human".
+        let w = OverlayWindow {
+            title: "verify you are human".into(),
+            url: None,
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.contains(&"clickfix_instruction"),
+            "expected clickfix_instruction; got {:?}",
+            v.signals
+        );
+        // W_CLICKFIX=20 contributes but does not block alone.
+        assert!(v.score >= 20);
+    }
+
+    #[test]
+    fn clickfix_does_not_fire_on_non_alert_shaped() {
+        // Same CAPTCHA title but NOT alert-shaped (has close, not fullscreen,
+        // not modal) — a legitimate reCAPTCHA page in a normal browser tab.
+        let w = OverlayWindow {
+            title: "verify you are human".into(),
+            url: None,
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.contains(&"clickfix_instruction"),
+            "should not fire on non-alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn clickfix_fires_on_winr_instruction() {
+        // "press win+r" title in a fullscreen overlay.
+        let w = OverlayWindow {
+            title: "press win+r to fix your browser".into(),
+            coverage_percent: 100,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 300,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(v.signals.contains(&"clickfix_instruction"));
+    }
+
+    #[test]
+    fn clickfix_leet_evasion_defeated() {
+        // Leet-substituted ClickFix title: "v3r1fy you are hum4n"
+        // normalizes to "verify you are human" before the check.
+        let w = OverlayWindow {
+            title: "v3r1fy you are hum4n".into(),
+            coverage_percent: 100,
+            has_close_button: false,
+            blocks_input: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(v.signals.contains(&"clickfix_instruction"));
+    }
+
+    #[test]
+    fn clickfix_category_is_forced_action() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("clickfix_instruction"),
+            Some(DarkPatternCategory::ForcedAction)
+        );
     }
 }

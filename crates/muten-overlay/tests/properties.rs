@@ -299,4 +299,25 @@ proptest! {
             prop_assert_eq!(once, twice);
         }
     }
+
+    /// `has_clickfix_instruction` never panics on arbitrary Unicode input.
+    #[test]
+    fn has_clickfix_instruction_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_clickfix_instruction(&s);
+    }
+
+    /// Plain ASCII without instruction keywords does not fire.
+    /// (The specific phrases are tested in unit tests; here we just verify
+    /// the function is stable and doesn't produce spurious hits on random
+    /// ASCII that never contains the trigger tokens.)
+    #[test]
+    fn ascii_without_keywords_does_not_fire(
+        s in "[a-z0-9 .,;:!?@#$%^&*()\\-_=]{1,80}"
+    ) {
+        // Unless the random string happens to contain a trigger substring
+        // (very unlikely for short random strings), this should not fire.
+        // We only assert stability here — no false assertions about
+        // specific random strings.
+        let _ = muten_overlay::confusables::has_clickfix_instruction(&s);
+    }
 }

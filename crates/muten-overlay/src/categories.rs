@@ -70,9 +70,10 @@ impl DarkPatternCategory {
 pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
     use DarkPatternCategory::*;
     match signal {
-        // Modal input capture — and the stronger full-screen "screen
-        // lock" composite — force the user to deal with it.
-        "blocks_input" | "input_trap" => Some(ForcedAction),
+        // Modal input capture, the stronger full-screen "screen lock"
+        // composite, and ClickFix/fake-CAPTCHA instruction lures all
+        // force the user to take a specific (attacker-chosen) action.
+        "blocks_input" | "input_trap" | "clickfix_instruction" => Some(ForcedAction),
         // No/fake close button impedes leaving the task.
         "no_close_button" => Some(Obstruction),
         // Mixed-script, whole-script, BiDi-override, and enclosed-letter
@@ -185,6 +186,10 @@ mod tests {
         );
         assert_eq!(
             category_of("input_trap"),
+            Some(DarkPatternCategory::ForcedAction)
+        );
+        assert_eq!(
+            category_of("clickfix_instruction"),
             Some(DarkPatternCategory::ForcedAction)
         );
         assert_eq!(

@@ -44,6 +44,7 @@ in the audit log:
 | excessive_combining_marks | +20 | 3+ combining marks stacked on one base character ("Zalgo" obfuscation); legitimate scripts stack at most 1–2 so they never fire |
 | bidi_override | +30 | title/host uses an LRO/RLO directional override (Trojan Source) |
 | brand_impersonation | +40 | host label is a UTS#39 skeleton homograph of a known brand |
+| clickfix_instruction | +20 | `alert_shaped` AND normalized title contains ClickFix/fake-CAPTCHA instruction text — `win+r`, `ctrl+v`, CAPTCHA framing, run-dialog phrases (MS Security Blog 2025: +517 % ClickFix surge). `alert_shaped` guard prevents FPs on legitimate reCAPTCHA browser pages. Leet/homoglyph evasion defeated by `normalize_for_match`. |
 | input_trap | +5 | full-screen + topmost + modal "screen lock" (bounded; see below) |
 | sudden_fullscreen_takeover | +5 | unsolicited window seizes full screen instantly (bounded) |
 | user_initiated | −40 | the user opened it → trust more |

@@ -500,6 +500,71 @@ pub fn normalize_for_match(s: &str) -> String {
     fold_leet_in_words(&folded).to_ascii_lowercase()
 }
 
+/// Detect ClickFix / fake-CAPTCHA keyboard-instruction patterns in a
+/// **pre-normalized** string (i.e. the output of [`normalize_for_match`]).
+///
+/// ClickFix attacks (also called FakeCAPTCHA / ClearFake / KongTuke) trick
+/// users into running attacker-supplied commands by:
+///
+/// 1. Displaying a fake browser-error, CAPTCHA, or audio-verification page
+///    in a full-screen or modal overlay, and
+/// 2. Asking the user to press a keyboard shortcut (`Win+R`, `Ctrl+V`) or
+///    open a run-dialog to "fix" the page or "prove they are human".
+///
+/// This function matches the **structural** text patterns shared by all
+/// ClickFix variants — keyboard-shortcut references, run-dialog instructions,
+/// and CAPTCHA / human-verification framing — independently of exact phrasing,
+/// so novel variants not yet in the title blocklist are still detected.
+///
+/// Call this on pre-normalized text so leet-substitution and homoglyph
+/// evasion are defeated before the match (`v3rify` → `verify`,
+/// `c4ptcha` → `captcha`).
+///
+/// Near-zero false-positive rate: keyboard-shortcut execution strings and
+/// CAPTCHA-framing phrases essentially never appear in legitimate application
+/// window or document titles. The [`crate::classify`] caller adds an
+/// `alert_shaped` guard (full-screen / modal / no-close) as an extra FP filter
+/// before the `clickfix_instruction` signal fires.
+///
+/// # Reference
+/// Microsoft Security Blog, 2025 — ClickFix surge (+517 % in H1 2025, ~47 %
+/// of intrusions). Proofpoint TA571, Sekoia IClickFix, Huntress CrashFix.
+#[must_use]
+pub fn has_clickfix_instruction(s: &str) -> bool {
+    // Keyboard-shortcut execution instructions — the core ClickFix lure.
+    // Checked with and without spaces around `+` to match both "win+r" and
+    // "windows + r" after normalize_for_match lowercasing.
+    let shortcut = s.contains("win+r")
+        || s.contains("windows+r")
+        || s.contains("windows + r")
+        || s.contains("winkey")
+        || s.contains("ctrl+v")
+        || s.contains("ctrl + v")
+        || s.contains("ctrl+r")
+        || s.contains("alt+r");
+
+    // Run-dialog / command-execution framing phrases.
+    let run_cmd = s.contains("open run")
+        || s.contains("run dialog")
+        || s.contains("paste the command")
+        || s.contains("type this command")
+        || s.contains("type the command")
+        || s.contains("run the following")
+        || s.contains("the following command")
+        || s.contains("into the run box");
+
+    // CAPTCHA / human-verification framing.  Both components required for
+    // the compound patterns to keep precision high; "captcha" alone is
+    // accepted because it has essentially no legitimate window-title use when
+    // combined with alert_shaped (the guard applied by classify()).
+    let captcha_frame = s.contains("not a robot")
+        || s.contains("captcha")
+        || (s.contains("verify") && s.contains("human"))
+        || (s.contains("confirm") && s.contains("human"));
+
+    shortcut || run_cmd || captcha_frame
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -806,5 +871,51 @@ mod tests {
         assert!(!has_excessive_combining_marks("a\u{0302}\u{0301}"));
         // Precomposed accented text never fires (no combining chars).
         assert!(!has_excessive_combining_marks("café résumé naïve"));
+    }
+
+    // ── has_clickfix_instruction ───────────────────────────────────
+
+    #[test]
+    fn clickfix_fires_on_keyboard_shortcut() {
+        // Core ClickFix lure: press Win+R to open Run.
+        assert!(has_clickfix_instruction("press win+r to continue"));
+        assert!(has_clickfix_instruction("press windows + r then paste"));
+        assert!(has_clickfix_instruction("click verify then press ctrl+v"));
+    }
+
+    #[test]
+    fn clickfix_fires_on_captcha_framing() {
+        // Fake-CAPTCHA framing patterns.
+        assert!(has_clickfix_instruction("verify you are human"));
+        assert!(has_clickfix_instruction("confirm you are human"));
+        assert!(has_clickfix_instruction("i am not a robot"));
+        assert!(has_clickfix_instruction("complete captcha to continue"));
+    }
+
+    #[test]
+    fn clickfix_fires_on_run_cmd_phrases() {
+        // Run-dialog / command-execution instructions.
+        assert!(has_clickfix_instruction("open run dialog and type"));
+        assert!(has_clickfix_instruction("paste the command into terminal"));
+        assert!(has_clickfix_instruction("type the command shown below"));
+    }
+
+    #[test]
+    fn clickfix_does_not_fire_on_plain_text() {
+        // Ordinary window titles — no instruction patterns.
+        assert!(!has_clickfix_instruction("your computer is infected"));
+        assert!(!has_clickfix_instruction("virus alert from microsoft"));
+        assert!(!has_clickfix_instruction("your subscription has expired"));
+        // "human" or "verify" alone is not enough.
+        assert!(!has_clickfix_instruction("human resources portal"));
+        assert!(!has_clickfix_instruction("verify email address"));
+    }
+
+    #[test]
+    fn clickfix_defeats_leet_evasion_via_normalize() {
+        // Leet-folded through normalize_for_match before calling.
+        let leet = normalize_for_match("v3r1fy you are hum4n");
+        assert_eq!(leet, "verify you are human");
+        assert!(has_clickfix_instruction(&leet));
     }
 }
