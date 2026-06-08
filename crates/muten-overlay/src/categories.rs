@@ -92,12 +92,15 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         "repeated_flood" => Some(Nagging),
         // Brand/authority impersonation and the call-this-number lure
         // steer the user via misdirection. `brand_impersonation` (a
-        // homograph look-alike domain) is the same misdirection strategy.
+        // homograph look-alike domain) and `combosquat_brand` (a brand
+        // joined to a scam-lure word, e.g. `apple-support`) are the same
+        // misdirection strategy via a deceptive domain.
         "phone_number"
         | "blocklist_title"
         | "blocklist_host"
         | "rogue_av_process"
-        | "brand_impersonation" => Some(InterfaceInterference),
+        | "brand_impersonation"
+        | "combosquat_brand" => Some(InterfaceInterference),
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }
@@ -194,6 +197,10 @@ mod tests {
         );
         assert_eq!(
             category_of("brand_impersonation"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+        assert_eq!(
+            category_of("combosquat_brand"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }

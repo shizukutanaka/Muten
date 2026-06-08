@@ -115,10 +115,16 @@ GitHub topics: phone-scam / malicious-domains。研究: ROBOVIC, "Dial One for S
    [根拠] scamsniffer/scam-database(Web3 phishing ホスト)/ FBI IC3 2024(暗号資産で最大損失)。
    [muten] host/title 族 `recover (crypto|funds)`, `crypto recovery` 等 + scamsniffer 由来 host を蒸留。
 
-4. 🆕 ★★ **タイポスクワット host 検出(dnstwist 系アルゴリズム)**
+4. ✅ ★★ **タイポスクワット / コンボスクワット host 検出(dnstwist 系)** — combosquat 実装済(v0.5.0)
    [根拠] jarelllama/Scam-Blocklist は dnstwist/URLCrazy で typosquat/doppelganger/IDN homograph を生成。
-   [muten] 現 host confusable fold に加え、omission/insertion/transposition/doppelganger の
-   オフライン生成・照合(既知ブランドの近傍生成 → blocklist 化)。
+   combosquatting は Kintis et al. "Hiding in Plain Sight" (ACM CCS 2017) — typosquat より高頻度。
+   [muten] 既存の homoglyph skeleton (`brand_impersonation`) に加え、`combosquat_brand` 信号
+   (weight 30, InterfaceInterference): 1 つの登録ラベル内で既知ブランド + lure 語(support/secure/
+   verify/login/account 等)をハイフン区切りトークンとして結合した host(`apple-support`,
+   `paypal-secure-login`)を検出。skeleton-only path の盲点を補う。FP ガード: ハイフン区切り +
+   完全トークン一致により `windowsupdate.com` / `support.apple.com` は発火しない。各トークンは
+   skeleton 化するので homoglyph combosquat も捕捉。新非公開 fn `combosquat()`。(C2-4 ✓DONE
+   — dnstwist の omission/insertion/transposition 生成は将来作業として残置)
 
 5. 🆕 ★★ **リモートアクセスツール lure(process 族・文脈増幅)**
    [根拠] FTC/IC3 2024 — AnyDesk/TeamViewer/UltraViewer/LogMeIn/RustDesk/ScreenConnect へ誘導。

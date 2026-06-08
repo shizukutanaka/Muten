@@ -13,6 +13,23 @@ changes meaning. No new dependencies; still offline, pure,
 `forbid(unsafe_code)`.
 
 ### Added
+- **`combosquat_brand` signal** (weight 30, `InterfaceInterference` category).
+  Detects **combosquatting** (Kintis et al., "Hiding in Plain Sight", ACM CCS
+  2017): a host label that joins a built-in known brand and a scam-lure word
+  (`support`, `secure`, `verify`, `login`, `account`, `billing`…) as distinct
+  hyphen-delimited tokens — `apple-support.com`, `paypal-secure-login.net`,
+  `microsoft-verify.org`. This is the blind spot of `brand_impersonation`,
+  which only fires when a label's confusable *skeleton equals a brand exactly*
+  (one token, no lure); a combosquat skeleton (`apple-support`) never collides.
+  Combosquatting is more prevalent than typosquatting in the wild and is what
+  dnstwist's dictionary / hyphenation fuzzers generate. **FP guard:** requiring
+  a hyphen delimiter and exact-token matches means legitimate concatenations
+  (`windowsupdate.com`, one token), bare brands, and subdomains
+  (`support.apple.com`, separate DNS labels) never fire. Each token is folded
+  to its confusable skeleton first, so homoglyph combosquats (`аpple-support`,
+  Cyrillic `а`) still match. Additive, never an auto-block — consistent with
+  `brand_impersonation`. `explain()` and the signal-phrase table updated for
+  both `combosquat_brand` and `clickfix_instruction`. (C2-4.)
 - **`clickfix_instruction` signal** (weight 20, `ForcedAction` category). Fires
   when a window is `alert_shaped` (full-screen, modal, or no-close) **and** its
   normalized title contains ClickFix / fake-CAPTCHA instruction tokens: keyboard-

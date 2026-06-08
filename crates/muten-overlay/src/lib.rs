@@ -173,6 +173,8 @@ fn signal_phrase(signal: &str) -> &str {
         "excessive_combining_marks" => "stacks combining marks to obfuscate its text",
         "bidi_override" => "uses a right-to-left override to disguise its text",
         "brand_impersonation" => "uses a look-alike domain impersonating a known brand",
+        "combosquat_brand" => "uses a domain combining a known brand with a scam keyword",
+        "clickfix_instruction" => "instructs the user to run a command or pass a fake CAPTCHA",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
         other => other,
@@ -227,6 +229,7 @@ const W_BIDI_OVERRIDE: i32 = 30; // title/host uses an LRO/RLO directional overr
 const W_INPUT_TRAP: i32 = 5; // fullscreen+topmost+modal "screen lock" (bounded; see classify)
 const W_SUDDEN_TAKEOVER: i32 = 5; // unsolicited instant full-screen seizure (bounded)
 const W_BRAND_IMPERSONATION: i32 = 40; // host label is a homograph of a known brand
+const W_COMBOSQUAT: i32 = 30; // host label joins a known brand + a scam lure word (combosquatting)
 const W_CLICKFIX: i32 = 20; // ClickFix/fake-CAPTCHA keyboard-instruction pattern (alert_shaped guard)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -278,6 +281,80 @@ fn brand_impersonation(host: &str) -> Option<&'static str> {
         }
         if let Some(&brand) = KNOWN_BRANDS.iter().find(|&&b| b == skel) {
             return Some(brand);
+        }
+    }
+    None
+}
+
+/// Scam-indicative "lure" words that combosquatting domains append to a
+/// brand to look like an official login / support / security surface.
+/// Exact hyphen-token match only (no substring) — a near-zero-FP set:
+/// these words beside a brand in *one registrable label* is the textbook
+/// combosquat shape. Drawn from Kintis et al., "Hiding in Plain Sight"
+/// (ACM CCS 2017) and the dnstwist dictionary fuzzer.
+const BRAND_LURE_WORDS: &[&str] = &[
+    "support",
+    "secure",
+    "security",
+    "verify",
+    "verification",
+    "login",
+    "signin",
+    "account",
+    "accounts",
+    "update",
+    "alert",
+    "billing",
+    "service",
+    "help",
+    "recovery",
+    "unlock",
+    "confirm",
+    "wallet",
+    "auth",
+];
+
+/// Detect **combosquatting** (Kintis et al., ACM CCS 2017): a host label
+/// that joins a [`KNOWN_BRANDS`] entry and a [`BRAND_LURE_WORDS`] entry as
+/// distinct **hyphen-delimited tokens** in a single registrable label —
+/// e.g. `apple-support`, `paypal-secure-login`, `microsoft-verify`. This
+/// is the blind spot of [`brand_impersonation`], which only fires on a
+/// homoglyph skeleton that equals the brand *exactly* (one token, no lure).
+///
+/// Returns the `(brand, lure)` that matched. Each token's confusable
+/// skeleton is taken first, so a homoglyph combosquat (`аpple-support`,
+/// Cyrillic `а`) still matches.
+///
+/// **False-positive guard.** Requiring a hyphen between brand and lure
+/// (i.e. ≥ 2 tokens, both exact matches) keeps legitimate *concatenations*
+/// like `windowsupdate.com` (one token) from ever firing, and exact-token
+/// matching avoids substring traps (`pineapple-store` ≠ `apple`). Like
+/// [`brand_impersonation`] the signal is additive, never an auto-block.
+#[must_use]
+fn combosquat(host: &str) -> Option<(&'static str, &'static str)> {
+    for label in host.split('.') {
+        // Combosquats put brand + lure as distinct hyphen tokens within
+        // one label. ≥ 2 tokens required, so a bare brand or a legitimate
+        // concatenation (no hyphen) is never considered.
+        let tokens: Vec<String> = label
+            .split('-')
+            .filter(|t| !t.is_empty())
+            .map(|t| confusables::skeleton(t).to_ascii_lowercase())
+            .collect();
+        if tokens.len() < 2 {
+            continue;
+        }
+        let Some(&brand) = KNOWN_BRANDS
+            .iter()
+            .find(|&&b| tokens.iter().any(|t| t == b))
+        else {
+            continue;
+        };
+        if let Some(&lure) = BRAND_LURE_WORDS
+            .iter()
+            .find(|&&l| tokens.iter().any(|t| t == l))
+        {
+            return Some((brand, lure));
         }
     }
     None
@@ -518,6 +595,24 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     {
         score += W_BRAND_IMPERSONATION;
         signals.push("brand_impersonation");
+    }
+
+    // Combosquatting (Kintis et al., ACM CCS 2017): a host label that
+    // joins a known brand and a scam-lure word as distinct hyphen tokens
+    // — `apple-support.com`, `paypal-secure-login.net`. More prevalent
+    // than typosquatting and missed by the skeleton-only
+    // `brand_impersonation` path (which needs the label's skeleton to
+    // *equal* a brand). The hyphen-delimiter requirement keeps legitimate
+    // concatenations (`windowsupdate.com`) from firing. Additive, not an
+    // auto-block, consistent with `brand_impersonation`.
+    if w.url
+        .as_deref()
+        .map(url_host)
+        .and_then(combosquat)
+        .is_some()
+    {
+        score += W_COMBOSQUAT;
+        signals.push("combosquat_brand");
     }
 
     // Composite "screen-lock" tell: a window that is full-screen AND
@@ -1535,6 +1630,94 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(v.signals.contains(&"brand_impersonation"));
+        assert_ne!(v.decision, Decision::Block);
+    }
+
+    // ── combosquat_brand (combosquatting, CCS 2017, C2-4) ────────
+
+    #[test]
+    fn combosquat_fires_on_brand_plus_lure() {
+        // "apple-support.com": brand + lure word as hyphen tokens.
+        for host in [
+            "http://apple-support.com/",
+            "http://paypal-secure-login.net/",
+            "http://microsoft-verify.org/",
+            "http://amazon-billing-update.com/",
+        ] {
+            let w = OverlayWindow {
+                title: "sign in".into(),
+                url: Some(host.into()),
+                has_close_button: true,
+                ..Default::default()
+            };
+            let v = classify(&w, &Ruleset::default());
+            assert!(
+                v.signals.contains(&"combosquat_brand"),
+                "{host} should be a combosquat: {:?}",
+                v.signals
+            );
+            assert!(v
+                .categories
+                .contains(&DarkPatternCategory::InterfaceInterference));
+        }
+    }
+
+    #[test]
+    fn combosquat_defeats_homoglyph_tokens() {
+        // "аpple-support.com" with a Cyrillic а (U+0430) in the brand
+        // token: skeleton folds it to "apple" before the token match.
+        let w = OverlayWindow {
+            title: "x".into(),
+            url: Some("http://\u{0430}pple-support.com/".into()),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.contains(&"combosquat_brand"),
+            "homoglyph combosquat should fire: {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn combosquat_does_not_fire_on_legit_concatenation() {
+        // FP guard: legitimate single-token domains and brand-only labels
+        // never fire (no hyphen between brand and lure, or no lure at all).
+        for host in [
+            "http://windowsupdate.com/",  // legit Microsoft, brand+lure but ONE token
+            "http://apple.com/",          // bare brand
+            "http://support.apple.com/",  // lure is a separate DNS label, not hyphen-joined
+            "http://my-apple-store.com/", // brand token but no lure word ("store" not a lure)
+            "http://pineapple-recipes.com/", // "pineapple" != "apple" (exact token match)
+        ] {
+            let w = OverlayWindow {
+                title: "x".into(),
+                url: Some(host.into()),
+                has_close_button: true,
+                ..Default::default()
+            };
+            let v = classify(&w, &Ruleset::default());
+            assert!(
+                !v.signals.contains(&"combosquat_brand"),
+                "{host} wrongly flagged as combosquat: {:?}",
+                v.signals
+            );
+        }
+    }
+
+    #[test]
+    fn combosquat_alone_is_not_auto_block() {
+        // Additive, like brand_impersonation: a host tell alone
+        // (30 < SUSPICIOUS_THRESHOLD) does not auto-dismiss.
+        let w = OverlayWindow {
+            title: "hi".into(),
+            url: Some("http://paypal-verify.com/".into()),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(v.signals.contains(&"combosquat_brand"));
         assert_ne!(v.decision, Decision::Block);
     }
 
