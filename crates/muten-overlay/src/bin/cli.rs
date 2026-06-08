@@ -28,6 +28,54 @@ Exit codes:
   7  Scareware (scareware: rogue-AV / repeat-flood detected)
   1  error (bad input, I/O, or a broken audit log)";
 
+// ── Colored output (NO_COLOR-compliant) ──────────────────────────
+//
+// Human-readable decisions are tinted (Block=red, Suspicious=yellow,
+// Allow=green) so an operator scanning a terminal spots a Block at a
+// glance. We follow the https://no-color.org convention: color is
+// emitted only when stdout is a real terminal AND `$NO_COLOR` is unset
+// (or empty). Piping to a file or a SIEM, or setting `NO_COLOR=1`, gives
+// plain text — so machine consumers and `--json` are never affected.
+
+const C_RED: &str = "\x1b[31m";
+const C_YELLOW: &str = "\x1b[33m";
+const C_GREEN: &str = "\x1b[32m";
+const C_RESET: &str = "\x1b[0m";
+
+/// Decide whether to emit ANSI color. Pure (env + tty passed in) so the
+/// NO_COLOR precedence is unit-testable without a real terminal.
+fn should_colorize(no_color_set: bool, is_tty: bool) -> bool {
+    is_tty && !no_color_set
+}
+
+/// True if color should be used for the current process' stdout.
+fn color_enabled() -> bool {
+    use std::io::IsTerminal;
+    let no_color = std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty());
+    should_colorize(no_color, std::io::stdout().is_terminal())
+}
+
+/// ANSI code for a decision, or "" when color is disabled.
+fn decision_color(d: Decision, on: bool) -> &'static str {
+    if !on {
+        return "";
+    }
+    match d {
+        Decision::Allow => C_GREEN,
+        Decision::Suspicious => C_YELLOW,
+        Decision::Block => C_RED,
+    }
+}
+
+/// Wrap `text` in `code`/reset when `on`, else return it plain.
+fn paint(text: &str, code: &str, on: bool) -> String {
+    if on && !code.is_empty() {
+        format!("{code}{text}{C_RESET}")
+    } else {
+        text.to_string()
+    }
+}
+
 #[derive(Parser)]
 #[command(
     name = "muten-overlay",
@@ -203,7 +251,13 @@ fn cmd_classify(
             serde_json::to_string_pretty(&val).map_err(|e| format!("encoding json: {e}"))?
         );
     } else {
-        println!("decision: {:?}", v.decision);
+        let on = color_enabled();
+        let decision = paint(
+            &format!("{:?}", v.decision),
+            decision_color(v.decision, on),
+            on,
+        );
+        println!("decision: {decision}");
         println!("score:    {}", v.score);
         println!("signals:  {}", v.signals.join(", "));
         if !v.categories.is_empty() {
@@ -319,11 +373,16 @@ fn cmd_enforce(
             serde_json::to_string_pretty(&outcomes).map_err(|e| format!("encoding json: {e}"))?
         );
     } else {
+        let on = color_enabled();
         for o in &outcomes {
+            let decision = paint(
+                &format!("{:?}", o.decision),
+                decision_color(o.decision, on),
+                on,
+            );
             println!(
-                "{:10} {:?} score={} dismissed={} signals=[{}]{}",
+                "{:10} {decision} score={} dismissed={} signals=[{}]{}",
                 o.window_id,
-                o.decision,
                 o.score,
                 o.dismissed,
                 o.signals.join(", "),
@@ -445,4 +504,41 @@ fn cmd_monitor(
         );
     }
     Ok(ExitCode::from(0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_color_precedence() {
+        // Color only when a TTY AND NO_COLOR unset.
+        assert!(should_colorize(false, true));
+        // NO_COLOR set wins even on a TTY (https://no-color.org).
+        assert!(!should_colorize(true, true));
+        // Not a TTY (piped/redirected) → never color, regardless of env.
+        assert!(!should_colorize(false, false));
+        assert!(!should_colorize(true, false));
+    }
+
+    #[test]
+    fn decision_color_maps_severity() {
+        assert_eq!(decision_color(Decision::Block, true), C_RED);
+        assert_eq!(decision_color(Decision::Suspicious, true), C_YELLOW);
+        assert_eq!(decision_color(Decision::Allow, true), C_GREEN);
+        // Color off → empty code for every decision.
+        assert_eq!(decision_color(Decision::Block, false), "");
+    }
+
+    #[test]
+    fn paint_wraps_only_when_enabled() {
+        assert_eq!(
+            paint("Block", C_RED, true),
+            format!("{C_RED}Block{C_RESET}")
+        );
+        // Disabled → plain text, no escape codes.
+        assert_eq!(paint("Block", C_RED, false), "Block");
+        // Empty code (color-off path) → plain text even when on.
+        assert_eq!(paint("Block", "", true), "Block");
+    }
 }

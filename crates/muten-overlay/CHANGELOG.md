@@ -13,6 +13,15 @@ changes meaning. No new dependencies; still offline, pure,
 `forbid(unsafe_code)`.
 
 ### Added
+- **NO_COLOR-compliant colored CLI output.** The human-readable
+  `classify` and `enforce` decisions are now tinted (Block=red,
+  Suspicious=yellow, Allow=green) so an operator spots a Block at a
+  glance. Color is emitted only when stdout is a real terminal and
+  `$NO_COLOR` is unset (https://no-color.org); piped output, redirected
+  output, and `--json` stay plain, so machine consumers are unaffected.
+  Dependency-free (hand-written ANSI + `std::io::IsTerminal`). The
+  `should_colorize`/`paint`/`decision_color` helpers are unit-tested.
+  (C4-6.)
 - **`#![deny(missing_docs)]`** enforced on the crate. All public items
   (struct fields, enum variants, trait methods, constants) now carry doc
   comments; `cargo doc --no-deps` builds cleanly at error level. (C3-2.)

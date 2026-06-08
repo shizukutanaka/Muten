@@ -227,9 +227,11 @@ sharkdp/fd, sharkdp/bat, rust-cli/anstyle (anstream), owo-colors/owo-colors。�
    [根拠] clap-rs/clap_mangen。
    [muten] roff man page を生成し配布物に同梱。
 
-6. 🔻 ★★ **カラー出力(Block=赤/Suspicious=黄)+ NO_COLOR 準拠**
+6. ✅ ★★ **カラー出力(Block=赤/Suspicious=黄)+ NO_COLOR 準拠** — 実装済(v0.5.0)
    [根拠] no-color.org 標準 / rust-cli/anstyle(anstream)/ owo-colors。
-   [muten] TTY 検出 + `NO_COLOR`/`--no-color` 尊重。accent `#00C4CC`。
+   [muten] `std::io::IsTerminal` で TTY 検出 + `NO_COLOR` 尊重(依存追加なし、手書き ANSI)。
+   classify/enforce の decision を着色(Block=赤/Suspicious=黄/Allow=緑)。pipe/`--json` は素のまま。
+   `should_colorize`/`paint` を単体テスト。226 tests。(Roadmap C4-6 ✓DONE)
 
 7. 🔻 ★★ **`--quiet`/`--verbose`/`-v` ログレベル + 構造化ログ**
    [根拠] clig.dev ガイドライン / tracing-rs。

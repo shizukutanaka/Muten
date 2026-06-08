@@ -166,7 +166,10 @@ verdict object (the `classify` JSON additionally carries `explanation`);
 `enforce` emits a JSON array of per-window outcomes; `monitor` emits the
 audit-event document (or a verifiable summary `{sweeps, dismissals,
 event_count, head, verified}` when `--audit-log` is set). Window input
-accepts `-` for stdin.
+accepts `-` for stdin. Human-readable `classify`/`enforce` decisions are
+color-coded (Block=red, Suspicious=yellow, Allow=green) **only** when
+stdout is a TTY and `$NO_COLOR` is unset (https://no-color.org); piped
+output and `--json` MUST stay plain so machine consumers are unaffected.
 
 **Exit codes (stable):** `0` Allow / benign / OK · `5` Suspicious · `6`
 Block (or any window blocked) · `7` Scareware · `1` error. These MUST be

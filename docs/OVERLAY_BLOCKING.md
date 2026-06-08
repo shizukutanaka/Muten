@@ -118,6 +118,12 @@ muten-overlay classify examples/overlay-sample.json --rules examples/overlay-blo
 echo '{...OverlayWindow JSON...}' | muten-overlay classify -
 ```
 
+The `classify`/`enforce` decisions are color-coded on a terminal
+(Block=red, Suspicious=yellow, Allow=green) so an operator spots a Block
+at a glance. Color follows the [NO_COLOR](https://no-color.org)
+convention — it is emitted only when stdout is a real TTY and `$NO_COLOR`
+is unset, so piped output, redirected output, and `--json` stay plain.
+
 ## What's pure vs OS-specific
 
 `muten-overlay` is pure domain logic (`forbid(unsafe_code)`, no OS, no
