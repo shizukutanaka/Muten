@@ -213,26 +213,35 @@ fn squash(s: &str) -> String {
 
 /// Extract the host from a URL-ish string. Accepts bare hosts too.
 /// `http://a.example/x?y` → `a.example`; `a.example` → `a.example`.
-fn host_of(url: &str) -> Option<String> {
-    let s = url.trim().to_ascii_lowercase();
-    // Strip scheme.
-    let after_scheme = match s.find("://") {
-        Some(i) => &s[i + 3..],
-        None => &s,
-    };
-    // Authority ends at the first '/', '?', or '#'.
-    let authority = after_scheme
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or(after_scheme);
-    // Drop userinfo@ and :port.
-    let no_userinfo = authority.rsplit('@').next().unwrap_or(authority);
-    let host = no_userinfo.split(':').next().unwrap_or(no_userinfo);
+/// Lower-cased and `Option`-wrapped (`None` for an empty host).
+#[must_use]
+pub(crate) fn host_of(url: &str) -> Option<String> {
+    let host = host_str(url.trim()).to_ascii_lowercase();
     if host.is_empty() {
         None
     } else {
-        Some(host.to_string())
+        Some(host)
     }
+}
+
+/// Borrowing host extractor: scheme, path, userinfo, and `:port` all
+/// stripped, returning a sub-slice of the input. The single source of
+/// truth for "what is the host of this URL" across the crate — shared by
+/// [`host_of`] (which additionally lower-cases and `Option`-wraps) and by
+/// `lib::url_host` / `lib::signature`. Not lower-cased, so callers that
+/// must see the raw host (mixed-script / homoglyph detection on the raw
+/// bytes) use this directly. Uses the **first** `://` and stops the
+/// authority at the first `/?#`, so a `://` inside a query string can't
+/// hijack the host.
+#[must_use]
+pub(crate) fn host_str(url: &str) -> &str {
+    let after = match url.find("://") {
+        Some(i) => &url[i + 3..],
+        None => url,
+    };
+    let authority = after.split(['/', '?', '#']).next().unwrap_or(after);
+    let no_userinfo = authority.rsplit('@').next().unwrap_or(authority);
+    no_userinfo.split(':').next().unwrap_or(no_userinfo)
 }
 
 /// Normalize a host rule the same way `host_of` normalizes a URL, so

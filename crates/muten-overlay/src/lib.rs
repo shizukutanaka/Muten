@@ -398,15 +398,10 @@ const FULLSCREEN_COVERAGE: u8 = 85;
 /// Extract the host portion of a URL-ish string, scheme/path/port
 /// stripped — used to scope the mixed-script check to the host so a
 /// Cyrillic word in a *path* (`example.com/привет`) can't false-fire.
-/// Mirrors `rules::host_of` intent without allocating.
+/// Thin alias over the crate's single host extractor
+/// ([`rules::host_str`]) so the three host-parsing sites can't drift.
 fn url_host(url: &str) -> &str {
-    let after = match url.find("://") {
-        Some(i) => &url[i + 3..],
-        None => url,
-    };
-    let authority = after.split(['/', '?', '#']).next().unwrap_or(after);
-    let no_userinfo = authority.rsplit('@').next().unwrap_or(authority);
-    no_userinfo.split(':').next().unwrap_or(no_userinfo)
+    crate::rules::host_str(url)
 }
 
 /// Classify one observed window against a ruleset.
@@ -793,18 +788,13 @@ pub fn contains_phone_number(text: &str) -> bool {
 #[must_use]
 pub fn signature(w: &OverlayWindow) -> String {
     let title = confusables::fold_confusables(w.title.trim()).to_ascii_lowercase();
+    // Use the crate's single host extractor so the repeat-signature host
+    // matches the classifier's host exactly (drops `:port`, and a `://`
+    // inside a query string can't hijack it).
     let host = w
         .url
         .as_deref()
-        .and_then(|u| {
-            // cheap host extraction; mirrors rules::host_of intent
-            let s = u.to_ascii_lowercase();
-            let after = s.split("://").last().unwrap_or(&s);
-            after
-                .split(['/', '?', '#'])
-                .next()
-                .map(|h| h.rsplit('@').next().unwrap_or(h).to_string())
-        })
+        .and_then(crate::rules::host_of)
         .unwrap_or_default();
     format!("{title}|{host}")
 }
@@ -2097,6 +2087,27 @@ mod tests {
             ..Default::default()
         };
         assert_ne!(signature(&a), signature(&b));
+    }
+
+    #[test]
+    fn signature_host_ignores_port_and_query_scheme() {
+        // Regression: the old inline host extractor kept `:port` and used
+        // the LAST `://`, so these two — same scam host, different port and
+        // a decoy `://` in the query — wrongly produced different
+        // signatures (and one yielded "bank.com"). They must now match the
+        // classifier's host (`scam.example`) and therefore each other.
+        let a = OverlayWindow {
+            title: "alert".into(),
+            url: Some("http://scam.example:8080/r?next=http://bank.com".into()),
+            ..Default::default()
+        };
+        let b = OverlayWindow {
+            title: "alert".into(),
+            url: Some("http://scam.example/other".into()),
+            ..Default::default()
+        };
+        assert_eq!(signature(&a), signature(&b));
+        assert!(signature(&a).ends_with("|scam.example"));
     }
 
     // ── enforce() ────────────────────────────────────────────────
