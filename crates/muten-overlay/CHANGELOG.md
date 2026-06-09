@@ -13,6 +13,33 @@ changes meaning. No new dependencies; still offline, pure,
 `forbid(unsafe_code)`.
 
 ### Added
+- **Crypto-recovery / refund re-victimization blocklist family** (C2-3). Added
+  14 title patterns to `examples/overlay-blocklist.txt` — wallet-compromise,
+  fund/crypto recovery, refund-eligibility, and seed-phrase-verification lures —
+  grounded in FBI IC3 2024 (crypto fraud drove the largest reported losses;
+  "recovery" operators re-target prior victims) and scamsniffer's Web3 phishing
+  data. Covered by a new `covers_crypto_recovery_refund_scam` regression test;
+  confusable-folded matching catches homoglyph variants automatically.
+- **Fine-grained gap analysis** (`docs/GAP_ANALYSIS_2026H2.md`): a sub-system
+  decomposition (14 areas A–N) of the product, auditing each module directly
+  and tracking concrete improvement points with status — finer than the
+  themed `IMPROVEMENT_CATALOG_2026H2.md`.
+
+### Fixed
+- **URL host-extraction drift (`signature()`).** Three copies of URL→host
+  parsing had diverged: `signature()` used `split("://").last()` and kept the
+  `:port`, so a `://` inside a query string hijacked the host
+  (`…/r?next=http://bank.com` → `bank.com`) and ports split the scareware
+  repeat-signature. Unified all sites onto one borrowing extractor
+  `rules::host_str` (first `://`, authority stops at `/?#`, drops userinfo +
+  port); `rules::host_of` lower-cases/`Option`-wraps it; `lib::url_host`
+  aliases it; `signature()` now uses it so the repeat-signature host matches
+  the classifier's host exactly. Regression test added.
+- **`explain()` phrase coverage.** `clickfix_instruction`, `combosquat_brand`,
+  and `remote_access_lure` now render human phrases instead of leaking their
+  raw signal name into the explanation sentence.
+
+### Added (signals)
 - **`remote_access_lure` signal** (weight 20, `InterfaceInterference` category).
   Tech-support scammers walk the victim through installing a legitimate
   remote-access tool — AnyDesk, TeamViewer, UltraViewer, LogMeIn, RustDesk,

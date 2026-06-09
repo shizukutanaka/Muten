@@ -107,6 +107,26 @@ fn covers_clickfix_fakecaptcha() {
 }
 
 #[test]
+fn covers_crypto_recovery_refund_scam() {
+    // FBI IC3 2024: crypto fraud = largest losses; "recovery"/refund
+    // operators re-victimize prior targets. scamsniffer Web3 phishing.
+    let rs = load_example_blocklist();
+    for title in [
+        "Your wallet has been compromised",
+        "Recover your stolen funds now",
+        "Crypto recovery service - act fast",
+        "You are eligible for a refund",
+        "Seed phrase verification required",
+    ] {
+        let v = classify(&alert_with_title(title), &rs);
+        assert!(
+            v.signals.contains(&"blocklist_title"),
+            "crypto/refund scam not covered: {title:?}"
+        );
+    }
+}
+
+#[test]
 fn covers_japanese_support_scam() {
     // muten is a Japan-market product; サポート詐欺 is the dominant
     // local variant (IPA / Trend Micro / 消費者庁). These exact phrases

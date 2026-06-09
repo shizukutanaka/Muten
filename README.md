@@ -81,10 +81,13 @@ produces these.
 - [`docs/IMPROVEMENT_CATALOG_2026H2.md`](docs/IMPROVEMENT_CATALOG_2026H2.md) —
   2026-H2 catalog: 10 categories × 10 improvement points, each grounded in
   arXiv + GitHub, with status vs v0.5.0 and a cross-cutting shortlist.
+- [`docs/GAP_ANALYSIS_2026H2.md`](docs/GAP_ANALYSIS_2026H2.md) — fine-grained,
+  sub-system-level (14 areas A–N) audit of the actual code surface, with
+  concrete per-module improvement points and live status.
 
 ## Status
 
-`muten-overlay` v0.5.0 — 246 tests, `clippy -D warnings` clean, MSRV 1.75.0.
+`muten-overlay` v0.5.0 — 248 tests, `clippy -D warnings` clean, MSRV 1.75.0.
 CI runs format/lint/test, an MSRV build, and a supply-chain gate
 (cargo-audit + cargo-deny + gitleaks) on every PR.
 

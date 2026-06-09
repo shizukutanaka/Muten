@@ -66,6 +66,29 @@ title: you are today's winner
 title: gift card winner
 
 # ─────────────────────────────────────────────────────────────────
+# CRYPTO / REFUND / "RECOVERY" RE-VICTIMIZATION scams. FBI IC3 2024:
+# crypto-investment fraud drove the largest reported losses, and
+# "recovery" operators re-target prior victims promising to claw back
+# stolen funds for an up-front fee. FTC + scamsniffer/scam-database
+# (Web3 phishing). These overlays push a wallet "validation", a fake
+# refund, or a paid recovery service.
+# ─────────────────────────────────────────────────────────────────
+title: your wallet has been compromised
+title: validate your wallet
+title: connect your wallet to continue
+title: your transaction has been flagged
+title: suspicious activity on your wallet
+title: recover your stolen funds
+title: recover your lost crypto
+title: crypto recovery service
+title: funds recovery department
+title: you are eligible for a refund
+title: claim your refund now
+title: your refund is pending
+title: refund verification required
+title: seed phrase verification
+
+# ─────────────────────────────────────────────────────────────────
 # ClickFix / FakeCAPTCHA / "trust-flow" lures (2026's dominant vector;
 # 517% surge H1 2025, ~47% of intrusions per Microsoft). These trick
 # the user into running a command. Sources: The Hacker News (Jan 2026),

@@ -111,9 +111,12 @@ GitHub topics: phone-scam / malicious-domains。研究: ROBOVIC, "Dial One for S
    [muten] 既知 scam 番号の小型オフライン辞書を `phone:` ルールとして追加し、一致で高重み。
    一般 phone-number 信号(形状ベース)を補完。
 
-3. 🆕 ★★ **暗号資産リカバリ(再被害)詐欺ファミリ**
+3. ✅ ★★ **暗号資産リカバリ(再被害)詐欺ファミリ** — 実装済(v0.5.0)
    [根拠] scamsniffer/scam-database(Web3 phishing ホスト)/ FBI IC3 2024(暗号資産で最大損失)。
-   [muten] host/title 族 `recover (crypto|funds)`, `crypto recovery` 等 + scamsniffer 由来 host を蒸留。
+   [muten] example blocklist に 14 件の title 族を追加(wallet compromise / recover stolen funds /
+   crypto recovery service / refund eligibility / seed phrase verification 等)+ 専用カバレッジ
+   テスト `covers_crypto_recovery_refund_scam`。confusable-fold 照合なので homoglyph 変種も捕捉。
+   (C2-3 ✓DONE — scamsniffer 由来 host の蒸留取り込みは将来作業)
 
 4. ✅ ★★ **タイポスクワット / コンボスクワット host 検出(dnstwist 系)** — combosquat 実装済(v0.5.0)
    [根拠] jarelllama/Scam-Blocklist は dnstwist/URLCrazy で typosquat/doppelganger/IDN homograph を生成。
