@@ -26,6 +26,16 @@ changes meaning. No new dependencies; still offline, pure,
   themed `IMPROVEMENT_CATALOG_2026H2.md`.
 
 ### Fixed
+- **IPv6 literal hosts mangled.** The unified `host_str` extractor split on
+  `:` for the port, turning `http://[::1]:8080/` into `[`. It now special-cases
+  a leading `[` and returns the whole bracketed literal, so the rule and URL
+  sides extract identically; regression test added.
+- **Audit-chain hash-formula docs corrected.** The `sink.rs` module header and
+  `docs/OVERLAY_BLOCKING.md` documented the link hash *without* `timestamp_ms`
+  (and the doc without the `\0` separators), disagreeing with the code
+  (`link_hash`) and the normative `SPECIFICATION.md` §8. For a tamper-evidence
+  primitive the documented byte layout must match exactly — both corrected.
+  (No behaviour change; the implementation was already correct.)
 - **URL host-extraction drift (`signature()`).** Three copies of URL→host
   parsing had diverged: `signature()` used `split("://").last()` and kept the
   `:port`, so a `://` inside a query string hijacked the host

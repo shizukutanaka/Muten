@@ -86,7 +86,7 @@ with priority (★–★★★).
 | F2 | ★★ | Malformed line skipped, never aborts load | ✅ baseline |
 | F3 | ★★ | host match folds confusables + strips invisibles | ✅ v0.5.0 |
 | F4 | ★★★ | **Single** URL→host extractor (was 3, had drift) | 🔧 unified to `host_str`/`host_of` |
-| F5 | ★ | IPv6 literal hosts (`http://[::1]/`) mangled by `:port` split | 🆕 ★ low — scam IPv6 hosts ~nonexistent; documented limitation |
+| F5 | ★ | IPv6 literal hosts (`http://[::1]/`) were mangled by `:port` split | 🔧 `host_str` now keeps the bracketed literal; regression test |
 | F6 | ★ | Regex/glob title patterns (bounded, ReDoS-safe) | 🔻 C5-8 |
 | F7 | ★ | Distill large community lists → focused offline list (MDM) | 🔻 C1-2/C1-6 (transformer tool, offline) |
 
@@ -122,6 +122,7 @@ with priority (★–★★★).
 | J1 | ★★★ | Linear SHA-256 hash chain, format-compatible w/ muten-audit-chain | ✅ baseline |
 | J2 | ★★★ | Detects edit/delete/reorder/backdate; refuses append onto broken log | ✅ baseline |
 | J3 | ★★★ | Torn-final-line crash recovery (vs tamper) | ✅ v0.5.0 |
+| J3b | ★★ | Hash-formula docs (`sink.rs` header, OVERLAY_BLOCKING.md) omitted `timestamp_ms` / separators — drift from code & spec §8 | 🔧 both corrected to match `link_hash` |
 | J4 | ★★★ | Merkle history tree / external root anchor (RFC 9162 / Rekor) | 🔻 C6-2/3 — next integrity feature |
 | J5 | ★★ | Signed checkpoints (Ed25519 device key) | 🔻 C6-10 |
 | J6 | ★ | Multi-file rotation w/ chain continuity | 🔻 C6-9 |
@@ -185,12 +186,16 @@ with priority (★–★★★).
    `combosquat_brand`, `remote_access_lure` now have human phrases instead
    of leaking their raw signal name into the explanation.
 
-## Newly found, not yet fixed (🆕)
+## Newly found, all fixed this pass (🔧)
 
-- **F5 — IPv6 literal hosts.** `host_str` splits on `:` for the port, which
-  mangles `http://[::1]:8080/`. Priority ★ (scam overlays virtually never
-  use IPv6 literals); fix would special-case a leading `[`. Documented here
-  so it is tracked rather than silently latent.
+- **F5 — IPv6 literal hosts.** `host_str` split on `:` for the port, which
+  mangled `http://[::1]:8080/` into `[`. Now special-cases a leading `[`
+  and keeps the bracketed literal; regression test added.
+- **J3b — hash-formula doc drift.** The `sink.rs` module header and
+  `OVERLAY_BLOCKING.md` documented the link hash *without* `timestamp_ms`
+  (and the latter without the `\0` separators), disagreeing with both the
+  code (`link_hash`) and the normative spec §8 — a real hazard for a
+  tamper-evidence primitive. Both corrected to the exact byte layout.
 
 ## Highest-leverage next steps (cross-cutting)
 

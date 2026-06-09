@@ -241,6 +241,14 @@ pub(crate) fn host_str(url: &str) -> &str {
     };
     let authority = after.split(['/', '?', '#']).next().unwrap_or(after);
     let no_userinfo = authority.rsplit('@').next().unwrap_or(authority);
+    // IPv6 literal authority — "[::1]" or "[::1]:8080" — must not be split
+    // on its inner ':'; the host is the bracketed part (brackets kept, so
+    // both rule and URL sides extract identically).
+    if let Some(rest) = no_userinfo.strip_prefix('[') {
+        if let Some(close) = rest.find(']') {
+            return &no_userinfo[..=close + 1];
+        }
+    }
     no_userinfo.split(':').next().unwrap_or(no_userinfo)
 }
 
@@ -386,5 +394,18 @@ mod tests {
         let rs = Ruleset::from_lines(&["host: microsoft-support.example"]);
         assert!(rs.match_host("https://github.com/user/repo").is_none());
         assert!(rs.match_host("https://example.org/").is_none());
+    }
+
+    #[test]
+    fn ipv6_literal_host_is_not_mangled() {
+        // Regression: the ':' inside an IPv6 literal must not split the
+        // host into "[" — the bracketed literal is the host. A rule and a
+        // URL for the same literal (with/without port) must match.
+        assert_eq!(host_str("http://[2001:db8::1]:8080/x"), "[2001:db8::1]");
+        assert_eq!(host_str("http://[::1]/path"), "[::1]");
+        let rs = Ruleset::from_lines(&["host: [::1]"]);
+        assert!(rs.match_host("http://[::1]:8080/alert").is_some());
+        // An ordinary host with a port is still parsed correctly.
+        assert_eq!(host_str("http://evil.example:443/x"), "evil.example");
     }
 }

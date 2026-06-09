@@ -14,15 +14,17 @@
 //! One JSON object per line:
 //!
 //! ```json
-//! {"seq":0,"prev_hash":"000…0","kind":"overlay_blocked","window_id":"w1",
-//!  "detail":{…},"hash":"<sha256>"}
+//! {"seq":0,"prev_hash":"000…0","timestamp_ms":1700000000000,
+//!  "kind":"overlay_blocked","window_id":"w1","detail":{…},"hash":"<sha256>"}
 //! ```
 //!
-//! `hash = SHA-256(prev_hash || "\0" || kind || "\0" || window_id ||
-//! "\0" || detail_json || "\0" || seq_be_bytes)`. The first event's
-//! `prev_hash` is [`GENESIS`] (64 zero hex chars). Editing or deleting
-//! any line except the last breaks the chain at a detectable point —
-//! the defense for threat-model S3 (audit-log tampering).
+//! `hash = SHA-256(prev_hash || "\0" || timestamp_ms_be || "\0" || kind
+//! || "\0" || window_id || "\0" || detail_json || "\0" || seq_be)` — see
+//! [`link_hash`] for the exact byte layout. `timestamp_ms` is part of the
+//! hash, so events cannot be backdated. The first event's `prev_hash` is
+//! [`GENESIS`] (64 zero hex chars). Editing or deleting any line except
+//! the last breaks the chain at a detectable point — the defense for
+//! threat-model S3 (audit-log tampering).
 
 use crate::monitor::{AuditEvent, AuditSink};
 use sha2::{Digest, Sha256};

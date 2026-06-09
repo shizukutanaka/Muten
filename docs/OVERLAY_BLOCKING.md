@@ -259,11 +259,14 @@ on-disk format matches `muten-audit-chain` exactly, so when the full
 workspace is reassembled the two are interchangeable (a log written by
 one verifies in the other).
 
-Each event line carries `{seq, prev_hash, kind, window_id, detail,
-hash}` where `hash = SHA-256(prev_hash ‖ kind ‖ window_id ‖ detail ‖
-seq)`. Editing or deleting any line except the last breaks the chain
-at a detectable line number — the defense for threat-model **S3**
-(audit-log tampering). `ChainedFileSink::open` *refuses to append onto
+Each event line carries `{seq, prev_hash, timestamp_ms, kind,
+window_id, detail, hash}` where `hash = SHA-256(prev_hash ‖ 0x00 ‖
+be(timestamp_ms) ‖ 0x00 ‖ kind ‖ 0x00 ‖ window_id ‖ 0x00 ‖ detail ‖
+0x00 ‖ be(seq))` (see `SPECIFICATION.md` §8 for the normative layout).
+`timestamp_ms` is part of the hash, so events cannot be backdated.
+Editing or deleting any line except the last breaks the chain at a
+detectable line number — the defense for threat-model **S3** (audit-log
+tampering). `ChainedFileSink::open` *refuses to append onto
 an already-tampered log*, and resumes cleanly from a valid one.
 
 `Monitor::run(controller, sink, &RunConfig{interval_ms, max_sweeps},
