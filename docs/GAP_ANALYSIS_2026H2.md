@@ -70,6 +70,7 @@ with priority (★–★★★).
 | # | Pt | Improvement | Status |
 |---|----|-------------|--------|
 | E1 | ★★★ | `phone_number` in alert-shaped window (NDSS 2017) | ✅ baseline |
+| E1b | ★★ | `phone:` blocklist rule + `blocklist_phone` (curated known scam numbers, no alert-shape needed) | 🔧 added (C2-2) |
 | E2 | ★★ | `clickfix_instruction` (fake-CAPTCHA / Win+R; +517% 2025) | ✅ v0.5.0 |
 | E3 | ★★ | `remote_access_lure` (AnyDesk/TeamViewer, context-amplified) | ✅ v0.5.0 |
 | E4 | ★★ | Crypto-recovery / refund re-victimization families (IC3 2024) | 🔧 added to example blocklist + coverage test |

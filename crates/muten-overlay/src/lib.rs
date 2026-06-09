@@ -166,6 +166,7 @@ fn signal_phrase(signal: &str) -> &str {
         "blocklist_title" => "matches a known scam title",
         "blocklist_host" => "is hosted on a blocklisted domain",
         "phone_number" => "shows a support phone number",
+        "blocklist_phone" => "shows a known scam phone number",
         "mixed_script" => "mixes character sets to disguise its text",
         "whole_script_confusable" => "uses an all-lookalike script to disguise its text",
         "compat_chars_present" => "uses enclosed/circled letters to disguise its text",
@@ -221,6 +222,7 @@ const W_UNSOLICITED: i32 = 25; // appeared with no user action
 const W_VERY_NEW: i32 = 10; // < 1s old (just popped up)
 const W_TITLE_HIT: i32 = 40; // title matches a scam pattern
 const W_PHONE_NUMBER: i32 = 35; // a phone number in an OS-alert-like window
+const W_PHONE_BLOCKLIST: i32 = 40; // a KNOWN scam phone number (curated `phone:` rule)
 const W_MIXED_SCRIPT: i32 = 30; // title/host mixes Latin with Cyrillic/Greek
 const W_WHOLE_SCRIPT: i32 = 30; // title/host is all-Cyrillic/Greek but reads as Latin (whole-script confusable)
 const W_COMPAT_CHARS: i32 = 20; // title/host contains enclosed/circled letters Ⓐ-Ⓩ / ⓐ-ⓩ (compatibility evasion)
@@ -474,6 +476,19 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         score += W_TITLE_HIT;
         signals.push("blocklist_title");
         matched_rule = Some(rule);
+    }
+
+    // Known-scam phone number (curated `phone:` rule). Unlike the
+    // shape-based `phone_number` heuristic below, a number on IT's
+    // pushed scam-number list is high-confidence wherever it appears, so
+    // it does not require the alert shape. Additive (not an auto-block),
+    // consistent with `blocklist_title`; surfaces the matched rule.
+    if let Some(rule) = rules.match_phone(&w.title) {
+        score += W_PHONE_BLOCKLIST;
+        signals.push("blocklist_phone");
+        if matched_rule.is_none() {
+            matched_rule = Some(rule);
+        }
     }
 
     // Phone-number signal. Per Miramirkhani et al. (NDSS 2017, "Dial
@@ -1842,6 +1857,60 @@ mod tests {
         let v = classify(&w, &Ruleset::default());
         assert!(v.signals.contains(&"remote_access_lure"));
         assert_ne!(v.decision, Decision::Block, "score={}", v.score);
+    }
+
+    // ── blocklist_phone (known scam number, C2-2) ───────────────
+
+    #[test]
+    fn blocklist_phone_fires_and_surfaces_rule() {
+        let rules = Ruleset::from_lines(&["phone: 1-800-555-0100"]);
+        let w = OverlayWindow {
+            title: "security alert — please call 800.555.0100".into(),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.contains(&"blocklist_phone"),
+            "expected blocklist_phone; got {:?}",
+            v.signals
+        );
+        assert_eq!(v.matched_rule.as_deref(), Some("1-800-555-0100"));
+        assert!(v
+            .categories
+            .contains(&DarkPatternCategory::InterfaceInterference));
+        // explain() renders the human phrase, not the raw signal name.
+        assert!(v.explain().contains("known scam phone number"));
+    }
+
+    #[test]
+    fn blocklist_phone_does_not_need_alert_shape() {
+        // A curated scam number is high-confidence even in a non-alert
+        // window (has close, not fullscreen) — unlike the shape-based
+        // phone_number heuristic, which would not fire here.
+        let rules = Ruleset::from_lines(&["phone: +1 800 555 0100"]);
+        let w = OverlayWindow {
+            title: "contact 18005550100".into(),
+            coverage_percent: 10,
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &rules);
+        assert!(v.signals.contains(&"blocklist_phone"));
+        assert!(!v.signals.contains(&"phone_number"));
+    }
+
+    #[test]
+    fn unknown_phone_number_does_not_fire_blocklist_phone() {
+        let rules = Ruleset::from_lines(&["phone: 1-800-555-0100"]);
+        let w = OverlayWindow {
+            title: "call 1-888-999-7777".into(),
+            has_close_button: false,
+            blocks_input: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &rules);
+        assert!(!v.signals.contains(&"blocklist_phone"));
     }
 
     // ── §2.2 partial-window deserialization (spec conformance) ───

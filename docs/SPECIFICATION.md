@@ -75,6 +75,7 @@ Precedence:
 | `very_new` | +10 | `0 < age_ms < 1000` |
 | `blocklist_title` | +40 | normalized title contains a `title:` pattern |
 | `phone_number` | +35 | alert-shaped **and** a 7–15-digit phone number in the title |
+| `blocklist_phone` | +40 | the title contains a number on the curated `phone:` blocklist (known scam number). High-confidence, so unlike `phone_number` it does **not** require the alert shape; additive, not an auto-block (like `blocklist_title`). Matched digits-only on the folded title |
 | `mixed_script` | +30 | raw title or host token mixes Latin with Cyrillic/Greek |
 | `whole_script_confusable` | +30 | raw title or host **label** (dot-split for URLs) is entirely Cyrillic or Greek where every letter folds to an ASCII Latin look-alike (UTS#39 §5 whole-script confusable; blind spot of `mixed_script`). The FP guard: legitimate Cyrillic/Greek text uses letters without ASCII folds (п, θ…), which fail the fold-to-ASCII check |
 | `compat_chars_present` | +20 | raw title or host contains enclosed/circled Latin letters (U+24B6–U+24E9, Ⓐ–Ⓩ / ⓐ–ⓩ); used in phishing to bypass plain-text filters. `normalize_for_match` now folds these to ASCII for blocklist matching; this signal fires on their mere presence in the raw text |
@@ -116,9 +117,13 @@ on the **raw** string (folding erases the evidence) and ignores CJK/Kana.
 Plain text, one rule per line; `#` starts a comment. A malformed line MUST
 be skipped, never abort the load. Prefixes: `host:` (host + any
 subdomain), `title:` (substring on the normalized title), `process:`
-(separator-insensitive substring). A bare line is a `host:` rule. Host
-matching strips invisibles and folds typosquat/homoglyph confusables; the
-**original** authored rule text is returned as `matched_rule`.
+(separator-insensitive substring), `phone:` (a known scam phone number,
+matched digits-only on the confusable-folded title; an 11-digit NANP `1`
+country code is normalized away so the formatting on either side is
+irrelevant; rules with `< 7` digits are dropped as over-broad). A bare
+line is a `host:` rule. Host matching strips invisibles and folds
+typosquat/homoglyph confusables; the **original** authored rule text is
+returned as `matched_rule`.
 
 ## 6. Scareware (`assess(repeat_count, process_name, &Ruleset)`)
 

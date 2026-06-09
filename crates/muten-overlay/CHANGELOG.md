@@ -13,6 +13,19 @@ changes meaning. No new dependencies; still offline, pure,
 `forbid(unsafe_code)`.
 
 ### Added
+- **`phone:` blocklist rule type + `blocklist_phone` signal** (weight 40,
+  `InterfaceInterference` category). IT can now push a curated list of *known*
+  scam phone numbers (`phone: 1-800-555-0100`) via MDM. A number on that list
+  appearing in a window is high-confidence evidence wherever it shows up, so —
+  unlike the shape-based `phone_number` heuristic — it does **not** require the
+  alert shape; it remains additive (not an auto-block), consistent with
+  `title:`. Matching is digits-only on the confusable-folded title (so full-
+  width / look-alike digits and any separator formatting still match), and an
+  11-digit NANP `1` country code is normalized away so `1-800-555-0100` matches
+  both `1 800 555 0100` and `(800) 555-0100`. Rules with `< 7` digits are
+  dropped as over-broad. New `Ruleset::{match_phone, phone_count}`; grammar in
+  `SPECIFICATION.md` §5; illustrative (commented) entries in the example
+  blocklist. (C2-2; mradamdavies/number-skid, FTC/IC3.)
 - **Crypto-recovery / refund re-victimization blocklist family** (C2-3). Added
   14 title patterns to `examples/overlay-blocklist.txt` — wallet-compromise,
   fund/crypto recovery, refund-eligibility, and seed-phrase-verification lures —

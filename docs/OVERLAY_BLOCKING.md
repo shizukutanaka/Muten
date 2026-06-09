@@ -37,6 +37,7 @@ in the audit log:
 | very_new (<1s) | +10 | just popped up |
 | blocklist_title | +40 | title matches a known scam phrase |
 | phone_number | +35 | a support number in an alert-shaped window (NDSS 2017) |
+| blocklist_phone | +40 | a number on the curated `phone:` list (known scam number); high-confidence so no alert-shape needed; additive, digits-only match |
 | mixed_script | +30 | title/host mixes Latin with Cyrillic/Greek (homoglyph disguise) |
 | whole_script_confusable | +30 | title/host label is all-Cyrillic or all-Greek but every letter folds to a Latin look-alike (blind spot of mixed_script; UTS#39 §5) |
 | compat_chars_present | +20 | title/host uses enclosed/circled Latin letters Ⓐ-Ⓩ/ⓐ-ⓩ (U+24B6-U+24E9) — evades plain-text matching; normalized automatically so blocklist matching still works |
@@ -105,6 +106,8 @@ Plain text, one rule per line, pushed via MDM and read offline:
 ```text
 host: win-prize-now.example      # block host + any subdomain
 title: your computer is infected # title substring contributes to score
+process: pc protector plus       # rogue-AV process (separator-insensitive)
+phone: 1-800-555-0100            # known scam number (digits-only match)
 bare-host.example                # bare line == host rule
 # comments after '#'
 ```

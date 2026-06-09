@@ -202,6 +202,19 @@ host: microsoft-security-alert.example
 host: windows-defender-alert.example
 
 # ─────────────────────────────────────────────────────────────────
+# KNOWN SCAM PHONE NUMBERS  (phone:)
+# A curated number that appears on a fake-alert screen is high-confidence
+# evidence wherever it shows up (it does not need the alert shape, unlike
+# the generic phone_number heuristic). Matched on digits only, so any
+# formatting matches; an 11-digit NANP "1" country code is optional.
+# Sources: mradamdavies/number-skid (Amazon/Microsoft-impersonation
+# numbers), FTC/IC3 reports. These are ILLUSTRATIVE placeholders — replace
+# with the specific scam numbers your fleet observes, pushed via MDM.
+# ─────────────────────────────────────────────────────────────────
+# phone: 1-800-000-0000
+# phone: +1 888 000 0000
+
+# ─────────────────────────────────────────────────────────────────
 # ROGUE-AV / SCAREWARE PROCESS NAMES
 # Installed fake-antivirus that floods the desktop with fake-threat
 # pop-ups and demands payment. Matched space/separator-insensitively,

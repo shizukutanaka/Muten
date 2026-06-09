@@ -106,10 +106,13 @@ GitHub topics: phone-scam / malicious-domains。研究: ROBOVIC, "Dial One for S
    [根拠] Miramirkhani et al. "Dial One for Scam" (arXiv:1607.06891) — 番号は最強 tell。
    [muten] 実装済。以下で拡充。
 
-2. 🆕 ★★ **既知不正番号のオフライン辞書**
+2. ✅ ★★ **既知不正番号のオフライン辞書** — 実装済(v0.5.0)
    [根拠] mradamdavies/number-skid(Amazon/Microsoft なりすまし番号)+ GitHub phone-scam topic。
-   [muten] 既知 scam 番号の小型オフライン辞書を `phone:` ルールとして追加し、一致で高重み。
-   一般 phone-number 信号(形状ベース)を補完。
+   [muten] `phone:` ルール型 + `blocklist_phone` 信号(weight 40, InterfaceInterference)を実装。
+   既知 scam 番号は出現箇所を問わず高信頼なので alert shape 不要(形状ベース `phone_number` を補完)。
+   digits-only 照合(全角/look-alike 数字・任意の区切り対応)、NANP の 11桁先頭 "1" を正規化、
+   7桁未満は over-broad として破棄。`Ruleset::{match_phone, phone_count}` 追加。example blocklist に
+   コメント例。(C2-2 ✓DONE)
 
 3. ✅ ★★ **暗号資産リカバリ(再被害)詐欺ファミリ** — 実装済(v0.5.0)
    [根拠] scamsniffer/scam-database(Web3 phishing ホスト)/ FBI IC3 2024(暗号資産で最大損失)。

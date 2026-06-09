@@ -99,6 +99,7 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         // attacker-controlled remote-control software — misdirection via a
         // fake alert, the same InterfaceInterference strategy.
         "phone_number"
+        | "blocklist_phone"
         | "blocklist_title"
         | "blocklist_host"
         | "rogue_av_process"

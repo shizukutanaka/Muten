@@ -40,6 +40,17 @@ pub struct Ruleset {
     /// Known rogue-AV / scareware process-name substrings (lower-cased).
     /// e.g. "pc protector plus", "advanced mac cleaner", "registrysmart".
     process_patterns: Vec<String>,
+    /// Known scam phone numbers, digits-only key + authored display.
+    phone_patterns: Vec<PhonePattern>,
+}
+
+/// A blocklist phone rule. `digits` is the number with every non-digit
+/// stripped (the form used for matching, robust to how separators are
+/// written); `display` is the authored text, surfaced as the matched rule.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct PhonePattern {
+    digits: String,
+    display: String,
 }
 
 /// A blocklist title rule, kept in two forms: `key` is the normalized
@@ -62,6 +73,7 @@ impl Ruleset {
         let mut hosts = BTreeSet::new();
         let mut title_patterns = Vec::new();
         let mut process_patterns = Vec::new();
+        let mut phone_patterns = Vec::new();
         for raw in text.lines() {
             let line = strip_comment(raw).trim();
             if line.is_empty() {
@@ -93,6 +105,31 @@ impl Ruleset {
                 if !pat.is_empty() {
                     process_patterns.push(pat);
                 }
+            } else if let Some(rest) = line.strip_prefix("phone:") {
+                // Known scam phone number. Match on digits only, so the
+                // operator can write it with whatever separators they like
+                // (1-800-…, +1 800 …) and it still matches a title that
+                // formats it differently. Require ≥ 7 digits so a stray
+                // short number can't become an over-broad rule.
+                let display = rest.trim().to_ascii_lowercase();
+                let digits: String = display.chars().filter(char::is_ascii_digit).collect();
+                // Normalize an 11-digit NANP number (leading country-code
+                // "1") to its 10-digit national form. That national key is a
+                // substring of the number whether the title writes it with or
+                // without the "1", so `1-800-555-0100` matches both
+                // "1 800 555 0100" and "(800) 555-0100". NANP national numbers
+                // never start with 1, so this can't over-broaden.
+                let key = if digits.len() == 11 && digits.starts_with('1') {
+                    digits[1..].to_string()
+                } else {
+                    digits
+                };
+                if key.len() >= 7 {
+                    phone_patterns.push(PhonePattern {
+                        digits: key,
+                        display,
+                    });
+                }
             } else {
                 // Bare line → treat as host.
                 if let Some(h) = normalize_host(line) {
@@ -104,6 +141,7 @@ impl Ruleset {
             hosts,
             title_patterns,
             process_patterns,
+            phone_patterns,
         }
     }
 
@@ -124,6 +162,10 @@ impl Ruleset {
     /// Number of process-name patterns loaded.
     pub fn process_count(&self) -> usize {
         self.process_patterns.len()
+    }
+    /// Number of known-scam phone-number patterns loaded.
+    pub fn phone_count(&self) -> usize {
+        self.phone_patterns.len()
     }
 
     /// Does `url` resolve to a blocked host? Returns the matched rule
@@ -173,6 +215,32 @@ impl Ruleset {
         self.title_patterns
             .iter()
             .find(|p| t.contains(&p.key))
+            .map(|p| p.display.clone())
+    }
+
+    /// Does `title` contain a **known scam phone number**? Returns the
+    /// authored rule on the first match.
+    ///
+    /// Matching is digits-only on both sides: the title is confusable-folded
+    /// (so full-width / look-alike digits normalize to ASCII), every non-digit
+    /// is dropped, and each rule's digit string is sought as a substring. A
+    /// curated scam number is high-confidence evidence wherever it appears, so
+    /// — unlike the shape-based `phone_number` heuristic — this does not
+    /// require the window to look like an alert. It remains additive (it does
+    /// not auto-block), consistent with `title:`.
+    #[must_use]
+    pub fn match_phone(&self, title: &str) -> Option<String> {
+        if self.phone_patterns.is_empty() {
+            return None;
+        }
+        let folded = crate::confusables::fold_confusables(title);
+        let digits: String = folded.chars().filter(char::is_ascii_digit).collect();
+        if digits.is_empty() {
+            return None;
+        }
+        self.phone_patterns
+            .iter()
+            .find(|p| digits.contains(&p.digits))
             .map(|p| p.display.clone())
     }
 
@@ -394,6 +462,30 @@ mod tests {
         let rs = Ruleset::from_lines(&["host: microsoft-support.example"]);
         assert!(rs.match_host("https://github.com/user/repo").is_none());
         assert!(rs.match_host("https://example.org/").is_none());
+    }
+
+    #[test]
+    fn phone_rule_matches_regardless_of_separators() {
+        let rs = Ruleset::from_lines(&["phone: 1-800-555-0100"]);
+        assert_eq!(rs.phone_count(), 1);
+        // Same number, different formatting in the title.
+        assert_eq!(
+            rs.match_phone("call (800) 555 0100 now").as_deref(),
+            Some("1-800-555-0100")
+        );
+        // Full-width digits fold to ASCII before matching.
+        assert!(rs
+            .match_phone("\u{FF11}\u{FF18}\u{FF10}\u{FF10}5550100")
+            .is_some());
+        // An unrelated number does not match.
+        assert!(rs.match_phone("order 12345678 shipped").is_none());
+    }
+
+    #[test]
+    fn short_phone_rule_is_rejected() {
+        // < 7 digits would be an over-broad rule; it must be dropped.
+        let rs = Ruleset::from_lines(&["phone: 12345"]);
+        assert_eq!(rs.phone_count(), 0);
     }
 
     #[test]
