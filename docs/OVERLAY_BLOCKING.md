@@ -46,6 +46,7 @@ in the audit log:
 | brand_impersonation | +40 | host label is a UTS#39 skeleton homograph of a known brand |
 | combosquat_brand | +30 | host label joins a known brand + a scam-lure word as hyphen tokens (`apple-support`, `paypal-secure-login`; combosquatting, CCS 2017). Hyphen + exact-token requirement keeps `windowsupdate.com` / `support.apple.com` from firing |
 | clickfix_instruction | +20 | `alert_shaped` AND normalized title contains ClickFix/fake-CAPTCHA instruction text — `win+r`, `ctrl+v`, CAPTCHA framing, run-dialog phrases (MS Security Blog 2025: +517 % ClickFix surge). `alert_shaped` guard prevents FPs on legitimate reCAPTCHA browser pages. Leet/homoglyph evasion defeated by `normalize_for_match`. |
+| remote_access_lure | +20 | title names a remote-access tool (AnyDesk/TeamViewer/…) AND a fake alert already fired (blocklist title, phone number, or ClickFix) — context amplification per FBI IC3 2024. Never fires on a legitimate remote-support session (no alert tell); never blocks alone. |
 | input_trap | +5 | full-screen + topmost + modal "screen lock" (bounded; see below) |
 | sudden_fullscreen_takeover | +5 | unsolicited window seizes full screen instantly (bounded) |
 | user_initiated | −40 | the user opened it → trust more |

@@ -175,6 +175,7 @@ fn signal_phrase(signal: &str) -> &str {
         "brand_impersonation" => "uses a look-alike domain impersonating a known brand",
         "combosquat_brand" => "uses a domain combining a known brand with a scam keyword",
         "clickfix_instruction" => "instructs the user to run a command or pass a fake CAPTCHA",
+        "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
         other => other,
@@ -231,6 +232,7 @@ const W_SUDDEN_TAKEOVER: i32 = 5; // unsolicited instant full-screen seizure (bo
 const W_BRAND_IMPERSONATION: i32 = 40; // host label is a homograph of a known brand
 const W_COMBOSQUAT: i32 = 30; // host label joins a known brand + a scam lure word (combosquatting)
 const W_CLICKFIX: i32 = 20; // ClickFix/fake-CAPTCHA keyboard-instruction pattern (alert_shaped guard)
+const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
 /// Major brands muten ships a built-in homograph guard for (UTS #39
@@ -360,6 +362,36 @@ fn combosquat(host: &str) -> Option<(&'static str, &'static str)> {
     None
 }
 
+/// Legitimate remote-access tools that tech-support scammers routinely
+/// direct victims to install so they can seize the machine (FTC / FBI
+/// IC3 2024). The tool itself is legitimate, so its mere presence is
+/// **not** a scam signal — muten only counts it as a `remote_access_lure`
+/// when it co-occurs with independent fake-alert evidence (see
+/// [`classify`]). Matched as a normalized-title substring.
+const REMOTE_ACCESS_TOOLS: &[&str] = &[
+    "anydesk",
+    "teamviewer",
+    "ultraviewer",
+    "logmein",
+    "rustdesk",
+    "screenconnect",
+    "connectwise",
+    "quicksupport",
+    "gotoassist",
+    "ammyy",
+    "supremo",
+    "aeroadmin",
+];
+
+/// True if the (already-normalized) title mentions a known remote-access
+/// tool from [`REMOTE_ACCESS_TOOLS`].
+#[must_use]
+fn mentions_remote_access_tool(normalized_title: &str) -> bool {
+    REMOTE_ACCESS_TOOLS
+        .iter()
+        .any(|t| normalized_title.contains(t))
+}
+
 /// Coverage at or above this percent counts as "full-screen".
 const FULLSCREEN_COVERAGE: u8 = 85;
 
@@ -480,11 +512,27 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // The `alert_shaped` guard is the primary false-positive fence: a
     // legitimate reCAPTCHA page that happens to have "captcha" in its title
     // is not modal / full-screen / no-close, so this never fires for it.
-    if alert_shaped
-        && confusables::has_clickfix_instruction(&confusables::normalize_for_match(&w.title))
-    {
+    let normalized_title = confusables::normalize_for_match(&w.title);
+    if alert_shaped && confusables::has_clickfix_instruction(&normalized_title) {
         score += W_CLICKFIX;
         signals.push("clickfix_instruction");
+    }
+
+    // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
+    // walk the victim through installing AnyDesk / TeamViewer / etc. to
+    // seize the machine. These tools are legitimate, so their name alone
+    // is NOT a scam tell — muten counts it only as *context amplification*:
+    // the tool name in the title AND independent fake-alert evidence
+    // already firing (a blocklist title match, a support phone number, or a
+    // ClickFix instruction). A legitimate remote-support session has the
+    // tool name but none of those alert tells, so it never fires. This can
+    // only *add* to an already-suspicious window — never block on its own.
+    let fake_alert_present = signals.contains(&"blocklist_title")
+        || signals.contains(&"phone_number")
+        || signals.contains(&"clickfix_instruction");
+    if fake_alert_present && mentions_remote_access_tool(&normalized_title) {
+        score += W_REMOTE_ACCESS_LURE;
+        signals.push("remote_access_lure");
     }
 
     // Mixed-script homoglyph evasion. A single token that mixes Latin
@@ -1719,6 +1767,91 @@ mod tests {
         let v = classify(&w, &Ruleset::default());
         assert!(v.signals.contains(&"combosquat_brand"));
         assert_ne!(v.decision, Decision::Block);
+    }
+
+    // ── remote_access_lure (context amplification, IC3 2024, C2-5) ──
+
+    #[test]
+    fn remote_access_lure_fires_with_phone_number() {
+        // Alert-shaped overlay with a support number AND an AnyDesk lure.
+        let w = OverlayWindow {
+            title: "virus alert! call 1-800-555-0100 and install anydesk".into(),
+            coverage_percent: 100,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.contains(&"phone_number"),
+            "precondition: {:?}",
+            v.signals
+        );
+        assert!(
+            v.signals.contains(&"remote_access_lure"),
+            "expected remote_access_lure; got {:?}",
+            v.signals
+        );
+        assert!(v
+            .categories
+            .contains(&DarkPatternCategory::InterfaceInterference));
+    }
+
+    #[test]
+    fn remote_access_lure_fires_with_blocklist_title() {
+        let rules = Ruleset::from_lines(&["title: your computer is infected"]);
+        let w = OverlayWindow {
+            title: "your computer is infected — download teamviewer for support".into(),
+            coverage_percent: 100,
+            has_close_button: false,
+            ..Default::default()
+        };
+        let v = classify(&w, &rules);
+        assert!(v.signals.contains(&"blocklist_title"));
+        assert!(v.signals.contains(&"remote_access_lure"));
+    }
+
+    #[test]
+    fn remote_access_tool_alone_does_not_fire() {
+        // A legitimate remote-support session: the tool name is present but
+        // there is NO fake-alert evidence (no blocklist title, no phone
+        // number, no ClickFix). The lure MUST NOT fire — context
+        // amplification only.
+        let w = OverlayWindow {
+            title: "anydesk — remote desktop".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: true,
+            origin: Origin::UserInitiated,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.contains(&"remote_access_lure"),
+            "legit remote tool wrongly flagged: {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn remote_access_lure_never_blocks_alone() {
+        // Even with the lure + a phone number, a window with no overlay
+        // shape beyond alert_shaped should remain below BLOCK on content
+        // tells alone (FP-averse): phone (35) + lure (20) + no_close (25)
+        // = 80 < 100.
+        let w = OverlayWindow {
+            title: "call 1-800-555-0100 install anydesk now".into(),
+            coverage_percent: 0,
+            topmost: false,
+            has_close_button: false, // alert_shaped via no-close
+            blocks_input: false,
+            origin: Origin::Unknown,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(v.signals.contains(&"remote_access_lure"));
+        assert_ne!(v.decision, Decision::Block, "score={}", v.score);
     }
 
     // ── §2.2 partial-window deserialization (spec conformance) ───

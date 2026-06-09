@@ -126,9 +126,14 @@ GitHub topics: phone-scam / malicious-domains。研究: ROBOVIC, "Dial One for S
    skeleton 化するので homoglyph combosquat も捕捉。新非公開 fn `combosquat()`。(C2-4 ✓DONE
    — dnstwist の omission/insertion/transposition 生成は将来作業として残置)
 
-5. 🆕 ★★ **リモートアクセスツール lure(process 族・文脈増幅)**
+5. ✅ ★★ **リモートアクセスツール lure(文脈増幅)** — 実装済(v0.5.0, +20)
    [根拠] FTC/IC3 2024 — AnyDesk/TeamViewer/UltraViewer/LogMeIn/RustDesk/ScreenConnect へ誘導。
-   [muten] `process:` 族 `remote_access_tool` を文脈増幅(単独 Block でなく偽アラート共起で加点)。
+   [muten] `remote_access_lure` 信号(weight 20, InterfaceInterference): 正規化 title が
+   `REMOTE_ACCESS_TOOLS`(anydesk/teamviewer/…)を含み、**かつ**独立した偽アラート証拠
+   (`blocklist_title` ∨ `phone_number` ∨ `clickfix_instruction`)が既に発火している時のみ加点。
+   ツール自体は正規なので名前単独では発火せず、純粋な文脈増幅(単独 Block 不可、既に疑わしい
+   window に加点のみ)。正規リモートサポートセッションは alert 証拠が無いので不発火(FP ガード)。
+   新非公開 helper `mentions_remote_access_tool()`。(C2-5 ✓DONE)
 
 6. 🆕 ★ **電話番号の国際形式精度向上(0120 / +44 等)**
    [根拠] roadmap C2-2 / 各国フォーマット。

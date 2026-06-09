@@ -13,6 +13,19 @@ changes meaning. No new dependencies; still offline, pure,
 `forbid(unsafe_code)`.
 
 ### Added
+- **`remote_access_lure` signal** (weight 20, `InterfaceInterference` category).
+  Tech-support scammers walk the victim through installing a legitimate
+  remote-access tool — AnyDesk, TeamViewer, UltraViewer, LogMeIn, RustDesk,
+  ScreenConnect… — to seize the machine (FTC / FBI IC3 2024). Because these
+  tools are legitimate, the name alone is **not** a scam tell; the signal is
+  pure **context amplification**: it fires only when the normalized title names
+  a tool from `REMOTE_ACCESS_TOOLS` **and** independent fake-alert evidence has
+  already fired (`blocklist_title`, `phone_number`, or `clickfix_instruction`).
+  A legitimate remote-support session has the tool name but none of those alert
+  tells, so it never fires; the signal can only *add* to an already-suspicious
+  window and never blocks on its own. New private helper
+  `mentions_remote_access_tool()`; 4 new unit tests + category + `explain()`
+  phrase. (C2-5.)
 - **`combosquat_brand` signal** (weight 30, `InterfaceInterference` category).
   Detects **combosquatting** (Kintis et al., "Hiding in Plain Sight", ACM CCS
   2017): a host label that joins a built-in known brand and a scam-lure word

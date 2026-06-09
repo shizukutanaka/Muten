@@ -95,12 +95,16 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         // homograph look-alike domain) and `combosquat_brand` (a brand
         // joined to a scam-lure word, e.g. `apple-support`) are the same
         // misdirection strategy via a deceptive domain.
+        // The remote-access-tool lure steers the user into installing
+        // attacker-controlled remote-control software — misdirection via a
+        // fake alert, the same InterfaceInterference strategy.
         "phone_number"
         | "blocklist_title"
         | "blocklist_host"
         | "rogue_av_process"
         | "brand_impersonation"
-        | "combosquat_brand" => Some(InterfaceInterference),
+        | "combosquat_brand"
+        | "remote_access_lure" => Some(InterfaceInterference),
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }
@@ -201,6 +205,10 @@ mod tests {
         );
         assert_eq!(
             category_of("combosquat_brand"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+        assert_eq!(
+            category_of("remote_access_lure"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }
