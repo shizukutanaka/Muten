@@ -57,7 +57,7 @@ fn blocklist_parses_with_substantial_coverage() {
 fn covers_classic_tech_support_scam() {
     let rs = load_example_blocklist();
     let v = classify(&alert_with_title("your computer is infected"), &rs);
-    assert!(v.signals.contains(&"blocklist_title"));
+    assert!(v.signals.iter().any(|s| s == "blocklist_title"));
 }
 
 #[test]
@@ -71,7 +71,7 @@ fn covers_law_enforcement_impersonation() {
     ] {
         let v = classify(&alert_with_title(title), &rs);
         assert!(
-            v.signals.contains(&"blocklist_title"),
+            v.signals.iter().any(|s| s == "blocklist_title"),
             "not covered: {title:?}"
         );
     }
@@ -87,7 +87,7 @@ fn covers_fake_blue_screen() {
     ] {
         let v = classify(&alert_with_title(title), &rs);
         assert!(
-            v.signals.contains(&"blocklist_title"),
+            v.signals.iter().any(|s| s == "blocklist_title"),
             "not covered: {title:?}"
         );
     }
@@ -100,7 +100,7 @@ fn covers_clickfix_fakecaptcha() {
     for title in ["Verify you are human", "Press Win+R then Ctrl+V"] {
         let v = classify(&alert_with_title(title), &rs);
         assert!(
-            v.signals.contains(&"blocklist_title"),
+            v.signals.iter().any(|s| s == "blocklist_title"),
             "not covered: {title:?}"
         );
     }
@@ -120,7 +120,7 @@ fn covers_crypto_recovery_refund_scam() {
     ] {
         let v = classify(&alert_with_title(title), &rs);
         assert!(
-            v.signals.contains(&"blocklist_title"),
+            v.signals.iter().any(|s| s == "blocklist_title"),
             "crypto/refund scam not covered: {title:?}"
         );
     }
@@ -141,7 +141,7 @@ fn covers_japanese_support_scam() {
     ] {
         let v = classify(&alert_with_title(title), &rs);
         assert!(
-            v.signals.contains(&"blocklist_title"),
+            v.signals.iter().any(|s| s == "blocklist_title"),
             "Japanese scam not covered: {title:?}"
         );
     }
@@ -173,7 +173,7 @@ fn japanese_matching_is_case_and_width_robust() {
         &alert_with_title("Windows 警告: ウイルスに感染しました"),
         &rs,
     );
-    assert!(v.signals.contains(&"blocklist_title"));
+    assert!(v.signals.iter().any(|s| s == "blocklist_title"));
 }
 
 #[test]
@@ -205,7 +205,7 @@ fn homoglyph_law_enforcement_title_still_caught() {
     let title = "illеgal аctivity has been detected"; // Cyrillic е, а
     let v = classify(&alert_with_title(title), &rs);
     assert!(
-        v.signals.contains(&"blocklist_title"),
+        v.signals.iter().any(|s| s == "blocklist_title"),
         "homoglyph law-enforcement title evaded: {:?}",
         v.signals
     );

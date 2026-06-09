@@ -70,7 +70,7 @@ fn wayland_title_only_still_detected_via_blocklist() {
     let rules = Ruleset::from_lines(&["title: your computer is infected"]);
     let v = classify(&ew.window, &rules);
     assert!(
-        v.signals.contains(&"blocklist_title"),
+        v.signals.iter().any(|s| s == "blocklist_title"),
         "Wayland title evaded blocklist: {:?}",
         v.signals
     );
@@ -113,11 +113,11 @@ fn helper_unknown_origin_age_zero_does_not_falsely_block() {
         v.signals
     );
     assert!(
-        !v.signals.contains(&"very_new"),
+        !v.signals.iter().any(|s| s == "very_new"),
         "age 0 must not be very_new"
     );
     assert!(
-        !v.signals.contains(&"unsolicited"),
+        !v.signals.iter().any(|s| s == "unsolicited"),
         "unknown origin is not unsolicited"
     );
 }

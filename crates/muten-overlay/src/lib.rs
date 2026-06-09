@@ -107,8 +107,10 @@ pub struct Verdict {
     pub decision: Decision,
     /// Sum of all signal weights; always ≥ 0.
     pub score: i32,
-    /// Names of the signals that fired, in evaluation order.
-    pub signals: Vec<&'static str>,
+    /// Names of the signals that fired, in evaluation order. Static built-in
+    /// signals use fixed names; composite rule signals carry the operator-defined
+    /// rule name. All are serialized as JSON strings in `--json` output.
+    pub signals: Vec<String>,
     /// Dark-pattern strategy categories (Gray et al. 2018) implied by
     /// the signals that fired, deduped and sorted. Empty when only
     /// descriptive signals fired. See the `categories` module.
@@ -420,7 +422,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // 1. Hard host/URL block.
     if let Some(url) = w.url.as_deref() {
         if let Some(hit) = rules.match_host(url) {
-            let signals = vec!["blocklist_host"];
+            let signals: Vec<String> = vec!["blocklist_host".into()];
             return Verdict {
                 decision: Decision::Block,
                 score: BLOCK_THRESHOLD,
@@ -433,33 +435,33 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
 
     // 2. Additive heuristic.
     let mut score = 0;
-    let mut signals: Vec<&'static str> = Vec::new();
+    let mut signals: Vec<String> = Vec::new();
     let mut matched_rule = None;
 
     if w.coverage_percent >= FULLSCREEN_COVERAGE {
         score += W_FULLSCREEN;
-        signals.push("fullscreen");
+        signals.push("fullscreen".into());
     }
     if w.topmost {
         score += W_TOPMOST;
-        signals.push("topmost");
+        signals.push("topmost".into());
     }
     if !w.has_close_button {
         score += W_NO_CLOSE;
-        signals.push("no_close_button");
+        signals.push("no_close_button".into());
     }
     if w.blocks_input {
         score += W_BLOCKS_INPUT;
-        signals.push("blocks_input");
+        signals.push("blocks_input".into());
     }
     match w.origin {
         Origin::Unsolicited => {
             score += W_UNSOLICITED;
-            signals.push("unsolicited");
+            signals.push("unsolicited".into());
         }
         Origin::UserInitiated => {
             score += W_USER_INITIATED_RELIEF;
-            signals.push("user_initiated");
+            signals.push("user_initiated".into());
         }
         Origin::Unknown => {}
     }
@@ -471,11 +473,11 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // noise. Only a real, small, *nonzero* age counts as very_new.
     if w.age_ms > 0 && w.age_ms < 1000 {
         score += W_VERY_NEW;
-        signals.push("very_new");
+        signals.push("very_new".into());
     }
     if let Some(rule) = rules.match_title(&w.title) {
         score += W_TITLE_HIT;
-        signals.push("blocklist_title");
+        signals.push("blocklist_title".into());
         matched_rule = Some(rule);
     }
 
@@ -486,7 +488,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // consistent with `blocklist_title`; surfaces the matched rule.
     if let Some(rule) = rules.match_phone(&w.title) {
         score += W_PHONE_BLOCKLIST;
-        signals.push("blocklist_phone");
+        signals.push("blocklist_phone".into());
         if matched_rule.is_none() {
             matched_rule = Some(rule);
         }
@@ -504,7 +506,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         w.coverage_percent >= FULLSCREEN_COVERAGE || w.blocks_input || !w.has_close_button;
     if alert_shaped && contains_phone_number(&confusables::fold_confusables(&w.title)) {
         score += W_PHONE_NUMBER;
-        signals.push("phone_number");
+        signals.push("phone_number".into());
     }
 
     // ClickFix / fake-CAPTCHA instruction signal (C1-5).
@@ -526,7 +528,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     let normalized_title = confusables::normalize_for_match(&w.title);
     if alert_shaped && confusables::has_clickfix_instruction(&normalized_title) {
         score += W_CLICKFIX;
-        signals.push("clickfix_instruction");
+        signals.push("clickfix_instruction".into());
     }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
@@ -538,12 +540,12 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // ClickFix instruction). A legitimate remote-support session has the
     // tool name but none of those alert tells, so it never fires. This can
     // only *add* to an already-suspicious window — never block on its own.
-    let fake_alert_present = signals.contains(&"blocklist_title")
-        || signals.contains(&"phone_number")
-        || signals.contains(&"clickfix_instruction");
+    let has_sig = |s: &str| signals.iter().any(|x| x == s);
+    let fake_alert_present =
+        has_sig("blocklist_title") || has_sig("phone_number") || has_sig("clickfix_instruction");
     if fake_alert_present && mentions_remote_access_tool(&normalized_title) {
         score += W_REMOTE_ACCESS_LURE;
-        signals.push("remote_access_lure");
+        signals.push("remote_access_lure".into());
     }
 
     // Mixed-script homoglyph evasion. A single token that mixes Latin
@@ -560,7 +562,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
             .is_some_and(|u| confusables::has_confusable_mixed_script(url_host(u)));
     if mixed_script {
         score += W_MIXED_SCRIPT;
-        signals.push("mixed_script");
+        signals.push("mixed_script".into());
     }
 
     // Whole-script confusable (UTS #39 §5): a token where every letter
@@ -582,7 +584,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         });
     if whole_script {
         score += W_WHOLE_SCRIPT;
-        signals.push("whole_script_confusable");
+        signals.push("whole_script_confusable".into());
     }
 
     // Enclosed/circled Latin letters (Ⓐ-Ⓩ / ⓐ-ⓩ, U+24B6-U+24E9): used in
@@ -597,7 +599,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         || w.url.as_deref().is_some_and(confusables::has_compat_alpha);
     if compat_chars {
         score += W_COMPAT_CHARS;
-        signals.push("compat_chars_present");
+        signals.push("compat_chars_present".into());
     }
 
     // Mixed numbering systems (ICU MIXED_NUMBERS): a single token with
@@ -611,7 +613,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
             .is_some_and(confusables::has_mixed_number_systems);
     if mixed_numbers {
         score += W_MIXED_NUMBERS;
-        signals.push("mixed_number_systems");
+        signals.push("mixed_number_systems".into());
     }
 
     // Excessive combining marks ("Zalgo"): 3+ diacritics stacked on one
@@ -624,7 +626,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
             .is_some_and(confusables::has_excessive_combining_marks);
     if zalgo {
         score += W_ZALGO;
-        signals.push("excessive_combining_marks");
+        signals.push("excessive_combining_marks".into());
     }
 
     // BiDi directional override (Trojan Source, arXiv:2111.00169): an
@@ -637,7 +639,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         || w.url.as_deref().is_some_and(confusables::has_bidi_override);
     if bidi_override {
         score += W_BIDI_OVERRIDE;
-        signals.push("bidi_override");
+        signals.push("bidi_override".into());
     }
 
     // Brand-homograph impersonation (UTS #39 skeleton collision): the
@@ -653,7 +655,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         .is_some()
     {
         score += W_BRAND_IMPERSONATION;
-        signals.push("brand_impersonation");
+        signals.push("brand_impersonation".into());
     }
 
     // Combosquatting (Kintis et al., ACM CCS 2017): a host label that
@@ -671,7 +673,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         .is_some()
     {
         score += W_COMBOSQUAT;
-        signals.push("combosquat_brand");
+        signals.push("combosquat_brand".into());
     }
 
     // Composite "screen-lock" tell: a window that is full-screen AND
@@ -695,7 +697,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     let input_trap = w.blocks_input && w.topmost && w.coverage_percent >= FULLSCREEN_COVERAGE;
     if input_trap {
         score += W_INPUT_TRAP;
-        signals.push("input_trap");
+        signals.push("input_trap".into());
     }
 
     // Composite "sudden takeover" tell: an *unsolicited* window that
@@ -714,7 +716,26 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         && w.age_ms < 1000;
     if sudden_takeover {
         score += W_SUDDEN_TAKEOVER;
-        signals.push("sudden_fullscreen_takeover");
+        signals.push("sudden_fullscreen_takeover".into());
+    }
+
+    // Declarative AND-condition composite rules (C5-2). Evaluated after
+    // all individual signals so `has_*` conditions can see what already
+    // fired. Each composite whose every condition holds contributes its
+    // weight and records its operator-defined name in `signals`.
+    //
+    // The existing hardcoded composites (`input_trap`,
+    // `sudden_fullscreen_takeover`) remain as built-ins; a blocklist
+    // `composite:` rule supplements them without replacing them.
+    for rule in rules.composite_rules() {
+        let all_fire = rule
+            .conditions
+            .iter()
+            .all(|c| eval_condition(c, w, &signals));
+        if all_fire {
+            score += rule.weight;
+            signals.push(rule.name.clone());
+        }
     }
 
     // Clamp negative scores to 0 (a user-initiated benign window
@@ -735,6 +756,29 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         categories: categories::categories_of(&signals),
         signals,
         matched_rule,
+    }
+}
+
+/// Evaluate one [`rules::CompositeCondition`] for a window and its already-
+/// computed signal list. Called from `classify()` after all individual signals
+/// have been collected so `has_*` conditions are meaningful.
+fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[String]) -> bool {
+    use rules::CompositeCondition as C;
+    let has_sig = |s: &str| signals.iter().any(|x| x == s);
+    match c {
+        C::Fullscreen => w.coverage_percent >= FULLSCREEN_COVERAGE,
+        C::Topmost => w.topmost,
+        C::NoCloseButton => !w.has_close_button,
+        C::BlocksInput => w.blocks_input,
+        C::Unsolicited => w.origin == Origin::Unsolicited,
+        C::UserInitiated => w.origin == Origin::UserInitiated,
+        C::VeryNew => w.age_ms > 0 && w.age_ms < 1000,
+        C::AlertShaped => {
+            w.coverage_percent >= FULLSCREEN_COVERAGE || w.blocks_input || !w.has_close_button
+        }
+        C::HasBlocklistTitle => has_sig("blocklist_title"),
+        C::HasPhoneNumber => has_sig("phone_number"),
+        C::HasBlocklistPhone => has_sig("blocklist_phone"),
     }
 }
 
@@ -826,7 +870,7 @@ pub struct EnforceOutcome {
     /// Additive score (≥ 0) that produced the decision.
     pub score: i32,
     /// Signal names that contributed to the score.
-    pub signals: Vec<&'static str>,
+    pub signals: Vec<String>,
     /// Blocklist rule that matched, if any.
     pub matched_rule: Option<String>,
     /// True only when the controller actually dismissed the window.
@@ -933,7 +977,7 @@ mod tests {
         let v = classify(&w, &rules);
         assert_eq!(v.decision, Decision::Block);
         assert_eq!(v.matched_rule.as_deref(), Some("win-prize-now.example"));
-        assert!(v.signals.contains(&"blocklist_host"));
+        assert!(v.signals.iter().any(|s| s == "blocklist_host"));
     }
 
     #[test]
@@ -1010,7 +1054,7 @@ mod tests {
         let v = classify(&w, &rules);
         // Only the title hit (40) fires → below suspicious threshold.
         assert_eq!(v.decision, Decision::Allow, "score={}", v.score);
-        assert!(v.signals.contains(&"blocklist_title"));
+        assert!(v.signals.iter().any(|s| s == "blocklist_title"));
     }
 
     #[test]
@@ -1065,7 +1109,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            !v.signals.contains(&"very_new"),
+            !v.signals.iter().any(|s| s == "very_new"),
             "age 0 must not be very_new"
         );
         assert_eq!(v.score, 0);
@@ -1084,7 +1128,7 @@ mod tests {
             age_ms: 300,
         };
         let v = classify(&w, &Ruleset::default());
-        assert!(v.signals.contains(&"very_new"));
+        assert!(v.signals.iter().any(|s| s == "very_new"));
     }
 
     #[test]
@@ -1100,7 +1144,7 @@ mod tests {
             age_ms: 60_000,
         };
         let v = classify(&w, &Ruleset::default());
-        assert!(!v.signals.contains(&"very_new"));
+        assert!(!v.signals.iter().any(|s| s == "very_new"));
     }
 
     // ── phone-number signal (arxiv 1607.06891) ───────────────────
@@ -1136,7 +1180,7 @@ mod tests {
         };
         let v = classify(&scam, &Ruleset::default());
         assert!(
-            v.signals.contains(&"phone_number"),
+            v.signals.iter().any(|s| s == "phone_number"),
             "signals={:?}",
             v.signals
         );
@@ -1155,7 +1199,7 @@ mod tests {
         };
         let vb = classify(&benign, &Ruleset::default());
         assert!(
-            !vb.signals.contains(&"phone_number"),
+            !vb.signals.iter().any(|s| s == "phone_number"),
             "signals={:?}",
             vb.signals
         );
@@ -1262,7 +1306,7 @@ mod tests {
         };
         let v = classify(&w, &rules);
         assert!(
-            v.signals.contains(&"blocklist_title"),
+            v.signals.iter().any(|s| s == "blocklist_title"),
             "homoglyph title evaded the blocklist: {:?}",
             v.signals
         );
@@ -1283,7 +1327,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            v.signals.contains(&"phone_number"),
+            v.signals.iter().any(|s| s == "phone_number"),
             "signals={:?}",
             v.signals
         );
@@ -1301,7 +1345,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            v.signals.contains(&"mixed_script"),
+            v.signals.iter().any(|s| s == "mixed_script"),
             "signals={:?}",
             v.signals
         );
@@ -1318,7 +1362,8 @@ mod tests {
         };
         assert!(classify(&w, &Ruleset::default())
             .signals
-            .contains(&"mixed_script"));
+            .iter()
+            .any(|s| s == "mixed_script"));
 
         // A Cyrillic word only in the *path* of a Latin host must NOT
         // fire (the check is scoped to the host).
@@ -1329,7 +1374,8 @@ mod tests {
         };
         assert!(!classify(&w2, &Ruleset::default())
             .signals
-            .contains(&"mixed_script"));
+            .iter()
+            .any(|s| s == "mixed_script"));
     }
 
     #[test]
@@ -1346,7 +1392,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            !v.signals.contains(&"mixed_script"),
+            !v.signals.iter().any(|s| s == "mixed_script"),
             "JP+Latin title falsely flagged: {:?}",
             v.signals
         );
@@ -1377,7 +1423,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            v.signals.contains(&"whole_script_confusable"),
+            v.signals.iter().any(|s| s == "whole_script_confusable"),
             "expected whole_script_confusable in {:?}",
             v.signals
         );
@@ -1395,7 +1441,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            v.signals.contains(&"whole_script_confusable"),
+            v.signals.iter().any(|s| s == "whole_script_confusable"),
             "expected whole_script_confusable from host in {:?}",
             v.signals
         );
@@ -1426,7 +1472,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            !v.signals.contains(&"whole_script_confusable"),
+            !v.signals.iter().any(|s| s == "whole_script_confusable"),
             "legitimate Cyrillic text falsely flagged: {:?}",
             v.signals
         );
@@ -1444,7 +1490,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            v.signals.contains(&"bidi_override"),
+            v.signals.iter().any(|s| s == "bidi_override"),
             "signals={:?}",
             v.signals
         );
@@ -1468,7 +1514,8 @@ mod tests {
             assert!(
                 !classify(&w, &Ruleset::default())
                     .signals
-                    .contains(&"bidi_override"),
+                    .iter()
+                    .any(|s| s == "bidi_override"),
                 "{title:?} wrongly flagged"
             );
         }
@@ -1486,7 +1533,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            v.signals.contains(&"mixed_number_systems"),
+            v.signals.iter().any(|s| s == "mixed_number_systems"),
             "signals={:?}",
             v.signals
         );
@@ -1501,7 +1548,7 @@ mod tests {
             ..Default::default()
         };
         let v = classify(&w, &Ruleset::default());
-        assert!(!v.signals.contains(&"mixed_number_systems"));
+        assert!(!v.signals.iter().any(|s| s == "mixed_number_systems"));
     }
 
     #[test]
@@ -1514,7 +1561,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            !v.signals.contains(&"mixed_number_systems"),
+            !v.signals.iter().any(|s| s == "mixed_number_systems"),
             "JP full-width+ASCII falsely flagged: {:?}",
             v.signals
         );
@@ -1531,7 +1578,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            v.signals.contains(&"excessive_combining_marks"),
+            v.signals.iter().any(|s| s == "excessive_combining_marks"),
             "signals={:?}",
             v.signals
         );
@@ -1546,7 +1593,7 @@ mod tests {
             ..Default::default()
         };
         let v = classify(&w, &Ruleset::default());
-        assert!(!v.signals.contains(&"excessive_combining_marks"));
+        assert!(!v.signals.iter().any(|s| s == "excessive_combining_marks"));
     }
 
     // ── compat_chars_present (enclosed letters, C8-8) ─────────────
@@ -1562,7 +1609,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            v.signals.contains(&"compat_chars_present"),
+            v.signals.iter().any(|s| s == "compat_chars_present"),
             "signals={:?}",
             v.signals
         );
@@ -1592,7 +1639,7 @@ mod tests {
             ..Default::default()
         };
         let v = classify(&w, &Ruleset::default());
-        assert!(!v.signals.contains(&"compat_chars_present"));
+        assert!(!v.signals.iter().any(|s| s == "compat_chars_present"));
     }
 
     #[test]
@@ -1607,7 +1654,7 @@ mod tests {
         };
         let v = classify(&w, &rules);
         assert!(
-            v.signals.contains(&"blocklist_title"),
+            v.signals.iter().any(|s| s == "blocklist_title"),
             "normalized enclosed letters should match blocklist: {:?}",
             v.signals
         );
@@ -1626,7 +1673,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            v.signals.contains(&"brand_impersonation"),
+            v.signals.iter().any(|s| s == "brand_impersonation"),
             "signals={:?}",
             v.signals
         );
@@ -1651,7 +1698,7 @@ mod tests {
             };
             let v = classify(&w, &Ruleset::default());
             assert!(
-                !v.signals.contains(&"brand_impersonation"),
+                !v.signals.iter().any(|s| s == "brand_impersonation"),
                 "{host} wrongly flagged: {:?}",
                 v.signals
             );
@@ -1668,7 +1715,8 @@ mod tests {
         };
         assert!(!classify(&w, &Ruleset::default())
             .signals
-            .contains(&"brand_impersonation"));
+            .iter()
+            .any(|s| s == "brand_impersonation"));
     }
 
     #[test]
@@ -1683,7 +1731,7 @@ mod tests {
             ..Default::default()
         };
         let v = classify(&w, &Ruleset::default());
-        assert!(v.signals.contains(&"brand_impersonation"));
+        assert!(v.signals.iter().any(|s| s == "brand_impersonation"));
         assert_ne!(v.decision, Decision::Block);
     }
 
@@ -1706,7 +1754,7 @@ mod tests {
             };
             let v = classify(&w, &Ruleset::default());
             assert!(
-                v.signals.contains(&"combosquat_brand"),
+                v.signals.iter().any(|s| s == "combosquat_brand"),
                 "{host} should be a combosquat: {:?}",
                 v.signals
             );
@@ -1728,7 +1776,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            v.signals.contains(&"combosquat_brand"),
+            v.signals.iter().any(|s| s == "combosquat_brand"),
             "homoglyph combosquat should fire: {:?}",
             v.signals
         );
@@ -1753,7 +1801,7 @@ mod tests {
             };
             let v = classify(&w, &Ruleset::default());
             assert!(
-                !v.signals.contains(&"combosquat_brand"),
+                !v.signals.iter().any(|s| s == "combosquat_brand"),
                 "{host} wrongly flagged as combosquat: {:?}",
                 v.signals
             );
@@ -1771,7 +1819,7 @@ mod tests {
             ..Default::default()
         };
         let v = classify(&w, &Ruleset::default());
-        assert!(v.signals.contains(&"combosquat_brand"));
+        assert!(v.signals.iter().any(|s| s == "combosquat_brand"));
         assert_ne!(v.decision, Decision::Block);
     }
 
@@ -1790,12 +1838,12 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            v.signals.contains(&"phone_number"),
+            v.signals.iter().any(|s| s == "phone_number"),
             "precondition: {:?}",
             v.signals
         );
         assert!(
-            v.signals.contains(&"remote_access_lure"),
+            v.signals.iter().any(|s| s == "remote_access_lure"),
             "expected remote_access_lure; got {:?}",
             v.signals
         );
@@ -1814,8 +1862,8 @@ mod tests {
             ..Default::default()
         };
         let v = classify(&w, &rules);
-        assert!(v.signals.contains(&"blocklist_title"));
-        assert!(v.signals.contains(&"remote_access_lure"));
+        assert!(v.signals.iter().any(|s| s == "blocklist_title"));
+        assert!(v.signals.iter().any(|s| s == "remote_access_lure"));
     }
 
     #[test]
@@ -1834,7 +1882,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            !v.signals.contains(&"remote_access_lure"),
+            !v.signals.iter().any(|s| s == "remote_access_lure"),
             "legit remote tool wrongly flagged: {:?}",
             v.signals
         );
@@ -1856,7 +1904,7 @@ mod tests {
             ..Default::default()
         };
         let v = classify(&w, &Ruleset::default());
-        assert!(v.signals.contains(&"remote_access_lure"));
+        assert!(v.signals.iter().any(|s| s == "remote_access_lure"));
         assert_ne!(v.decision, Decision::Block, "score={}", v.score);
     }
 
@@ -1872,7 +1920,7 @@ mod tests {
         };
         let v = classify(&w, &rules);
         assert!(
-            v.signals.contains(&"blocklist_phone"),
+            v.signals.iter().any(|s| s == "blocklist_phone"),
             "expected blocklist_phone; got {:?}",
             v.signals
         );
@@ -1897,8 +1945,8 @@ mod tests {
             ..Default::default()
         };
         let v = classify(&w, &rules);
-        assert!(v.signals.contains(&"blocklist_phone"));
-        assert!(!v.signals.contains(&"phone_number"));
+        assert!(v.signals.iter().any(|s| s == "blocklist_phone"));
+        assert!(!v.signals.iter().any(|s| s == "phone_number"));
     }
 
     #[test]
@@ -1911,7 +1959,7 @@ mod tests {
             ..Default::default()
         };
         let v = classify(&w, &rules);
-        assert!(!v.signals.contains(&"blocklist_phone"));
+        assert!(!v.signals.iter().any(|s| s == "blocklist_phone"));
     }
 
     // ── §2.2 partial-window deserialization (spec conformance) ───
@@ -1954,7 +2002,11 @@ mod tests {
             ..Default::default()
         };
         let v = classify(&w, &Ruleset::default());
-        assert!(v.signals.contains(&"input_trap"), "signals={:?}", v.signals);
+        assert!(
+            v.signals.iter().any(|s| s == "input_trap"),
+            "signals={:?}",
+            v.signals
+        );
         assert!(v.categories.contains(&DarkPatternCategory::ForcedAction));
     }
 
@@ -1971,13 +2023,15 @@ mod tests {
         };
         assert!(!classify(&w, &Ruleset::default())
             .signals
-            .contains(&"input_trap"));
+            .iter()
+            .any(|s| s == "input_trap"));
         // Missing fullscreen → not a lock.
         w.topmost = true;
         w.coverage_percent = 40;
         assert!(!classify(&w, &Ruleset::default())
             .signals
-            .contains(&"input_trap"));
+            .iter()
+            .any(|s| s == "input_trap"));
     }
 
     #[test]
@@ -1998,7 +2052,7 @@ mod tests {
             age_ms: 0,
         };
         let v = classify(&w, &Ruleset::default());
-        assert!(v.signals.contains(&"input_trap"));
+        assert!(v.signals.iter().any(|s| s == "input_trap"));
         assert_eq!(v.decision, Decision::Suspicious, "score={}", v.score);
         assert!(v.score < BLOCK_THRESHOLD);
     }
@@ -2019,7 +2073,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            v.signals.contains(&"sudden_fullscreen_takeover"),
+            v.signals.iter().any(|s| s == "sudden_fullscreen_takeover"),
             "signals={:?}",
             v.signals
         );
@@ -2038,13 +2092,15 @@ mod tests {
         };
         assert!(!classify(&w, &Ruleset::default())
             .signals
-            .contains(&"sudden_fullscreen_takeover"));
+            .iter()
+            .any(|s| s == "sudden_fullscreen_takeover"));
         // Unknown origin (helper couldn't attribute) → must not fire.
         w.age_ms = 200;
         w.origin = Origin::Unknown;
         assert!(!classify(&w, &Ruleset::default())
             .signals
-            .contains(&"sudden_fullscreen_takeover"));
+            .iter()
+            .any(|s| s == "sudden_fullscreen_takeover"));
     }
 
     #[test]
@@ -2283,7 +2339,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            v.signals.contains(&"clickfix_instruction"),
+            v.signals.iter().any(|s| s == "clickfix_instruction"),
             "expected clickfix_instruction; got {:?}",
             v.signals
         );
@@ -2307,7 +2363,7 @@ mod tests {
         };
         let v = classify(&w, &Ruleset::default());
         assert!(
-            !v.signals.contains(&"clickfix_instruction"),
+            !v.signals.iter().any(|s| s == "clickfix_instruction"),
             "should not fire on non-alert-shaped window; got {:?}",
             v.signals
         );
@@ -2326,7 +2382,7 @@ mod tests {
             ..Default::default()
         };
         let v = classify(&w, &Ruleset::default());
-        assert!(v.signals.contains(&"clickfix_instruction"));
+        assert!(v.signals.iter().any(|s| s == "clickfix_instruction"));
     }
 
     #[test]
@@ -2341,7 +2397,7 @@ mod tests {
             ..Default::default()
         };
         let v = classify(&w, &Ruleset::default());
-        assert!(v.signals.contains(&"clickfix_instruction"));
+        assert!(v.signals.iter().any(|s| s == "clickfix_instruction"));
     }
 
     #[test]

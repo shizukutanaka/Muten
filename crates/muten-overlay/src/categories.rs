@@ -113,13 +113,15 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
 
 /// Collect the distinct dark-pattern categories present in a set of
 /// signals, sorted and deduplicated for a stable audit representation.
+/// Accepts any slice whose elements implement `AsRef<str>` — including
+/// `&[&'static str]` (scareware), `&[String]` (overlay classifier), or
+/// `&[&&str]` (test literals) — so callers don't need to homogenize types.
 #[must_use]
-pub fn categories_of<'a, I>(signals: I) -> Vec<DarkPatternCategory>
-where
-    I: IntoIterator<Item = &'a &'a str>,
-{
-    let mut cats: Vec<DarkPatternCategory> =
-        signals.into_iter().filter_map(|s| category_of(s)).collect();
+pub fn categories_of<S: AsRef<str>>(signals: &[S]) -> Vec<DarkPatternCategory> {
+    let mut cats: Vec<DarkPatternCategory> = signals
+        .iter()
+        .filter_map(|s| category_of(s.as_ref()))
+        .collect();
     cats.sort_unstable();
     cats.dedup();
     cats
@@ -223,25 +225,25 @@ mod tests {
     fn categories_dedup_and_sort() {
         // Two interface_interference signals + one forced_action →
         // [forced_action, interface_interference] (sorted, deduped).
-        let signals = ["phone_number", "blocklist_title", "blocks_input"];
-        let refs: Vec<&&str> = signals.iter().collect();
-        let cats = categories_of(refs);
-        assert_eq!(
-            cats,
-            vec![
-                DarkPatternCategory::InterfaceInterference,
-                DarkPatternCategory::ForcedAction,
-            ]
-            .into_iter()
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>()
-        );
+        let signals: &[&str] = &["phone_number", "blocklist_title", "blocks_input"];
+        let cats = categories_of(signals);
+        // sorted: ForcedAction < InterfaceInterference (alphabetical in enum)
+        assert!(cats.contains(&DarkPatternCategory::ForcedAction));
+        assert!(cats.contains(&DarkPatternCategory::InterfaceInterference));
+        assert_eq!(cats.len(), 2);
+    }
+
+    #[test]
+    fn categories_of_works_with_owned_strings() {
+        let signals: Vec<String> = vec!["blocks_input".to_string(), "no_close_button".to_string()];
+        let cats = categories_of(&signals);
+        assert!(cats.contains(&DarkPatternCategory::ForcedAction));
+        assert!(cats.contains(&DarkPatternCategory::Obstruction));
     }
 
     #[test]
     fn empty_signals_no_categories() {
-        let none: Vec<&&str> = Vec::new();
+        let none: &[&str] = &[];
         assert!(categories_of(none).is_empty());
     }
 

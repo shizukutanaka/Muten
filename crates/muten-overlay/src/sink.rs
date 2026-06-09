@@ -32,6 +32,51 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+/// Canonical JSON serialization: sorts object keys lexicographically at every
+/// nesting level, uses no whitespace. This is the deterministic byte form fed
+/// into [`link_hash`] for the `detail` field, so the hash is independent of
+/// `serde_json`'s internal map ordering (which could change between feature
+/// flags or versions). Scalars, arrays, and strings use `serde_json`'s own
+/// encoding for correctness (proper Unicode escaping, compact number form).
+fn canonical_json(v: &serde_json::Value) -> Vec<u8> {
+    let mut out = Vec::new();
+    write_canonical(&mut out, v);
+    out
+}
+
+fn write_canonical(out: &mut Vec<u8>, v: &serde_json::Value) {
+    use serde_json::Value;
+    match v {
+        Value::Object(map) => {
+            out.push(b'{');
+            let mut pairs: Vec<(&str, &Value)> = map.iter().map(|(k, v)| (k.as_str(), v)).collect();
+            pairs.sort_unstable_by_key(|(k, _)| *k);
+            for (i, (key, val)) in pairs.iter().enumerate() {
+                if i > 0 {
+                    out.push(b',');
+                }
+                // Use serde_json for string key encoding (proper escaping).
+                out.extend_from_slice(serde_json::to_string(key).unwrap_or_default().as_bytes());
+                out.push(b':');
+                write_canonical(out, val);
+            }
+            out.push(b'}');
+        }
+        Value::Array(arr) => {
+            out.push(b'[');
+            for (i, item) in arr.iter().enumerate() {
+                if i > 0 {
+                    out.push(b',');
+                }
+                write_canonical(out, item);
+            }
+            out.push(b']');
+        }
+        // Scalars: serde_json's encoding is canonical for null/bool/number/string.
+        other => out.extend_from_slice(serde_json::to_string(other).unwrap_or_default().as_bytes()),
+    }
+}
+
 /// First event's `prev_hash`: 32 zero bytes as hex.
 pub const GENESIS: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
@@ -54,7 +99,7 @@ pub fn link_hash(
     h.update(b"\x00");
     h.update(window_id.as_bytes());
     h.update(b"\x00");
-    h.update(serde_json::to_vec(detail).unwrap_or_default());
+    h.update(canonical_json(detail));
     h.update(b"\x00");
     h.update(seq.to_be_bytes());
     hex::encode(h.finalize())
@@ -519,6 +564,30 @@ mod tests {
         assert!(
             ChainedFileSink::open(&p).is_err(),
             "tampered prefix must still refuse even with a torn tail"
+        );
+    }
+
+    // ── C6-4: canonical JSON ─────────────────────────────────────
+
+    #[test]
+    fn canonical_json_sorts_object_keys() {
+        // Keys in reverse alphabetical order must serialize alphabetically.
+        let v = serde_json::json!({"z": 3, "a": 1, "m": [{"b": 2, "a": 1}]});
+        let out = std::str::from_utf8(&canonical_json(&v))
+            .unwrap()
+            .to_string();
+        assert_eq!(out, r#"{"a":1,"m":[{"a":1,"b":2}],"z":3}"#);
+    }
+
+    #[test]
+    fn link_hash_is_stable_regardless_of_key_insertion_order() {
+        // Even if serde_json's map ordering changed, canonical_json enforces
+        // the same sorted serialization so the hash is always identical.
+        let d1 = serde_json::json!({"z": 9, "a": 1});
+        let d2 = serde_json::json!({"a": 1, "z": 9});
+        assert_eq!(
+            link_hash("prev", 1_000, "kind", "w1", &d1, 0),
+            link_hash("prev", 1_000, "kind", "w1", &d2, 0),
         );
     }
 

@@ -81,6 +81,12 @@ fn paint(text: &str, code: &str, on: bool) -> String {
 #[command(
     name = "muten-overlay",
     version,
+    long_version = concat!(
+        env!("CARGO_PKG_VERSION"),
+        " (commit ",
+        env!("MUTEN_GIT_COMMIT"),
+        ")"
+    ),
     about = "muten — overlay classifier (dry-run)",
     after_help = EXIT_CODES
 )]
@@ -104,6 +110,13 @@ enum Cmd {
         /// are unchanged.
         #[arg(long)]
         json: bool,
+        /// NDJSON streaming mode: read one JSON OverlayWindow per line
+        /// from the window argument (use `-` for stdin). Each line
+        /// produces one JSON verdict line on stdout. Exit code is the
+        /// worst verdict seen (0 all-Allow, 5 any-Suspicious, 6 any-Block).
+        /// Empty lines are skipped. Implies JSON output.
+        #[arg(long)]
+        stream: bool,
     },
     /// Show a summary of a blocklist file (counts + sanity check).
     Rules { file: PathBuf },
@@ -179,7 +192,14 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             window,
             rules,
             json,
-        } => cmd_classify(&window, rules.as_deref(), json),
+            stream,
+        } => {
+            if stream {
+                cmd_classify_stream(&window, rules.as_deref())
+            } else {
+                cmd_classify(&window, rules.as_deref(), json)
+            }
+        }
         Cmd::Rules { file } => cmd_rules(&file),
         Cmd::Scareware {
             repeats,
@@ -277,6 +297,52 @@ fn cmd_classify(
         Suspicious => ExitCode::from(5),
         Block => ExitCode::from(6),
     })
+}
+
+/// NDJSON streaming variant: read one OverlayWindow JSON per line,
+/// emit one verdict JSON per line. Exit code is worst verdict seen.
+fn cmd_classify_stream(window: &str, rules: Option<&std::path::Path>) -> Result<ExitCode, String> {
+    use std::io::{BufRead, BufReader};
+
+    let rs = load_rules(rules)?;
+
+    let reader: Box<dyn BufRead> = if window == "-" {
+        Box::new(BufReader::new(std::io::stdin()))
+    } else {
+        let f = std::fs::File::open(window).map_err(|e| format!("opening {window}: {e}"))?;
+        Box::new(BufReader::new(f))
+    };
+
+    let mut worst_code: u8 = 0;
+    for (lineno, line) in reader.lines().enumerate() {
+        let line = line.map_err(|e| format!("line {lineno}: read error: {e}"))?;
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let w: OverlayWindow = serde_json::from_str(line)
+            .map_err(|e| format!("line {lineno}: parsing window JSON: {e}"))?;
+        let v = classify(&w, &rs);
+        let code = match v.decision {
+            Decision::Allow => 0u8,
+            Decision::Suspicious => 5,
+            Decision::Block => 6,
+        };
+        if code > worst_code {
+            worst_code = code;
+        }
+        let mut val =
+            serde_json::to_value(&v).map_err(|e| format!("line {lineno}: serializing: {e}"))?;
+        if let Some(obj) = val.as_object_mut() {
+            obj.insert("explanation".into(), serde_json::Value::String(v.explain()));
+        }
+        println!(
+            "{}",
+            serde_json::to_string(&val)
+                .map_err(|e| format!("line {lineno}: encoding json: {e}"))?
+        );
+    }
+    Ok(ExitCode::from(worst_code))
 }
 
 fn cmd_rules(file: &std::path::Path) -> Result<ExitCode, String> {

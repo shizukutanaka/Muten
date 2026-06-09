@@ -5,6 +5,63 @@ Follows [Keep a Changelog](https://keepachangelog.com/) and
 the crate that adds the "screen" half of muten's v0.4.0 endpoint
 environment enforcement (scam-overlay + rogue-AV detection).
 
+## [0.6.0] — unreleased
+
+Composite AND-condition rules, canonical audit-chain hashing, NDJSON
+streaming classify, and build-info version. **API break**: `Verdict.signals`
+and `EnforceOutcome.signals` change from `Vec<&'static str>` to `Vec<String>`
+(required to accommodate operator-named composite signals; minor version bump
+per semver for a pre-1.0 crate). No new dependencies. All constraints preserved:
+offline, pure, `forbid(unsafe_code)`, MSRV 1.75, 274 tests.
+
+### Added
+- **Composite AND-condition rules** (`composite: <name> <weight> <cond1> …`
+  in the blocklist; C5-2). A blocklist line like
+  `composite: kiosk_lockdown 60 fullscreen topmost blocks_input unsolicited`
+  fires when **all** listed conditions hold simultaneously, adds `weight` to the
+  score, and pushes the operator-chosen `name` into the `signals` list. The 11
+  supported conditions cover window geometry, origin, existing blocklist signals,
+  and phone presence. Rules with zero recognized conditions are silently dropped.
+  Allows operators to express YARA/Sigma-style intent without code changes;
+  condition names map cleanly to `CompositeCondition` variants in `rules.rs`.
+  Public API: `rules::{CompositeCondition, CompositeRule}`,
+  `Ruleset::{composite_count, composite_rules}`. (C5-2.)
+- **NDJSON streaming classify** (`classify --stream`; M4). When `--stream` is
+  set, the `window` argument is read line-by-line (use `-` for stdin). Each
+  non-empty line is parsed as an `OverlayWindow` JSON object; one verdict JSON
+  object is written to stdout per line (NDJSON format, includes `explanation`).
+  Exit code is the worst verdict seen (0 all-Allow, 5 any-Suspicious, 6
+  any-Block). Zero-allocation per-line path; directly consumable by
+  `jq`, Elastic, Splunk, and any SIEM with NDJSON ingest. (M4.)
+- **Build-info in `--version`** (`build.rs`; M6). `muten-overlay --version`
+  now prints `0.6.0 (commit abc1234)`. A `build.rs` captures the short git
+  commit hash at compile time via `git rev-parse --short HEAD`; the result is
+  embedded as the `MUTEN_GIT_COMMIT` compile-time env var. Falls back to
+  `"unknown"` in environments without git. `cargo:rerun-if-changed` is wired
+  to `.git/HEAD` and `.git/refs/heads/` so the version re-embeds on every
+  commit. (M6.)
+
+### Fixed
+- **Canonical JSON for `link_hash`** (C6-4). The audit-chain link hash used
+  `serde_json::to_vec(detail)` to serialize the `AuditEvent.detail` payload,
+  relying on serde_json's BTreeMap ordering. A new private `canonical_json()`
+  function now sorts object keys explicitly via a recursive visitor, making the
+  hash deterministic against any future serde_json representation change.
+  Existing log hashes are unchanged (serde_json without `preserve_order` already
+  uses BTreeMap). Two new tests confirm determinism and key-insertion-order
+  stability.
+
+### Changed (breaking)
+- **`Verdict.signals: Vec<String>`** (was `Vec<&'static str>`). Required to
+  accommodate operator-named composite signals (which are `String` at runtime).
+  Callers using `.contains(&"signal_name")` must switch to
+  `.iter().any(|s| s == "signal_name")` or `.iter().any(|s| s.as_str() == "signal_name")`.
+- **`EnforceOutcome.signals: Vec<String>`** (was `Vec<&'static str>`). Same
+  reason; same migration path for callers.
+- **`categories_of` now generic** over `S: AsRef<str>`. Accepts
+  `&[&'static str]`, `&[String]`, `&[&&str]`, etc. without type homogenization.
+  Existing callers that passed `&[&str]` slices compile without change.
+
 ## [0.5.0] — unreleased
 
 Evasion-resistant detection + explainability. Additive and
