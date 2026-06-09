@@ -6,7 +6,7 @@
 > walks the **actual code surface** module by module, enumerates concrete
 > improvement points found by direct audit, and tracks their status.
 >
-> Target: `muten-overlay` v0.5.0 · audited 2026-06 · 247 tests.
+> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 280 tests.
 > Status: ✅ done · 🔧 fixed-this-pass · 🔻 planned · 🆕 newly-found · ⛔ out-of-scope (I3)
 > Invariants (every item respects): offline · pure functions over window
 > metadata · no ML/CV · `#![forbid(unsafe_code)]` · explainable additive
@@ -36,7 +36,7 @@ with priority (★–★★★).
 | B2 | ★★★ | Hard host block short-circuits; title is additive not auto-block | ✅ baseline |
 | B3 | ★★★ | Bounded-composite cap (lock 95 / takeover 85 < BLOCK) | ✅ v0.5.0 |
 | B4 | ★★ | Monotonicity + threshold property tests | ✅ baseline |
-| B5 | ★★★ | Composite **AND**-condition rules as first-class config (YARA/Sigma-style) | 🔻 C5-2 — next big feature |
+| B5 | ★★★ | Composite **AND**-condition rules as first-class config (YARA/Sigma-style) | ✅ v0.6.0 (C5-2) |
 | B6 | ★★ | Confidence-weighted signals (decay low-fidelity helper fields) | 🔻 C5-5 |
 | B7 | ★★ | Threshold rationale doc + audit-log-driven A/B of firing rates | 🔻 C5-1 (needs field data) |
 | B8 | ★ | Per-signal FP-rate aggregation from audit log | 🔻 C5-7 |
@@ -114,7 +114,7 @@ with priority (★–★★★).
 |---|----|-------------|--------|
 | I1 | ★★★ | Deterministic plain-language sentence from signals | ✅ v0.5.0 |
 | I2 | ★★ | Every shipped signal has an `explain()` phrase (no raw-name leak) | 🔧 added clickfix/combosquat/remote_access phrases |
-| I3 | ★ | Composite-rule wording when B5 lands | 🔻 with C5-2 |
+| I3 | ★ | Composite-rule wording in explain() | ✅ v0.6.0 (with B5) |
 
 ## J. Audit chain (`sink.rs`)
 
@@ -154,9 +154,9 @@ with priority (★–★★★).
 | M1 | ★★ | `--json` on all decision subcommands; stdin `-`; stable exit codes | ✅ v0.5.0 |
 | M2 | ★★ | NO_COLOR-compliant colored decisions | ✅ v0.5.0 |
 | M3 | ★★ | Exit codes documented in `--help` | ✅ v0.5.0 |
-| M4 | ★★ | NDJSON streaming classify (1 window/line) | 🔻 C4-2/3 |
+| M4 | ★★ | NDJSON streaming classify (1 window/line) | ✅ v0.6.0 |
 | M5 | ★ | Shell completions / man page | ⛔ needs `clap_complete`/`clap_mangen` deps (no-new-deps) |
-| M6 | ★ | `--version` with commit/date build info | 🔻 C4-9 |
+| M6 | ★ | `--version` with commit/date build info | ✅ v0.6.0 |
 
 ## N. Supply chain / packaging (`Cargo.toml`, CI, `deny.toml`)
 

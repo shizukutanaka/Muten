@@ -10,7 +10,9 @@ fn main() {
         .unwrap_or_else(|| "unknown".to_string());
 
     println!("cargo:rustc-env=MUTEN_GIT_COMMIT={git_hash}");
-    // Rebuild when the HEAD pointer changes (new commit or branch switch).
-    println!("cargo:rerun-if-changed=.git/HEAD");
-    println!("cargo:rerun-if-changed=.git/refs/heads/");
+    // .git lives at the repo root, two levels above this crate's Cargo.toml.
+    // Relative paths are resolved from the manifest dir (CARGO_MANIFEST_DIR),
+    // so these point to the correct .git/ even in a workspace layout.
+    println!("cargo:rerun-if-changed=../../.git/HEAD");
+    println!("cargo:rerun-if-changed=../../.git/refs/heads/");
 }

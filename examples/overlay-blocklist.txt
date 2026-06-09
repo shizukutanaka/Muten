@@ -202,6 +202,51 @@ host: microsoft-security-alert.example
 host: windows-defender-alert.example
 
 # ─────────────────────────────────────────────────────────────────
+# COMPOSITE AND-CONDITION RULES  (composite:)
+#
+# Grammar:  composite: <name> <weight> <cond1> [<cond2> …]
+#
+# All conditions must hold simultaneously (AND logic). When all fire:
+#   • <weight> is added to the suspicion score
+#   • <name> is appended to the verdict's signals list and explain()
+#
+# Available conditions:
+#   fullscreen       window covers ≥85% of the display
+#   topmost          window is always-on-top
+#   no_close_button  window has no usable close affordance
+#   blocks_input     window grabs all keyboard/pointer input (modal)
+#   unsolicited      window appeared with no user action
+#   user_initiated   window appeared after a user click/keypress
+#   very_new         window appeared 0 < age_ms < 1000 ms ago
+#   alert_shaped     fullscreen OR modal OR no_close_button
+#   has_blocklist_title  blocklist_title signal already fired
+#   has_phone_number     phone_number signal already fired
+#   has_blocklist_phone  blocklist_phone signal already fired
+#
+# BOUNDED-WEIGHT CONVENTION (FP-aversion):
+#   A composite covering only geometry/origin (no content tell) should
+#   keep the combined score below BLOCK_THRESHOLD (100). The built-in
+#   composites use weight 5 for exactly this reason. Add content-tell
+#   conditions (has_blocklist_title, has_phone_number) to justify higher
+#   weights. See docs/SPECIFICATION.md §6 for the threshold table.
+#
+# ─── ILLUSTRATIVE EXAMPLES — tune for your fleet, push via MDM ──────
+
+# A phone-number alert that is also full-screen and always-on-top is
+# a very strong tech-support-scam tell. Weight 50: even alone this
+# pushes a borderline Suspicious window well past Block.
+# composite: phone_overlay_lockdown 50 has_phone_number fullscreen topmost
+
+# A blocklisted title combined with a coercive shape: safe to weight
+# aggressively since the content tell (blocklist_title) is already
+# high-confidence.
+# composite: titled_coercive_overlay 40 has_blocklist_title no_close_button blocks_input
+
+# Unsolicited brand-new full-screen grab with no close button and a
+# blocklisted title — the shape of a classic tech-support pop-up.
+# composite: tss_popup_shape 60 unsolicited very_new fullscreen no_close_button has_blocklist_title
+
+# ─────────────────────────────────────────────────────────────────
 # KNOWN SCAM PHONE NUMBERS  (phone:)
 # A curated number that appears on a fake-alert screen is high-confidence
 # evidence wherever it shows up (it does not need the alert shape, unlike

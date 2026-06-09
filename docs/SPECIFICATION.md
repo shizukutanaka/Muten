@@ -125,6 +125,36 @@ line is a `host:` rule. Host matching strips invisibles and folds
 typosquat/homoglyph confusables; the **original** authored rule text is
 returned as `matched_rule`.
 
+### 5.1 Composite AND-condition rules (`composite:`)
+
+Grammar: `composite: <name> <weight> <cond1> [<cond2> …]`
+
+When **all** listed conditions hold simultaneously, `<weight>` is added to
+the suspicion score and `<name>` is appended to `Verdict.signals`. The name
+appears in `explain()` and the audit log. Rules with zero recognized conditions
+are silently dropped. Available condition tokens:
+
+| Token | Meaning |
+|---|---|
+| `fullscreen` | `coverage_percent ≥ FULLSCREEN_COVERAGE (85)` |
+| `topmost` | `topmost == true` |
+| `no_close_button` | `has_close_button == false` |
+| `blocks_input` | `blocks_input == true` |
+| `unsolicited` | `origin == Unsolicited` |
+| `user_initiated` | `origin == UserInitiated` |
+| `very_new` | `age_ms > 0 && age_ms < 1000` (age 0 = unknown, does not satisfy) |
+| `alert_shaped` | `fullscreen ∨ blocks_input ∨ no_close_button` |
+| `has_blocklist_title` | `blocklist_title` signal fired earlier in this `classify()` call |
+| `has_phone_number` | `phone_number` signal fired earlier in this `classify()` call |
+| `has_blocklist_phone` | `blocklist_phone` signal fired earlier in this `classify()` call |
+
+**Bounded-weight convention (FP-aversion):** a composite covering only
+geometry/origin (no content tell) SHOULD keep the total score below
+`BLOCK_THRESHOLD` (100). The built-in `input_trap` and
+`sudden_fullscreen_takeover` use weight 5 for this reason. Add content-tell
+conditions to justify higher weights (a blocklisted title is already
+high-confidence evidence).
+
 ## 6. Scareware (`assess(repeat_count, process_name, &Ruleset)`)
 
 Returns `Scareware` iff a known rogue-AV **process** matches
@@ -200,9 +230,29 @@ output and `--json` MUST stay plain so machine consumers are unaffected.
 Block (or any window blocked) · `7` Scareware · `1` error. These MUST be
 documented in `--help`.
 
-## 11. JSON output schema (`classify --json`)
+### 10.1 NDJSON streaming classify (`classify --stream`)
+
+`classify <path|-> --stream` reads one `OverlayWindow` JSON object per line
+from the given file or stdin (`-`). Each non-empty line produces one verdict
+JSON object on stdout (the same schema as `--json`, §11, including the
+`explanation` field). Empty lines MUST be skipped. A malformed line exits 1
+immediately. Exit code is the **worst** verdict seen across all lines: `0` if
+all Allow, `5` if any Suspicious and none Block, `6` if any Block. An entirely
+empty input stream exits 0 with no output. `--stream` implies JSON output;
+combining `--stream --json` is legal and has the same effect.
+
+### 10.2 `--version` build info
+
+`muten-overlay --version` prints `<version> (commit <hash>)` where `<hash>`
+is the short git commit hash embedded at compile time by `build.rs`. Falls
+back to `(commit unknown)` in environments without git.
+
+## 11. JSON output schema (`classify --json` / `--stream`)
 `{ decision: "allow|suspicious|block", score: int, signals: [string],
 categories: [string], matched_rule: string|null, explanation: string }`.
+`signals` is a `Vec<String>` (named signal keys plus any operator-defined
+composite rule names from §5.1). `categories` values are snake_case strings
+from the Gray et al. (2018) dark-pattern taxonomy.
 
 ## 12. Non-goals (I3)
 ML/CV black boxes; network/certificate/WHOIS signals; process termination
