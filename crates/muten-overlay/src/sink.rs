@@ -162,6 +162,45 @@ impl AuditSink for ChainedFileSink {
     }
 }
 
+/// Collect each event's stored `hash` (as leaf bytes) from a log, after
+/// verifying the chain's integrity. The Merkle tree is built over these
+/// per-event link hashes, so the root commits to the exact ordered set of
+/// events the chain already authenticates. Returns the chain's
+/// [`verify_chain`] error if the log does not verify.
+pub fn log_leaves(text: &str) -> Result<Vec<Vec<u8>>, ChainError> {
+    // Integrity gate first: a Merkle root over a tampered log would be
+    // meaningless. This also guarantees every line parses below.
+    verify_chain(text)?;
+    let mut leaves = Vec::new();
+    for raw in text.lines() {
+        if raw.trim().is_empty() {
+            continue;
+        }
+        let v: serde_json::Value =
+            serde_json::from_str(raw).map_err(|e| ChainError::InvalidJson(0, e.to_string()))?;
+        if let Some(h) = v.get("hash").and_then(|x| x.as_str()) {
+            leaves.push(h.as_bytes().to_vec());
+        }
+    }
+    Ok(leaves)
+}
+
+/// The RFC 6962 Merkle root over a verified log — a single 32-byte
+/// commitment to the whole ordered event set, suitable for publishing or
+/// signing out-of-band as an external anchor (see [`crate::merkle`]).
+/// Fails with the chain error if the log does not verify.
+pub fn merkle_root_of_log(text: &str) -> Result<String, ChainError> {
+    Ok(crate::merkle::merkle_root(&log_leaves(text)?))
+}
+
+/// An inclusion proof that the event at `seq` is committed by the Merkle
+/// root of this log, for compact third-party verification against an
+/// anchored root. `None` if `seq` is out of range; chain error if the log
+/// does not verify.
+pub fn inclusion_proof_for_seq(text: &str, seq: usize) -> Result<Option<Vec<String>>, ChainError> {
+    Ok(crate::merkle::inclusion_proof(&log_leaves(text)?, seq))
+}
+
 /// An error that can occur while opening or verifying the audit chain.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ChainError {
@@ -481,5 +520,63 @@ mod tests {
             ChainedFileSink::open(&p).is_err(),
             "tampered prefix must still refuse even with a torn tail"
         );
+    }
+
+    // ── Merkle anchoring (C6-2/3) ────────────────────────────────
+
+    #[test]
+    fn merkle_root_commits_to_every_event() {
+        let dir = TempDir::new().unwrap();
+        let p = dir.path().join("audit.log");
+        let sink = ChainedFileSink::open(&p).unwrap();
+        for id in ["w1", "w2", "w3", "w4", "w5"] {
+            sink.emit(&ev("overlay_blocked", id));
+        }
+        let text = std::fs::read_to_string(&p).unwrap();
+        let root = merkle_root_of_log(&text).unwrap();
+        assert_eq!(root.len(), 64); // hex SHA-256
+        let leaves = log_leaves(&text).unwrap();
+        assert_eq!(leaves.len(), 5);
+        // Every event has a verifiable inclusion proof against the root.
+        for (seq, leaf) in leaves.iter().enumerate() {
+            let proof = inclusion_proof_for_seq(&text, seq).unwrap().unwrap();
+            assert!(crate::merkle::verify_inclusion(leaf, seq, 5, &proof, &root));
+        }
+    }
+
+    #[test]
+    fn merkle_root_changes_if_an_event_is_altered() {
+        let dir = TempDir::new().unwrap();
+        let p = dir.path().join("audit.log");
+        let sink = ChainedFileSink::open(&p).unwrap();
+        sink.emit(&ev("overlay_blocked", "w1"));
+        sink.emit(&ev("overlay_blocked", "w2"));
+        let text = std::fs::read_to_string(&p).unwrap();
+        let root = merkle_root_of_log(&text).unwrap();
+
+        // A tampered log fails the integrity gate (no root computed) ...
+        let tampered = text.replacen("\"x\":\"w2\"", "\"x\":\"evil\"", 1);
+        assert!(merkle_root_of_log(&tampered).is_err());
+
+        // ... and an independently re-built log with a different event
+        // yields a different root.
+        let dir2 = TempDir::new().unwrap();
+        let p2 = dir2.path().join("audit.log");
+        let sink2 = ChainedFileSink::open(&p2).unwrap();
+        sink2.emit(&ev("overlay_blocked", "w1"));
+        sink2.emit(&ev("overlay_blocked", "DIFFERENT"));
+        let text2 = std::fs::read_to_string(&p2).unwrap();
+        assert_ne!(root, merkle_root_of_log(&text2).unwrap());
+    }
+
+    #[test]
+    fn merkle_root_of_empty_log_is_defined() {
+        // An empty (but valid) log has the RFC empty-tree root.
+        let root = merkle_root_of_log("").unwrap();
+        assert_eq!(
+            root,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert!(inclusion_proof_for_seq("", 0).unwrap().is_none());
     }
 }

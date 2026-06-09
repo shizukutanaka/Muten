@@ -124,8 +124,9 @@ with priority (★–★★★).
 | J2 | ★★★ | Detects edit/delete/reorder/backdate; refuses append onto broken log | ✅ baseline |
 | J3 | ★★★ | Torn-final-line crash recovery (vs tamper) | ✅ v0.5.0 |
 | J3b | ★★ | Hash-formula docs (`sink.rs` header, OVERLAY_BLOCKING.md) omitted `timestamp_ms` / separators — drift from code & spec §8 | 🔧 both corrected to match `link_hash` |
-| J4 | ★★★ | Merkle history tree / external root anchor (RFC 9162 / Rekor) | 🔻 C6-2/3 — next integrity feature |
-| J5 | ★★ | Signed checkpoints (Ed25519 device key) | 🔻 C6-10 |
+| J4 | ★★★ | Merkle tree: inclusion proofs + anchorable root (RFC 6962/9162) | 🔧 added (`merkle` module + `monitor` summary `merkle_root`) |
+| J4b | ★★★ | Merkle **consistency** proofs between tree sizes (RFC 9162 §2.1.4) | 🔻 deferred until rotation/checkpoint workflow |
+| J5 | ★★ | Signed checkpoints (Ed25519 device key over the root) | 🔻 C6-3/10 (root now exists to sign) |
 | J6 | ★ | Multi-file rotation w/ chain continuity | 🔻 C6-9 |
 
 ## K. OS controller / helpers (`controller.rs` + `installer/`)
@@ -203,7 +204,8 @@ with priority (★–★★★).
 1. **B5 / C5-2** — composite AND-condition rules (the one large detection
    feature not yet built; would let `coercive_overlay` and friends be
    expressed declaratively with explainability preserved).
-2. **J4 / C6-2/3** — Merkle history tree + external anchor for the audit
-   chain (strongest remaining integrity upgrade).
+2. **J4b / J5 / C6-3** — Merkle **consistency** proofs + an Ed25519-signed
+   checkpoint over the now-available root (completes the anchor story:
+   central truncation/tamper detection from signed checkpoints).
 3. **N4 / C3-4** — feature flags + `no_std` core split (broadens the
    library's consumers without touching detection logic).

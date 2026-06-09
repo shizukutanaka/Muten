@@ -339,15 +339,20 @@ RFC 9162, Schneier-Kelsey (TISSEC 1999), arXiv:2308.05557, arXiv:2605.00065。
    [根拠] tamper-evident logging の基礎。
    [muten] `sink.rs` 実装済(改行/削除/backdate 検出)。以下で検証性・root 保護を強化。
 
-2. 🔻 ★★★ **Merkle history tree で O(n)→O(log n) inclusion/consistency proof**
+2. ✅ ★★★ **Merkle history tree で O(n)→O(log n) inclusion proof** — 実装済(v0.5.0)
    [根拠] Crosby-Wallach (USENIX 2009) / RFC 9162 / transparency-dev/merkle, google/trillian。
-   [muten] 各行 hash を CT 葉 `H(0x00‖entry)` として再利用、right-edge のみ保持で追記 O(log n)。
-   `inclusion_proof(seq)` / `consistency_proof(old,new)` 追加。forbid(unsafe)/no_std 両立。
+   [muten] `merkle` モジュール実装。各行の link hash を CT 葉として RFC 6962 MTH(leaf/node
+   ドメイン分離 0x00/0x01、空木 = SHA-256(""))で root 計算、`inclusion_proof_for_seq` で
+   O(log n) audit path、`verify_inclusion`(RFC 9162 §2.1.3.2)で検証。RFC known-answer +
+   サイズ 1–33 の全数 round-trip でテスト。新規依存なし(sha2/hex 再利用)、forbid(unsafe)。
+   consistency proof(RFC 9162 §2.1.4)は rotation ワークフロー導入時まで延期。(C6-2 ✓DONE)
 
-3. 🔻 ★★★ **外部 root アンカーを C2SP checkpoint(signed note)で offline+MDM**
-   [根拠] C2SP/C2SP tlog-checkpoint(sigstore/Sunlight 本番)/ sigstore/rekor の STH。
-   [muten] sweep 末尾に `origin\ntree_size\nbase64(root)` + Ed25519 署名を別 security domain に保存、
-   MDM が consistency proof 検証で truncation/改竄を中央検出(roadmap C6-2 解消)。
+3. ✅ ★★★ **外部 root アンカー(publish/sign 可能な単一 commitment)** — 基盤実装済(v0.5.0)
+   [根拠] C2SP/C2SP tlog-checkpoint / sigstore/rekor の STH。
+   [muten] `merkle_root_of_log` が全イベントへの 32byte commitment を返し、`monitor --audit-log`
+   summary に `merkle_root` として出力。これを out-of-band で publish/署名すれば log 状態を
+   時点アンカーでき、元ファイル無しで改竄を root に対して証明可能。Ed25519 署名 checkpoint と
+   consistency proof による中央 truncation 検出は #2 の consistency proof と合わせ将来作業。(C6-3 基盤 ✓)
 
 4. 🆕 ★★★ **canonical serialization(JCS/CBOR)で hash 入力を確定**
    [根拠] RFC 8785 (JCS) / RFC 8949 §4.2 (CBOR canonical) — CT が葉入力をバイト厳密化する理由。

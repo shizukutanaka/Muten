@@ -12,6 +12,7 @@
 #![forbid(unsafe_code)]
 
 use clap::{Parser, Subcommand};
+use muten_overlay::sink::merkle_root_of_log;
 use muten_overlay::{
     classify, enforce, verify_chain, ChainedFileSink, Decision, EnumeratedWindow, MemorySink,
     Monitor, NullController, OverlayWindow, Ruleset, RunConfig,
@@ -451,6 +452,13 @@ fn cmd_monitor(
             }
             Err(e) => return Err(format!("written log failed verification: {e}")),
         };
+        // RFC 6962 Merkle root: a single commitment over every event,
+        // publishable/signable out-of-band as an external anchor.
+        let merkle_root =
+            merkle_root_of_log(&text).map_err(|e| format!("computing merkle root: {e}"))?;
+        if !json {
+            eprintln!("audit log: merkle_root={merkle_root}");
+        }
         if json {
             // With a persisted chain we don't hold events in memory;
             // emit a verifiable summary object instead.
@@ -459,6 +467,7 @@ fn cmd_monitor(
                 "dismissals": total,
                 "event_count": count,
                 "head": head,
+                "merkle_root": merkle_root,
                 "verified": true,
             });
             println!(

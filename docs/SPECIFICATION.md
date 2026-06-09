@@ -157,6 +157,22 @@ recoverable break: `open` drops the unverifiable partial tail and
 resumes from the surviving prefix **iff that prefix itself verifies**;
 any tampered *complete* line (which ends in a newline) still refuses.
 
+### 8.1 Merkle anchoring (`merkle`, RFC 6962 / RFC 9162)
+
+On top of the linear chain, `merkle_root_of_log(text)` computes the
+RFC 6962 **Merkle Tree Hash** over the ordered per-event link hashes
+(after `verify_chain` gates integrity), with leaf/node domain separation
+(`0x00`/`0x01` prefixes) and `SHA-256("")` as the empty-tree hash. The
+root is a single 32-byte commitment to the whole ordered event set;
+publishing or signing it out-of-band **anchors** the log's state at a
+point in time, so later tampering is provable against the anchored root
+without the original file. `inclusion_proof_for_seq` yields an
+`O(log n)` audit path proving a specific event is committed by the root,
+verified by `merkle::verify_inclusion` (RFC 9162 §2.1.3.2). The
+`monitor --audit-log` summary carries `merkle_root`. Consistency proofs
+between two tree sizes (RFC 9162 §2.1.4) are deferred until a rotation
+workflow needs them.
+
 ## 9. OS controller / helper protocol
 
 `OverlayController { name, enumerate() -> Result<[EnumeratedWindow]>,
@@ -173,7 +189,8 @@ All decision subcommands accept `--json`: `classify`/`scareware` emit a
 verdict object (the `classify` JSON additionally carries `explanation`);
 `enforce` emits a JSON array of per-window outcomes; `monitor` emits the
 audit-event document (or a verifiable summary `{sweeps, dismissals,
-event_count, head, verified}` when `--audit-log` is set). Window input
+event_count, head, merkle_root, verified}` when `--audit-log` is set,
+where `merkle_root` is the RFC 6962 anchor per §8.1). Window input
 accepts `-` for stdin. Human-readable `classify`/`enforce` decisions are
 color-coded (Block=red, Suspicious=yellow, Allow=green) **only** when
 stdout is a TTY and `$NO_COLOR` is unset (https://no-color.org); piped

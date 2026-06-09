@@ -13,6 +13,21 @@ changes meaning. No new dependencies; still offline, pure,
 `forbid(unsafe_code)`.
 
 ### Added
+- **Merkle anchoring for the audit log** (`merkle` module; RFC 6962 / RFC
+  9162). On top of the linear SHA-256 hash chain, the log can now produce a
+  single 32-byte **Merkle root** committing to the whole ordered event set, and
+  `O(log n)` **inclusion proofs** that a specific event is committed by that
+  root. The root is publishable/signable out-of-band as an external **anchor**
+  (the Certificate-Transparency / Trillian / Sigstore-Rekor model), so later
+  tampering is provable against the anchored root without the original file.
+  RFC 6962 leaf/node domain separation (`0x00`/`0x01`) and `SHA-256("")` empty
+  tree; verified against the RFC empty-tree and single-leaf known-answer
+  vectors plus exhaustive inclusion-proof round-trips for tree sizes 1–33. New
+  public API `merkle::{merkle_root, inclusion_proof, verify_inclusion}` and
+  `sink::{log_leaves, merkle_root_of_log, inclusion_proof_for_seq}`; the
+  `monitor --audit-log` summary now carries `merkle_root`. Pure, offline, no
+  new dependency (reuses `sha2`/`hex`). Consistency proofs between tree sizes
+  (RFC 9162 §2.1.4) deferred until a rotation workflow needs them. (C6-2/3.)
 - **`phone:` blocklist rule type + `blocklist_phone` signal** (weight 40,
   `InterfaceInterference` category). IT can now push a curated list of *known*
   scam phone numbers (`phone: 1-800-555-0100`) via MDM. A number on that list

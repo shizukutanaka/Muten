@@ -35,7 +35,7 @@ This repository currently contains the **screen** half:
 | scareware detection | Repeat-flood + rogue-AV process signals |
 | confusable folding | Defeats homoglyph/typosquat evasion (title **and** host) |
 | dark-pattern categories | Tags verdicts with Gray et al. (2018) strategies |
-| `Monitor` | Daemon sweep loop + tamper-evident SHA-256 audit chain |
+| `Monitor` | Daemon sweep loop + tamper-evident SHA-256 audit chain (RFC 6962 Merkle root + inclusion proofs) |
 | OS helpers | Windows (Win32), macOS (osascript), X11 (wmctrl), **Wayland** (wlroots) |
 | CLI | `classify` / `rules` / `scareware` / `enforce` / `monitor` |
 
@@ -87,7 +87,7 @@ produces these.
 
 ## Status
 
-`muten-overlay` v0.5.0 — 254 tests, `clippy -D warnings` clean, MSRV 1.75.0.
+`muten-overlay` v0.5.0 — 265 tests, `clippy -D warnings` clean, MSRV 1.75.0.
 CI runs format/lint/test, an MSRV build, and a supply-chain gate
 (cargo-audit + cargo-deny + gitleaks) on every PR.
 

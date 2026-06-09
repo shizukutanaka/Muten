@@ -33,6 +33,7 @@
 pub mod categories;
 pub mod confusables;
 pub mod controller;
+pub mod merkle;
 pub mod monitor;
 pub mod rules;
 pub mod scareware;
