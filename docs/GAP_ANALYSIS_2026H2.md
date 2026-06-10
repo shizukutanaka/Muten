@@ -6,7 +6,7 @@
 > walks the **actual code surface** module by module, enumerates concrete
 > improvement points found by direct audit, and tracks their status.
 >
-> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 292 tests.
+> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 299 tests.
 > Status: ✅ done · 🔧 fixed-this-pass · 🔻 planned · 🆕 newly-found · ⛔ out-of-scope (I3)
 > Invariants (every item respects): offline · pure functions over window
 > metadata · no ML/CV · `#![forbid(unsafe_code)]` · explainable additive
@@ -125,7 +125,7 @@ with priority (★–★★★).
 | J3 | ★★★ | Torn-final-line crash recovery (vs tamper) | ✅ v0.5.0 |
 | J3b | ★★ | Hash-formula docs (`sink.rs` header, OVERLAY_BLOCKING.md) omitted `timestamp_ms` / separators — drift from code & spec §8 | 🔧 both corrected to match `link_hash` |
 | J4 | ★★★ | Merkle tree: inclusion proofs + anchorable root (RFC 6962/9162) | 🔧 added (`merkle` module + `monitor` summary `merkle_root`) |
-| J4b | ★★★ | Merkle **consistency** proofs between tree sizes (RFC 9162 §2.1.4) | 🔻 deferred until rotation/checkpoint workflow |
+| J4b | ★★★ | Merkle **consistency** proofs between tree sizes (RFC 9162 §2.1.4) | ✅ v0.6.0 — `merkle::{consistency_proof, verify_consistency}` + `sink::consistency_proof_for_range`; 8 tests |
 | J5 | ★★ | Signed checkpoints (Ed25519 device key over the root) | 🔻 C6-3/10 (root now exists to sign) |
 | J6 | ★ | Multi-file rotation w/ chain continuity | 🔻 C6-9 |
 

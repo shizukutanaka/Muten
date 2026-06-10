@@ -246,6 +246,30 @@ pub fn inclusion_proof_for_seq(text: &str, seq: usize) -> Result<Option<Vec<Stri
     Ok(crate::merkle::inclusion_proof(&log_leaves(text)?, seq))
 }
 
+/// RFC 9162 §2.1.4 consistency proof over a verified log.
+///
+/// Returns the O(log n) sibling hashes proving that the first `first`
+/// events in `text` form the same Merkle tree as the full log.  The
+/// proof allows any holder of both Merkle roots (e.g. from two
+/// published anchors at different points in time) to verify that the
+/// newer log is an append-only extension of the older one — no new
+/// events were inserted or re-ordered.
+///
+/// Returns `None` when `first > event_count` (out of range).  An empty
+/// proof is returned (and is valid) when `first == 0` (empty prefix)
+/// or `first == event_count` (identical tree).  Chain error if the log
+/// does not verify.
+pub fn consistency_proof_for_range(
+    text: &str,
+    first: usize,
+) -> Result<Option<Vec<String>>, ChainError> {
+    let leaves = log_leaves(text)?;
+    if first > leaves.len() {
+        return Ok(None);
+    }
+    Ok(Some(crate::merkle::consistency_proof(first, &leaves)))
+}
+
 /// An error that can occur while opening or verifying the audit chain.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ChainError {

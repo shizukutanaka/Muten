@@ -83,6 +83,30 @@ MSRV 1.75, 286 tests.
   illustrative defaults — IT should extend with fleet-specific observations
   pushed via MDM. (G4.)
 
+- **International phone normalization** (`E6`). `match_phone()` now strips NANP
+  (+1), Japan (+81 → restores national trunk "0"), UK (+44), and Australia (+61)
+  country codes so that `+81 120 111 222` matches a blocklist entry for
+  `0120-111-222`. Normalization runs at both rule-parse time and match time, so
+  either the blocklist or the title may carry the country-code prefix
+  interchangeably. 7 new tests including a JP international-format end-to-end
+  match.
+- **Prometheus textfile metrics** (`monitor --metrics <path>`; L4). When
+  `--metrics` is given, `monitor` writes a Prometheus exposition file after
+  every sweep, consumable by node_exporter's `--collector.textfile`. Five
+  counters: `muten_overlay_sweeps_total`, `muten_overlay_events_dismissed_total`,
+  `muten_overlay_events_blocked_total`, `muten_overlay_events_suspicious_total`,
+  `muten_overlay_events_scareware_total`. Counts are parsed from the audit log's
+  `kind` field; file is written atomically (`.tmp` → rename). (L4.)
+- **RFC 9162 §2.1.4 Merkle consistency proofs** (`J4b`). `merkle::consistency_proof(first, leaves)`
+  generates an O(log n) proof that `leaves[..first]` is a prefix of the full
+  leaf set. `merkle::verify_consistency(first, n, proof, old_root, new_root)`
+  verifies the proof against two published roots without needing the original
+  leaves. `sink::consistency_proof_for_range(text, first)` wraps both over a
+  verified audit log. Any holder of two Merkle roots (e.g. from two SIEM records
+  or MDM pushes at different points in time) can now prove no events were
+  inserted or re-ordered between the snapshots. 8 new tests including exhaustive
+  coverage of all prefix sizes 1..=25 with tamper checks. (J4b.)
+
 ### Changed (breaking)
 - **`Verdict.signals: Vec<String>`** (was `Vec<&'static str>`). Required to
   accommodate operator-named composite signals (which are `String` at runtime).

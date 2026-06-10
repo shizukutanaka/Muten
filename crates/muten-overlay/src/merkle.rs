@@ -20,15 +20,18 @@
 //!    time, so later tampering is provable against the anchored root even
 //!    by someone who never held the original file.
 //!
-//! ## Scope (CLAUDE.md I3 — focused, not over-built)
+//! ## Operations provided
 //!
-//! This is the RFC 6962 **Merkle Tree Hash (MTH)** and **audit-path**
-//! (inclusion proof) only — the two operations that give inclusion proofs
-//! and an anchorable root. Consistency proofs between two tree sizes
-//! (RFC 9162 §2.1.4) are a natural next step but deliberately deferred
-//! until a rotation/checkpoint workflow needs them. Pure, offline,
-//! deterministic; reuses the crate's existing `sha2` + `hex`, no new
-//! dependency, and stays `#![forbid(unsafe_code)]`.
+//! - **Merkle Tree Hash (MTH)** — RFC 6962 §2.1 root over an ordered leaf set.
+//! - **Inclusion proof** (audit path) — RFC 6962 §2.1.1 O(log n) proof that a
+//!   specific event is committed by a root; verify with [`verify_inclusion`].
+//! - **Consistency proof** — RFC 9162 §2.1.4 O(log n) proof that a newer tree
+//!   is an append-only extension of an older tree; allows any holder of two
+//!   published roots to confirm no events were inserted or re-ordered between
+//!   the two snapshots without fetching the full log.
+//!
+//! Pure, offline, deterministic; reuses `sha2` + `hex`, no new dependencies,
+//! `#![forbid(unsafe_code)]`.
 //!
 //! ## Domain separation
 //!
@@ -128,6 +131,148 @@ pub fn inclusion_proof(leaves: &[Vec<u8>], index: usize) -> Option<Vec<Hash>> {
     }
     let refs: Vec<&[u8]> = leaves.iter().map(Vec::as_slice).collect();
     Some(path(index, &refs).iter().map(hex::encode).collect())
+}
+
+// ── RFC 9162 §2.1.4 Consistency proofs ────────────────────────────────
+
+/// RFC 9162 §2.1.4 `SUBPROOF(m, D[n], b)` — internal proof generator.
+fn subproof(m: usize, leaves: &[&[u8]], b: bool) -> Vec<H> {
+    let n = leaves.len();
+    if m == n {
+        if b {
+            return Vec::new();
+        } else {
+            return vec![mth(leaves)];
+        }
+    }
+    let k = split_point(n);
+    if m <= k {
+        let mut proof = subproof(m, &leaves[..k], b);
+        proof.push(mth(&leaves[k..]));
+        proof
+    } else {
+        let mut out = vec![mth(&leaves[..k])];
+        out.extend(subproof(m - k, &leaves[k..], false));
+        out
+    }
+}
+
+/// RFC 9162 §2.1.4 consistency proof.
+///
+/// Returns the O(log n) sibling hashes (hex-encoded) that prove
+/// `leaves[..first]` forms the same Merkle tree as a `first`-leaf tree
+/// whose root is `merkle_root(&leaves[..first])`.  Any verifier holding
+/// the two roots can check this without the original leaves.
+///
+/// Returns an empty list when `first == 0` or `first == leaves.len()`
+/// (trivially consistent — empty prefix or identical trees).
+#[must_use]
+pub fn consistency_proof(first: usize, leaves: &[Vec<u8>]) -> Vec<Hash> {
+    let n = leaves.len();
+    if first == 0 || first >= n {
+        return Vec::new();
+    }
+    let refs: Vec<&[u8]> = leaves.iter().map(Vec::as_slice).collect();
+    subproof(first, &refs, true)
+        .iter()
+        .map(hex::encode)
+        .collect()
+}
+
+/// Recursive verifier that mirrors `subproof`.  Returns
+/// `Some((old_subtree_root, new_subtree_root))` consuming exactly the
+/// proof elements that `subproof(m, n, b)` generated, or `None` when
+/// the proof is exhausted or malformed.
+fn verify_consistency_inner(
+    m: usize,
+    n: usize,
+    proof: &[H],
+    pos: &mut usize,
+    first_hash: &H,
+    b: bool,
+) -> Option<(H, H)> {
+    if m == n {
+        // When b=true and m==n: the whole old tree is this subtree;
+        // its hash is `first_hash` (not in the proof).
+        // When b=false:         read the subtree hash from the proof.
+        let h = if b {
+            *first_hash
+        } else {
+            let v = *proof.get(*pos)?;
+            *pos += 1;
+            v
+        };
+        return Some((h, h));
+    }
+    let k = split_point(n);
+    if m <= k {
+        // Left subtree contains the entire old tree.
+        let (old_sub, new_left) = verify_consistency_inner(m, k, proof, pos, first_hash, b)?;
+        let new_right = *proof.get(*pos)?;
+        *pos += 1;
+        Some((old_sub, hash_node(&new_left, &new_right)))
+    } else {
+        // Old tree spans into the right subtree; left is fully shared.
+        let old_left = *proof.get(*pos)?;
+        *pos += 1;
+        let (old_sub, new_right) =
+            verify_consistency_inner(m - k, n - k, proof, pos, first_hash, false)?;
+        Some((
+            hash_node(&old_left, &old_sub),
+            hash_node(&old_left, &new_right),
+        ))
+    }
+}
+
+/// Verify a RFC 9162 §2.1.4 consistency proof.
+///
+/// Proves that the `first`-event tree (Merkle root `old_root`) is a
+/// prefix of the `n`-event tree (Merkle root `new_root`).  Both roots
+/// are hex-encoded SHA-256 values, as produced by [`merkle_root`].
+///
+/// Returns `true` iff the proof is cryptographically valid and all
+/// proof elements are consumed (extra elements are rejected).
+#[must_use]
+pub fn verify_consistency(
+    first: usize,
+    n: usize,
+    proof: &[Hash],
+    old_root: &str,
+    new_root: &str,
+) -> bool {
+    if first > n {
+        return false;
+    }
+    if first == n {
+        return proof.is_empty() && old_root == new_root;
+    }
+    if first == 0 {
+        // Empty prefix is consistent with anything; old_root must be the
+        // empty-tree hash (SHA-256 of the empty string per RFC 6962).
+        return proof.is_empty() && old_root == merkle_root(&[]);
+    }
+    let Some(old_h) = decode32(old_root) else {
+        return false;
+    };
+    let Some(new_h) = decode32(new_root) else {
+        return false;
+    };
+    let mut decoded: Vec<H> = Vec::with_capacity(proof.len());
+    for p in proof {
+        match decode32(p) {
+            Some(h) => decoded.push(h),
+            None => return false,
+        }
+    }
+    let mut pos = 0usize;
+    match verify_consistency_inner(first, n, &decoded, &mut pos, &old_h, true) {
+        Some((computed_old, computed_new)) => {
+            pos == decoded.len()  // all proof elements consumed — no extras
+                && computed_old == old_h
+                && computed_new == new_h
+        }
+        None => false,
+    }
 }
 
 fn decode32(hex_str: &str) -> Option<H> {
@@ -287,5 +432,100 @@ mod tests {
     fn inclusion_proof_out_of_range_is_none() {
         let lv = leaves(&["a", "b"]);
         assert!(inclusion_proof(&lv, 2).is_none());
+    }
+
+    // ── RFC 9162 §2.1.4 Consistency proofs ──────────────────────────
+
+    #[test]
+    fn consistency_proof_trivial_same_tree() {
+        let lv = leaves(&["a", "b", "c", "d"]);
+        let root = merkle_root(&lv);
+        // Same tree → empty proof.
+        assert!(consistency_proof(4, &lv).is_empty());
+        assert!(verify_consistency(4, 4, &[], &root, &root));
+        // Different roots with same size → false.
+        let bad = "0".repeat(64);
+        assert!(!verify_consistency(4, 4, &[], &bad, &root));
+    }
+
+    #[test]
+    fn consistency_proof_empty_first() {
+        let lv = leaves(&["a", "b"]);
+        assert!(consistency_proof(0, &lv).is_empty());
+        let empty_root = merkle_root(&[]);
+        let new_root = merkle_root(&lv);
+        assert!(verify_consistency(0, 2, &[], &empty_root, &new_root));
+    }
+
+    #[test]
+    fn consistency_proof_power_of_two_prefix() {
+        // first=2, n=4 → proof is just MTH(D[2..4]); 1 element.
+        let lv = leaves(&["a", "b", "c", "d"]);
+        let old_root = merkle_root(&lv[..2]);
+        let new_root = merkle_root(&lv);
+        let proof = consistency_proof(2, &lv);
+        assert_eq!(
+            proof.len(),
+            1,
+            "power-of-2 prefix needs exactly 1 proof element"
+        );
+        assert!(verify_consistency(2, 4, &proof, &old_root, &new_root));
+    }
+
+    #[test]
+    fn consistency_proof_non_power_prefix() {
+        // first=3, n=4 → proof has 2 elements: MTH("a","b") and hash_leaf("d").
+        let lv = leaves(&["a", "b", "c", "d"]);
+        let old_root = merkle_root(&lv[..3]);
+        let new_root = merkle_root(&lv);
+        let proof = consistency_proof(3, &lv);
+        assert!(verify_consistency(3, 4, &proof, &old_root, &new_root));
+    }
+
+    #[test]
+    fn consistency_proof_verifies_for_all_prefix_sizes() {
+        // Exhaustive check across awkward sizes (powers of two and
+        // off-by-one neighbours that exercise every code path).
+        for n in 2..=25usize {
+            let items: Vec<Vec<u8>> = (0..n).map(|i| format!("ev-{i}").into_bytes()).collect();
+            let new_root = merkle_root(&items);
+            for m in 1..n {
+                let old_root = merkle_root(&items[..m]);
+                let proof = consistency_proof(m, &items);
+                assert!(
+                    verify_consistency(m, n, &proof, &old_root, &new_root),
+                    "consistency failed for m={m}, n={n}"
+                );
+                // Tampered old_root must not verify.
+                let bad = "0".repeat(64);
+                assert!(
+                    !verify_consistency(m, n, &proof, &bad, &new_root),
+                    "tampered old_root should fail m={m}, n={n}"
+                );
+                // Tampered new_root must not verify.
+                assert!(
+                    !verify_consistency(m, n, &proof, &old_root, &bad),
+                    "tampered new_root should fail m={m}, n={n}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn consistency_proof_extra_element_rejected() {
+        let lv = leaves(&["a", "b", "c", "d"]);
+        let old_root = merkle_root(&lv[..2]);
+        let new_root = merkle_root(&lv);
+        let mut proof = consistency_proof(2, &lv);
+        proof.push("0".repeat(64));
+        // Extra element → verification must fail.
+        assert!(!verify_consistency(2, 4, &proof, &old_root, &new_root));
+    }
+
+    #[test]
+    fn consistency_proof_first_greater_than_n_is_false() {
+        let lv = leaves(&["a", "b"]);
+        let root = merkle_root(&lv);
+        assert!(!verify_consistency(3, 2, &[], &root, &root));
     }
 }
