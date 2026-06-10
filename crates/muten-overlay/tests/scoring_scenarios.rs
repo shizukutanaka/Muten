@@ -413,3 +413,33 @@ fn crypto_news_article_does_not_fire() {
         v.signals
     );
 }
+
+#[test]
+fn prize_lure_reaches_suspicious() {
+    // Prize + claim action in an alert-shaped window.
+    // Grounding: FTC 2024 imposter & prize scams #2 category by reports.
+    let v = classify(
+        &alert_window("congratulations you have won a prize claim it before it expires"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "prize_lure"),
+        "expected prize_lure; got {:?}",
+        v.signals
+    );
+    assert!(v.score >= SUSPICIOUS_THRESHOLD);
+}
+
+#[test]
+fn legitimate_loyalty_notification_does_not_fire_prize_lure() {
+    // FP guard: loyalty-program reward notification in user-opened, closable tab.
+    let v = classify(
+        &closable_window("you have earned 500 reward points eligible for a free reward claim"),
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "prize_lure"),
+        "prize_lure must not fire for user-initiated closable window; got {:?}",
+        v.signals
+    );
+}

@@ -902,6 +902,43 @@ pub fn has_crypto_drain_lure(s: &str) -> bool {
     wallet_alarm || wallet_coerce || seed_harvest
 }
 
+/// Detect fake prize / lottery / gift-card overlay lures (E20).
+///
+/// AND-pair pattern: a *prize word* paired with a *claim/collect action*.
+/// - **prize_word**: "won", "winner", "prize", "jackpot", "lottery", "reward",
+///   "gift card", "selected", "eligible" (the scam vocabulary).
+/// - **claim_action**: "claim", "collect", "verify", "confirm", "redeem",
+///   "click here", "expires", "before it expires" (the urgency or action cue).
+///
+/// The pair requirement prevents stand-alone words from firing: "you won a
+/// personal record" has `won` but no claim action, so it stays silent. The
+/// `alert_shaped` guard in `classify()` further prevents legitimate e-commerce
+/// loyalty-points notifications that appear in user-initiated closable windows.
+#[must_use]
+pub fn has_prize_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    let prize_word = has("won")
+        || has("winner")
+        || has("prize")
+        || has("jackpot")
+        || has("lottery")
+        || has("reward")
+        || has("gift card")
+        || has("selected")
+        || has("eligible");
+
+    let claim_action = has("claim")
+        || has("collect")
+        || has("redeem")
+        || has("verify")
+        || has("confirm")
+        || has("click here")
+        || (has("expires") || has("expiring"));
+
+    prize_word && claim_action
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1686,5 +1723,58 @@ mod tests {
         assert!(!has_crypto_drain_lure(
             "share your screen with our support agent"
         ));
+    }
+
+    // ── has_prize_lure ────────────────────────────────────────────────────
+
+    #[test]
+    fn prize_lure_fires_on_lottery_overlays() {
+        // prize_word + claim/collect action
+        assert!(has_prize_lure(
+            "congratulations you have won a prize click to claim"
+        ));
+        assert!(has_prize_lure(
+            "you are today's lucky winner collect your reward now"
+        ));
+        assert!(has_prize_lure(
+            "you won a 500 gift card claim it before it expires"
+        ));
+        assert!(has_prize_lure(
+            "you have been selected as today's winner verify now"
+        ));
+    }
+
+    #[test]
+    fn prize_lure_fires_on_gift_card_scam() {
+        // gift card variants with claim action — the AND-pair catches them
+        assert!(has_prize_lure(
+            "congratulations you have won a 100 amazon gift card click here to claim"
+        ));
+        assert!(has_prize_lure(
+            "you are eligible for a free gift card claim today"
+        ));
+    }
+
+    #[test]
+    fn prize_lure_fires_on_lottery_coercion() {
+        // urgency / expiry lure on a winning claim
+        assert!(has_prize_lure(
+            "your prize will expire in 24 hours claim now"
+        ));
+        assert!(has_prize_lure(
+            "you have been selected to receive a reward click here to collect"
+        ));
+    }
+
+    #[test]
+    fn prize_lure_does_not_fire_on_benign() {
+        // No action verb paired with prize
+        assert!(!has_prize_lure("congratulations on your new job"));
+        // Prize word without claim/collect/winner framing
+        assert!(!has_prize_lure("best picture award ceremony 2024"));
+        // Legitimate game result — no claim urgency
+        assert!(!has_prize_lure("you scored a personal record today"));
+        // Generic e-commerce loyalty point notification (no alarm)
+        assert!(!has_prize_lure("you have earned 500 reward points"));
     }
 }

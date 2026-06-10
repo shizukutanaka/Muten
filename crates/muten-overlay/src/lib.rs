@@ -259,6 +259,7 @@ fn signal_phrase(signal: &str) -> &str {
         "fake_scanner_cue" => "displays fake antivirus scan progress or threat-count language",
         "subscription_lure" => "displays a fake subscription or license expiry urging renewal",
         "authority_lure" => "impersonates a law-enforcement agency to demand payment or call",
+        "prize_lure" => "displays a fake prize or lottery win and urges immediate claim",
         "crypto_drain_lure" => {
             "displays a fake crypto-wallet alarm or demands seed-phrase / private-key entry"
         }
@@ -354,6 +355,7 @@ const W_CREDENTIAL_HARVEST: i32 = 20; // "account suspended / verify account / c
 const W_FAKE_SCANNER: i32 = 20; // fake-AV scanner progress: "scanning for threats", "N threats found", "repairing system"
 const W_SUBSCRIPTION_LURE: i32 = 15; // "subscription expired renew now" — softer scareware, lower weight (often has close button)
 const W_AUTHORITY_LURE: i32 = 25; // FBI/police/interpol/cybercrime impersonation — high-specificity ransomware-bluff tell
+const W_PRIZE_LURE: i32 = 20; // fake prize/lottery/gift-card overlay: prize-word + claim/collect action
 const W_CRYPTO_DRAIN: i32 = 25; // wallet-drain overlay: wallet alarm / coerce-connect / seed-phrase harvest
 const W_SCREEN_SHARE: i32 = 20; // instructs victim to share screen/desktop with a "support agent"
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
@@ -402,6 +404,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "fake_scanner_cue" => Some(W_FAKE_SCANNER),
         "subscription_lure" => Some(W_SUBSCRIPTION_LURE),
         "authority_lure" => Some(W_AUTHORITY_LURE),
+        "prize_lure" => Some(W_PRIZE_LURE),
         "crypto_drain_lure" => Some(W_CRYPTO_DRAIN),
         "screen_share_lure" => Some(W_SCREEN_SHARE),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
@@ -439,6 +442,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "fake_scanner_cue"
             | "subscription_lure"
             | "authority_lure"
+            | "prize_lure"
             | "crypto_drain_lure"
             | "screen_share_lure"
             | "remote_access_lure"
@@ -1000,6 +1004,17 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && confusables::has_crypto_drain_lure(&normalized_title) {
         score += rules.weight_of("crypto_drain_lure", W_CRYPTO_DRAIN);
         signals.push("crypto_drain_lure".into());
+    }
+
+    // Prize / lottery / gift-card lure (FTC 2024: imposter & prize scams
+    // #2 category by reports, $2.7B losses). AND-pair: a prize-word ("won",
+    // "winner", "prize", "lottery", "gift card", "selected", "eligible") +
+    // a claim-action ("claim", "collect", "redeem", "verify", "expires").
+    // alert_shaped guard: legitimate loyalty-program notifications in
+    // user-initiated, closable tabs do not fire.
+    if alert_shaped && confusables::has_prize_lure(&normalized_title) {
+        score += rules.weight_of("prize_lure", W_PRIZE_LURE);
+        signals.push("prize_lure".into());
     }
 
     // Screen-share lure (FTC / IC3 2024 TSS pattern). Attackers walk the
@@ -4108,6 +4123,61 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("crypto_drain_lure"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E20: prize_lure ───────────────────────────────────────────────────
+
+    #[test]
+    fn prize_lure_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "congratulations you have won a prize click here to claim".into(),
+            url: None,
+            coverage_percent: 0,
+            topmost: false,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 500,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "prize_lure"),
+            "expected prize_lure; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_PRIZE_LURE);
+    }
+
+    #[test]
+    fn prize_lure_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        // Legitimate loyalty-program notification in user-opened, closable tab.
+        let w = OverlayWindow {
+            title: "you have earned 500 reward points eligible for a free reward claim".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "prize_lure"),
+            "prize_lure must not fire for user-initiated closable tab; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn prize_lure_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("prize_lure"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }

@@ -303,6 +303,19 @@ MSRV 1.75, 286 tests.
   FP firewall (user-initiated / closable windows MUST Allow), and leet/homoglyph
   evasion resistance. These serve as regression guards: any signal removal or
   weight change that drops a known scam below Suspicious will be caught.
+- **Fake prize / lottery / gift-card overlay lure** (`prize_lure`; E20).
+  `has_prize_lure(s)` fires when the normalized window title contains both a
+  *prize word* ("won", "winner", "prize", "jackpot", "lottery", "reward",
+  "gift card", "selected", "eligible") AND a *claim/collect action* ("claim",
+  "collect", "redeem", "verify", "confirm", "click here", "expires",
+  "expiring"). The AND-pair design prevents stand-alone congratulatory words
+  ("congratulations on your promotion") from triggering. Grounded in FTC 2024
+  annual report (imposter scams #1 complaints category, prize/sweepstakes scams
+  a major sub-type, $2.7B+ combined losses). Weight `W_PRIZE_LURE = 20`.
+  Category: `InterfaceInterference`. MITRE: T1566. alert_shaped guard prevents
+  legitimate loyalty-program reward tabs from firing. 4 positive + 1 negative
+  confusables unit test groups + 3 lib unit tests + 2 property tests + 2 scoring
+  scenarios + 1 MITRE taxonomy test; 482 tests total. (E20.)
 - **Crypto / Web3 wallet-drain overlay lure** (`crypto_drain_lure`; E19).
   `has_crypto_drain_lure(s)` fires when the normalized window title matches any
   of three Web3 social-engineering patterns: (1) *wallet_alarm* — a wallet-brand

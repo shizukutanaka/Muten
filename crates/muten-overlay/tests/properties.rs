@@ -707,6 +707,29 @@ proptest! {
         }
     }
 
+    // ── E20: prize_lure ──────────────────────────────────────────────────
+
+    /// has_prize_lure never panics on arbitrary Unicode input.
+    #[test]
+    fn has_prize_lure_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_prize_lure(&s);
+    }
+
+    /// Plain strings lacking both a prize-word AND a claim-action must not fire.
+    #[test]
+    fn plain_ascii_never_fires_prize_lure(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let prize_word = has("won") || has("winner") || has("prize") || has("jackpot")
+            || has("lottery") || has("reward") || has("gift card")
+            || has("selected") || has("eligible");
+        let claim_action = has("claim") || has("collect") || has("redeem")
+            || has("verify") || has("confirm") || has("click here")
+            || has("expires") || has("expiring");
+        if !(prize_word && claim_action) {
+            prop_assert!(!muten_overlay::confusables::has_prize_lure(&s));
+        }
+    }
+
     // ── E19: crypto_drain_lure ────────────────────────────────────────────
 
     /// has_crypto_drain_lure never panics on arbitrary Unicode input.
