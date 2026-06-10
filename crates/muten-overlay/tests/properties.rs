@@ -637,4 +637,24 @@ proptest! {
             Decision::Allow => prop_assert!(v.score < SUSPICIOUS_THRESHOLD),
         }
     }
+
+    // ── E16: subscription_lure ────────────────────────────────────────────
+
+    /// has_subscription_lure never panics on arbitrary Unicode input.
+    #[test]
+    fn has_subscription_lure_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_subscription_lure(&s);
+    }
+
+    /// A string lacking all three trigger groups must not fire subscription_lure.
+    #[test]
+    fn plain_ascii_never_fires_subscription_lure(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let has_subject = has("subscription") || has("license") || has("protection") || has("membership");
+        let has_expiry = has("expired") || has("expiring") || has("expire") || has("expiration");
+        let has_action = has("renew") || has("activate") || has("purchase") || has("buy") || has("call") || has("click");
+        if !(has_subject && has_expiry && has_action) {
+            prop_assert!(!muten_overlay::confusables::has_subscription_lure(&s));
+        }
+    }
 }

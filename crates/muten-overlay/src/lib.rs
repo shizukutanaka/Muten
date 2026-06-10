@@ -257,6 +257,7 @@ fn signal_phrase(signal: &str) -> &str {
             "alarms the user about account compromise or demands credential re-entry"
         }
         "fake_scanner_cue" => "displays fake antivirus scan progress or threat-count language",
+        "subscription_lure" => "displays a fake subscription or license expiry urging renewal",
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -344,6 +345,7 @@ const W_URL_PATH_LURE: i32 = 20; // alert-shaped overlay with brand+lure combosq
 const W_FORCED_RETENTION: i32 = 20; // "do not close" / "do not turn off" instruction in title (high-specificity scam tell)
 const W_CREDENTIAL_HARVEST: i32 = 20; // "account suspended / verify account / confirm password" credential-phish cue
 const W_FAKE_SCANNER: i32 = 20; // fake-AV scanner progress: "scanning for threats", "N threats found", "repairing system"
+const W_SUBSCRIPTION_LURE: i32 = 15; // "subscription expired renew now" — softer scareware, lower weight (often has close button)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -388,6 +390,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "forced_retention_cue" => Some(W_FORCED_RETENTION),
         "credential_harvest_cue" => Some(W_CREDENTIAL_HARVEST),
         "fake_scanner_cue" => Some(W_FAKE_SCANNER),
+        "subscription_lure" => Some(W_SUBSCRIPTION_LURE),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -421,6 +424,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "forced_retention_cue"
             | "credential_harvest_cue"
             | "fake_scanner_cue"
+            | "subscription_lure"
             | "remote_access_lure"
     )
 }
@@ -943,6 +947,19 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && confusables::has_fake_scanner_cue(&normalized_title) {
         score += rules.weight_of("fake_scanner_cue", W_FAKE_SCANNER);
         signals.push("fake_scanner_cue".into());
+    }
+
+    // Subscription/license expiry coercion (E16 — THREAT_INTEL_2026 §3
+    // "scareware subscription / prize scams"). Softer scareware: "Your
+    // Norton/McAfee subscription expired — renew now." Often has a close
+    // button, so geometry signals alone may not reach Suspicious.  Three-word-
+    // group AND check (subject × expiry × action) prevents FPs from renewal
+    // reminder emails reflected as browser tab titles, which are user-initiated
+    // and closable.  W=15 (lower than other text signals — the pattern is
+    // lower-confidence than a phone number or scan-progress title).
+    if alert_shaped && confusables::has_subscription_lure(&normalized_title) {
+        score += rules.weight_of("subscription_lure", W_SUBSCRIPTION_LURE);
+        signals.push("subscription_lure".into());
     }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
@@ -3817,6 +3834,62 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("fake_scanner_cue"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E16: subscription_lure ────────────────────────────────────────────
+
+    #[test]
+    fn subscription_lure_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        // Full-screen + no close + expiry coercion language.
+        let w = OverlayWindow {
+            title: "your norton subscription has expired renew now".into(),
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            age_ms: 500,
+            origin: Origin::Unsolicited,
+            url: None,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "subscription_lure"),
+            "expected subscription_lure; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_SUBSCRIPTION_LURE);
+    }
+
+    #[test]
+    fn subscription_lure_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        // Legitimate renewal reminder: closable, user-navigated.
+        let w = OverlayWindow {
+            title: "your subscription expired renew now".into(),
+            coverage_percent: 30,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            age_ms: 10_000,
+            origin: Origin::UserInitiated,
+            url: None,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "subscription_lure"),
+            "subscription_lure must not fire for non-alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn subscription_lure_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("subscription_lure"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }

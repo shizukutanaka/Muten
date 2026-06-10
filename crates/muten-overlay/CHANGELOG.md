@@ -294,6 +294,21 @@ MSRV 1.75, 286 tests.
   Category: `InterfaceInterference`. MITRE: T1566 (phishing lure). Homoglyph/leet
   variants are defeated via `normalize_for_match`. 3 confusables unit tests +
   3 lib unit tests + 2 property tests. (E14.)
+- **Subscription/license expiry coercion signal** (`subscription_lure`; E16).
+  `has_subscription_lure(s)` fires when the normalized window title contains all
+  three word groups: (1) *subject* — "subscription", "license", "protection",
+  "membership"; (2) *expiry* — "expired", "expiring", "expire", "expiration";
+  (3) *action* — "renew", "activate", "purchase", "buy", "call", "click".
+  This is the canonical softer-scareware pattern (THREAT_INTEL_2026 §3:
+  "scareware subscription / prize scams — lower-intensity, often have a close
+  button"). Because these windows sometimes have a close button, geometry signals
+  alone may not reach Suspicious; the title text is the primary evidence. The
+  three-group AND requirement prevents FPs from renewal-reminder emails reflected
+  as browser tab titles. The `alert_shaped` guard remains active. Weight
+  `W_SUBSCRIPTION_LURE = 15` (lower than other text signals — the pattern is
+  lower-confidence than a scan-progress title or a phone number). Category:
+  `InterfaceInterference`. MITRE: T1566. 3 confusables unit tests + 3 lib unit
+  tests + 2 property tests + 2 taxonomy tests; 422 tests total. (E16.)
 - **Fake-scanner / threat-count language signal** (`fake_scanner_cue`; E15).
   `has_fake_scanner_cue(s)` detects five rogue-AV overlay language patterns in
   the normalized window title: (1) *scanning lure* — "scanning for viruses/threats/

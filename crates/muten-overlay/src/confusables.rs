@@ -745,6 +745,33 @@ pub fn has_fake_scanner_cue(s: &str) -> bool {
     scanning_lure || threat_count || removal_action || repair_lure || system_error
 }
 
+/// Detect subscription/license expiry coercion in a normalized window title.
+///
+/// Lower-intensity scareware ("Your Norton subscription expired — renew now")
+/// often retains a close button and scores low on geometry signals alone, so
+/// the title text is the primary evidence.  THREAT_INTEL_2026 names this as
+/// a distinct scareware family: "scareware subscription / prize scams".  Real
+/// software expiry dialogs are user-initiated and closable; the `alert_shaped`
+/// guard in `classify()` keeps them out of scope.
+///
+/// Pattern: (subscription OR license OR protection) AND (expired OR expiring
+/// OR expire) AND (renew OR activate OR purchase OR buy OR click OR call).
+/// All three word groups must be present to avoid FPs from legitimate renewal
+/// reminder emails that get reflected as window titles.
+#[must_use]
+pub fn has_subscription_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let subject = has("subscription") || has("license") || has("protection") || has("membership");
+    let expired = has("expired") || has("expiring") || has("expire") || has("expiration");
+    let action = has("renew")
+        || has("activate")
+        || has("purchase")
+        || has("buy")
+        || has("call")
+        || has("click");
+    subject && expired && action
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1311,5 +1338,47 @@ mod tests {
         // "v1rus" → "virus", "thr34t" → "threat" after normalize_for_match.
         let norm = normalize_for_match("sc4nning for v1rus3s");
         assert!(has_fake_scanner_cue(&norm));
+    }
+
+    // ── has_subscription_lure ────────────────────────────────────────────
+
+    #[test]
+    fn subscription_lure_fires_on_scareware_titles() {
+        assert!(has_subscription_lure(
+            "your norton subscription has expired renew now"
+        ));
+        assert!(has_subscription_lure(
+            "mcafee protection expired call to activate"
+        ));
+        assert!(has_subscription_lure(
+            "windows defender subscription expiring click to purchase"
+        ));
+        assert!(has_subscription_lure(
+            "your license has expired please renew today"
+        ));
+        assert!(has_subscription_lure(
+            "membership expired buy now to restore protection"
+        ));
+    }
+
+    #[test]
+    fn subscription_lure_does_not_fire_on_benign_text() {
+        // Only two of the three groups — no action word → no fire.
+        assert!(!has_subscription_lure("your subscription has expired"));
+        // Only subject + action — no expiry → no fire.
+        assert!(!has_subscription_lure("subscription manager renew"));
+        // Neither expired nor action word — plain product name.
+        assert!(!has_subscription_lure(
+            "norton security subscription active"
+        ));
+        // Unrelated expired context.
+        assert!(!has_subscription_lure("coupon expired"));
+    }
+
+    #[test]
+    fn subscription_lure_handles_homoglyphs_via_normalize() {
+        // Cyrillic 'е' in "expired" → 'e' after normalize_for_match.
+        let norm = normalize_for_match("subscription has еxpired renew now");
+        assert!(has_subscription_lure(&norm));
     }
 }
