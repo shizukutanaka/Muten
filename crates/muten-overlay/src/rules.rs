@@ -134,6 +134,10 @@ pub enum CompositeCondition {
     HasQrCodeLure,
     /// The `ip_alarm_lure` signal fired (E23 — IP address alarm / tech-support scam).
     HasIpAlarmLure,
+    /// The `package_fee_lure` signal fired (E24 — delivery/customs fee advance-fee scam).
+    HasPackageFeeLure,
+    /// The `sextortion_lure` signal fired (E25 — webcam recording extortion overlay).
+    HasSextortionLure,
 }
 
 impl CompositeCondition {
@@ -160,6 +164,8 @@ impl CompositeCondition {
             "has_download_trap_lure" => Some(Self::HasDownloadTrapLure),
             "has_qr_code_lure" => Some(Self::HasQrCodeLure),
             "has_ip_alarm_lure" => Some(Self::HasIpAlarmLure),
+            "has_package_fee_lure" => Some(Self::HasPackageFeeLure),
+            "has_sextortion_lure" => Some(Self::HasSextortionLure),
             _ => None,
         }
     }

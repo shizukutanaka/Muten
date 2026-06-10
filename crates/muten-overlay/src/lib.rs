@@ -275,6 +275,12 @@ fn signal_phrase(signal: &str) -> &str {
         "ip_alarm_lure" => {
             "claims the user's IP address has been hacked, flagged, or compromised"
         }
+        "package_fee_lure" => {
+            "claims a package or shipment is on hold and demands a customs or release fee"
+        }
+        "sextortion_lure" => {
+            "claims to have webcam footage and demands cryptocurrency payment to prevent release"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -370,6 +376,8 @@ const W_CRYPTO_DRAIN: i32 = 25; // wallet-drain overlay: wallet alarm / coerce-c
 const W_SCREEN_SHARE: i32 = 20; // instructs victim to share screen/desktop with a "support agent"
 const W_QR_CODE_LURE: i32 = 20; // QR/quishing overlay: qr_noun + verify_action (FBI IC3 2025)
 const W_IP_ALARM: i32 = 20; // "your IP address has been hacked/flagged" — tech-support scam staple
+const W_PACKAGE_FEE: i32 = 20; // customs/delivery fee scam: package_noun + fee_demand (FTC 2024 #2)
+const W_SEXTORTION: i32 = 25; // webcam recording + crypto payment demand (FBI IC3 2024 +42% YoY)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -422,6 +430,8 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "screen_share_lure" => Some(W_SCREEN_SHARE),
         "qr_code_lure" => Some(W_QR_CODE_LURE),
         "ip_alarm_lure" => Some(W_IP_ALARM),
+        "package_fee_lure" => Some(W_PACKAGE_FEE),
+        "sextortion_lure" => Some(W_SEXTORTION),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -463,6 +473,8 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "screen_share_lure"
             | "qr_code_lure"
             | "ip_alarm_lure"
+            | "package_fee_lure"
+            | "sextortion_lure"
             | "remote_access_lure"
     )
 }
@@ -1082,6 +1094,30 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         signals.push("ip_alarm_lure".into());
     }
 
+    // Package / parcel customs-fee lure (FTC 2024 — imposter-scam delivery
+    // variants #2 category: 1.1M complaints). Overlays impersonate DHL /
+    // FedEx / USPS / customs to extract a small advance fee.  Two groups:
+    // package_noun ("your package/parcel/shipment/delivery") AND fee_demand
+    // ("customs fee/duty", "on hold", "release fee", "unable to deliver").
+    // alert_shaped guard: legitimate e-commerce order notifications are
+    // user-initiated and closable.
+    if alert_shaped && confusables::has_package_fee_lure(&normalized_title) {
+        score += rules.weight_of("package_fee_lure", W_PACKAGE_FEE);
+        signals.push("package_fee_lure".into());
+    }
+
+    // Sextortion / webcam-recording extortion lure (FBI IC3 2024: sextortion
+    // complaints +42% YoY). Browser overlays claim to have webcam footage and
+    // demand cryptocurrency payment.  Two groups: camera_cue ("your camera" /
+    // "we have recorded" / "hacked your camera") AND extortion_word (bitcoin /
+    // btc / pay / your contacts / expose).  W_SEXTORTION=25 (one point above
+    // other content signals) — the AND-pair is very high specificity.
+    // alert_shaped guard: legitimate webcam-permission dialogs are closable.
+    if alert_shaped && confusables::has_sextortion_lure(&normalized_title) {
+        score += rules.weight_of("sextortion_lure", W_SEXTORTION);
+        signals.push("sextortion_lure".into());
+    }
+
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
     // seize the machine. These tools are legitimate, so their name alone
@@ -1391,6 +1427,8 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasDownloadTrapLure => has_sig("download_trap_lure"),
         C::HasQrCodeLure => has_sig("qr_code_lure"),
         C::HasIpAlarmLure => has_sig("ip_alarm_lure"),
+        C::HasPackageFeeLure => has_sig("package_fee_lure"),
+        C::HasSextortionLure => has_sig("sextortion_lure"),
     }
 }
 
@@ -4347,6 +4385,114 @@ mod tests {
             v.signals.iter().any(|s| s == "prize_coercive"),
             "composite prize_coercive must fire; got {:?}",
             v.signals
+        );
+    }
+
+    // ── E24: package_fee_lure ────────────────────────────────────────────
+
+    #[test]
+    fn package_fee_lure_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "your package is on hold customs fee required to release".into(),
+            url: None,
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 400,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "package_fee_lure"),
+            "expected package_fee_lure; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_PACKAGE_FEE);
+    }
+
+    #[test]
+    fn package_fee_lure_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "your order has been shipped".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "package_fee_lure"),
+            "package_fee_lure must not fire for user-initiated closable notification; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn package_fee_lure_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("package_fee_lure"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E25: sextortion_lure ──────────────────────────────────────────────
+
+    #[test]
+    fn sextortion_lure_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "we have recorded you send bitcoin to prevent release to your contacts".into(),
+            url: None,
+            coverage_percent: 98,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "sextortion_lure"),
+            "expected sextortion_lure; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_SEXTORTION);
+    }
+
+    #[test]
+    fn sextortion_lure_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "allow your camera for this video call".into(),
+            url: None,
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 3_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "sextortion_lure"),
+            "sextortion_lure must not fire for user-initiated webcam dialog; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn sextortion_lure_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("sextortion_lure"),
+            Some(DarkPatternCategory::InterfaceInterference)
         );
     }
 

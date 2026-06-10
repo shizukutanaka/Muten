@@ -846,4 +846,51 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_ip_alarm_lure(&s));
         }
     }
+
+    // ── E24: package_fee_lure ─────────────────────────────────────────────
+
+    /// has_package_fee_lure never panics on arbitrary Unicode input.
+    #[test]
+    fn has_package_fee_lure_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_package_fee_lure(&s);
+    }
+
+    /// Strings lacking package_noun AND fee_demand simultaneously must not fire.
+    #[test]
+    fn plain_ascii_never_fires_package_fee_lure(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let package_noun = has("your package") || has("your parcel") || has("your shipment")
+            || has("your order") || has("your delivery") || has("package is")
+            || has("parcel is") || has("shipment is");
+        let fee_demand = has("customs fee") || has("customs duty") || has("customs charge")
+            || has("on hold") || (has("fee") && (has("pay") || has("required") || has("pending")))
+            || has("unable to deliver") || has("failed delivery")
+            || has("delivery fee") || has("release fee");
+        if !(package_noun && fee_demand) {
+            prop_assert!(!muten_overlay::confusables::has_package_fee_lure(&s));
+        }
+    }
+
+    // ── E25: sextortion_lure ──────────────────────────────────────────────
+
+    /// has_sextortion_lure never panics on arbitrary Unicode input.
+    #[test]
+    fn has_sextortion_lure_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_sextortion_lure(&s);
+    }
+
+    /// Strings lacking camera_cue AND extortion_word simultaneously must not fire.
+    #[test]
+    fn plain_ascii_never_fires_sextortion_lure(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let camera_cue = has("your camera") || has("your webcam") || has("we have recorded")
+            || has("have been recording") || has("we have footage")
+            || has("recorded you") || has("hacked your camera") || has("accessed your camera");
+        let extortion_word = has("bitcoin") || has("btc") || has("cryptocurrency") || has("crypto")
+            || has("payment") || has("pay") || has("your contacts")
+            || has("expose") || has("send this") || has("release this");
+        if !(camera_cue && extortion_word) {
+            prop_assert!(!muten_overlay::confusables::has_sextortion_lure(&s));
+        }
+    }
 }

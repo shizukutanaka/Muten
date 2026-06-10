@@ -661,6 +661,7 @@ pub struct CheckpointSig {
 /// ```no_run
 /// # use muten_overlay::sink::{sign_checkpoint, verify_checkpoint_sig};
 /// let key = b"fleet-secret-42";
+/// let log_text = "…"; // valid audit-log text
 /// let sig = sign_checkpoint(log_text, key).unwrap();
 /// assert!(verify_checkpoint_sig(&sig, key));
 /// ```

@@ -747,3 +747,132 @@ fn sudden_fullscreen_takeover_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E24: package_fee_lure ─────────────────────────────────────────────────
+
+#[test]
+fn package_fee_lure_reaches_suspicious() {
+    let v = classify(
+        &alert_window("your package is on hold customs fee required to release"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "package_fee_lure"),
+        "expected package_fee_lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= SUSPICIOUS_THRESHOLD,
+        "package_fee_lure must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn legitimate_order_notification_does_not_fire_package_fee_lure() {
+    let v = classify(
+        &muten_overlay::OverlayWindow {
+            title: "your order has been shipped and is on its way".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        },
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "package_fee_lure"),
+        "package_fee_lure must not fire on user-initiated order notification; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn package_fee_lure_plus_phone_reaches_block() {
+    let v = classify(
+        &alert_window("your shipment is on hold call 1-800-555-0100 to pay customs fee"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "package_fee_lure"),
+        "expected package_fee_lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "phone_number"),
+        "expected phone_number; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= BLOCK_THRESHOLD,
+        "package_fee_lure + phone_number must reach Block; score = {}",
+        v.score
+    );
+}
+
+// ── E25: sextortion_lure ──────────────────────────────────────────────────
+
+#[test]
+fn sextortion_lure_reaches_suspicious() {
+    let v = classify(
+        &alert_window("we have recorded you send bitcoin to prevent release to your contacts"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "sextortion_lure"),
+        "expected sextortion_lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= SUSPICIOUS_THRESHOLD,
+        "sextortion_lure must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn webcam_permission_dialog_does_not_fire_sextortion_lure() {
+    let v = classify(
+        &muten_overlay::OverlayWindow {
+            title: "allow your camera for this video call".into(),
+            url: None,
+            coverage_percent: 25,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 2_000,
+        },
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "sextortion_lure"),
+        "sextortion_lure must not fire for user-initiated webcam dialog; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn sextortion_lure_reaches_block_with_unsolicited_fullscreen() {
+    // Alert-shaped unsolicited sextortion overlay should reach Block via
+    // score accumulation (sextortion_lure + fullscreen + topmost + unsolicited).
+    let v = classify(
+        &alert_window(
+            "your webcam was accessed send btc payment to prevent this from going to your contacts",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "sextortion_lure"),
+        "expected sextortion_lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= BLOCK_THRESHOLD,
+        "alert-shaped sextortion_lure must reach Block; score = {}",
+        v.score
+    );
+}

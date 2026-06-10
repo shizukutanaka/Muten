@@ -1078,6 +1078,89 @@ pub fn has_ip_alarm_lure(s: &str) -> bool {
     ip_subject && alarm_word
 }
 
+/// E24 — Package / parcel customs-fee lure.
+///
+/// "Your package is on hold / your shipment requires a customs fee" overlays
+/// impersonate DHL, FedEx, USPS, or customs authorities to extract a small
+/// advance fee from the victim.  Imposter-scam delivery variants ranked #2 in
+/// FTC 2024 consumer-fraud reports (1.1M complaints, $2.7B losses combined).
+///
+/// Two groups: package_noun (package/parcel/shipment/order/delivery) AND
+/// fee_demand (fee/customs/held/pending/unable to deliver/pay).  The AND-pair
+/// prevents single-word FPs ("your order shipped!", "delivery confirmed").
+/// alert_shaped guard at the call site filters out legitimate e-commerce
+/// order-tracking notifications, which are user-initiated and closable.
+#[must_use]
+pub fn has_package_fee_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // package_noun: delivery-related subject tokens
+    let package_noun = has("your package")
+        || has("your parcel")
+        || has("your shipment")
+        || has("your order")
+        || has("your delivery")
+        || has("package is")
+        || has("parcel is")
+        || has("shipment is");
+
+    // fee_demand: coercion / hold language that signals the fee-scam pattern
+    let fee_demand = has("customs fee")
+        || has("customs duty")
+        || has("customs charge")
+        || has("on hold")
+        || (has("fee") && (has("pay") || has("required") || has("pending")))
+        || has("unable to deliver")
+        || has("failed delivery")
+        || has("delivery fee")
+        || has("release fee");
+
+    package_noun && fee_demand
+}
+
+/// E25 — Sextortion / webcam recording extortion lure.
+///
+/// Scam overlays (and browser pop-unders) claim to have recorded the victim
+/// via their webcam visiting an adult site, then demand cryptocurrency payment
+/// to prevent the footage being sent to their contacts. FBI IC3 2024 sextortion
+/// complaints grew 42% YoY; browser-based sextortion overlays are a growing
+/// sub-vector.
+///
+/// Two groups: camera_cue ("your camera" / "your webcam" / "we have recorded" /
+/// "have been recording") AND extortion_word (bitcoin/btc/cryptocurrency/
+/// payment/pay/contacts/expose/release).  The AND-pair prevents FPs on
+/// legitimate webcam-permission dialogs (no extortion_word) and on crypto
+/// news articles (no camera_cue).
+/// alert_shaped guard at the call site.
+#[must_use]
+pub fn has_sextortion_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // camera_cue: webcam/recording evidence claim
+    let camera_cue = has("your camera")
+        || has("your webcam")
+        || has("we have recorded")
+        || has("have been recording")
+        || has("we have footage")
+        || has("recorded you")
+        || has("hacked your camera")
+        || has("accessed your camera");
+
+    // extortion_word: payment demand or threat-to-expose language
+    let extortion_word = has("bitcoin")
+        || has("btc")
+        || has("cryptocurrency")
+        || has("crypto")
+        || has("payment")
+        || has("pay")
+        || has("your contacts")
+        || has("expose")
+        || has("send this")
+        || has("release this");
+
+    camera_cue && extortion_word
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2090,5 +2173,97 @@ mod tests {
         assert!(!has_ip_alarm_lure("network security tips for 2025"));
         // Legitimate CAPTCHA page
         assert!(!has_ip_alarm_lure("verify you are not a robot"));
+    }
+
+    // ── has_package_fee_lure ──────────────────────────────────────────────
+
+    #[test]
+    fn package_fee_lure_fires_on_delivery_scam() {
+        assert!(has_package_fee_lure(
+            "your package is on hold pay customs fee to release"
+        ));
+        assert!(has_package_fee_lure(
+            "your shipment is on hold due to unpaid customs duty"
+        ));
+        assert!(has_package_fee_lure(
+            "your parcel is on hold pending customs clearance fee"
+        ));
+        assert!(has_package_fee_lure(
+            "your delivery has failed delivery please pay fee required"
+        ));
+    }
+
+    #[test]
+    fn package_fee_lure_fires_on_unable_to_deliver_variants() {
+        assert!(has_package_fee_lure(
+            "your package is unable to deliver customs fee required"
+        ));
+        assert!(has_package_fee_lure(
+            "your order is on hold release fee required"
+        ));
+    }
+
+    #[test]
+    fn package_fee_lure_does_not_fire_on_benign() {
+        // Legitimate order confirmation — no fee demand
+        assert!(!has_package_fee_lure(
+            "your package has been shipped and is on its way"
+        ));
+        // Package tracking without hold/fee language
+        assert!(!has_package_fee_lure("your order has been delivered"));
+        // Customs FAQ article — "customs fee" but no package_noun
+        assert!(!has_package_fee_lure(
+            "how to calculate customs fees for imports"
+        ));
+        // E-commerce loyalty point — "your order" but no fee/hold
+        assert!(!has_package_fee_lure(
+            "your order has earned 500 reward points"
+        ));
+    }
+
+    // ── has_sextortion_lure ───────────────────────────────────────────────
+
+    #[test]
+    fn sextortion_lure_fires_on_webcam_extortion() {
+        assert!(has_sextortion_lure(
+            "we have recorded you using your webcam pay bitcoin now"
+        ));
+        assert!(has_sextortion_lure(
+            "your camera has been hacked we have footage pay in btc"
+        ));
+        assert!(has_sextortion_lure(
+            "we have been recording you send payment to avoid exposure"
+        ));
+        assert!(has_sextortion_lure(
+            "your webcam was accessed we will send this to your contacts unless you pay"
+        ));
+    }
+
+    #[test]
+    fn sextortion_lure_fires_on_crypto_payment_demand() {
+        assert!(has_sextortion_lure(
+            "recorded you visiting adult sites send cryptocurrency to stop release"
+        ));
+        assert!(has_sextortion_lure(
+            "hacked your camera send btc or we will expose this"
+        ));
+    }
+
+    #[test]
+    fn sextortion_lure_does_not_fire_on_benign() {
+        // Webcam setup dialog — no extortion_word
+        assert!(!has_sextortion_lure(
+            "allow your camera to be used for this video call"
+        ));
+        // Crypto news — no camera_cue
+        assert!(!has_sextortion_lure("bitcoin payment processing completed"));
+        // Security advisory with "camera" but no payment demand
+        assert!(!has_sextortion_lure(
+            "your camera permission was requested by this website"
+        ));
+        // Generic privacy notice
+        assert!(!has_sextortion_lure(
+            "we do not record or store your video calls"
+        ));
     }
 }

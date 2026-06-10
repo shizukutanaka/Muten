@@ -66,7 +66,9 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         | "prize_lure"
         | "crypto_drain_lure"
         | "qr_code_lure"
-        | "ip_alarm_lure" => &["T1566"],
+        | "ip_alarm_lure"
+        | "package_fee_lure"
+        | "sextortion_lure" => &["T1566"],
         _ => &[],
     }
 }

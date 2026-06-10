@@ -303,6 +303,30 @@ MSRV 1.75, 286 tests.
   FP firewall (user-initiated / closable windows MUST Allow), and leet/homoglyph
   evasion resistance. These serve as regression guards: any signal removal or
   weight change that drops a known scam below Suspicious will be caught.
+- **Sextortion / webcam-recording extortion lure** (`sextortion_lure`; E25).
+  `has_sextortion_lure(s)` fires when the normalized title contains a *camera_cue*
+  ("your camera" / "your webcam" / "we have recorded" / "have been recording" /
+  "hacked your camera") AND an *extortion_word* (bitcoin/btc/cryptocurrency/crypto/
+  payment/pay/your contacts/expose/send this/release this).  Browser-overlay
+  sextortion is a significant and growing attack vector: FBI IC3 2024 reported
+  sextortion complaints grew 42% YoY; overlays claim webcam footage and demand
+  cryptocurrency to prevent release to the victim's contacts.  Weight `W_SEXTORTION =
+  25` (slightly above other content signals — the AND-pair is very high specificity).
+  Category: `InterfaceInterference`.  MITRE: T1566.  alert_shaped guard prevents
+  legitimate webcam-permission dialogs from firing.  6 confusables unit tests +
+  3 lib unit tests + 2 property tests + 3 scoring scenarios; 556 tests total. (E25.)
+- **Package / parcel customs-fee advance-fee lure** (`package_fee_lure`; E24).
+  `has_package_fee_lure(s)` fires when the normalized title contains a *package_noun*
+  ("your package/parcel/shipment/delivery/order") AND a *fee_demand* ("customs fee/
+  duty/charge", "on hold", "release fee", "delivery fee", "unable to deliver", "failed
+  delivery").  Delivery/customs advance-fee scam overlays impersonate DHL, FedEx,
+  USPS, or customs authorities to extract a small payment.  FTC 2024 annual report:
+  imposter-scam delivery variants ranked #2 in consumer-fraud complaints (1.1M
+  complaints, $2.7B+ combined losses with prize/imposter category).  Weight
+  `W_PACKAGE_FEE = 20`.  Category: `InterfaceInterference`.  MITRE: T1566.
+  alert_shaped guard prevents legitimate e-commerce order notifications (user-initiated,
+  closable) from firing.  4 positive + 4 negative confusables unit tests + 3 lib
+  unit tests + 2 property tests + 3 scoring scenarios; 556 tests total. (E24.)
 - **IP address alarm lure** (`ip_alarm_lure`; E23).
   `has_ip_alarm_lure(s)` fires when the normalized title contains an *ip_subject*
   ("ip address" or "your ip") AND an *alarm_word* (hack/infect/flag/report/stolen/
