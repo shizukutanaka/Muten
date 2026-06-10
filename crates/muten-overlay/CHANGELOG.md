@@ -124,6 +124,15 @@ MSRV 1.75, 286 tests.
   (library-only) passes cleanly. `cargo build --no-default-features --lib`
   compiles only the domain library. (N4, C3-4.)
 - **Signal-quality confidence** (`ConfidenceLevel`; B6). A new `pub enum ConfidenceLevel { High, Medium, Low }` and `Verdict::confidence()` method indicate how much the verdict relies on high-fidelity (text-analysis / rule-based) signals vs low-fidelity geometry signals (fullscreen / topmost / modal). `High` when ≥2 text signals fired; `Medium` when exactly one; `Low` when only geometry signals fired. A new `pub fn signal_weight(name: &str) -> Option<i32>` exposes the built-in signal weights for external tooling, and `Verdict::score_breakdown()` returns per-signal `(name, weight)` pairs. The `explain()` output now includes the confidence level, e.g. "Block (score 130, high confidence): ...". The `--json` output gains `confidence` and `score_breakdown` fields. SIEM operators can route `High` confidence blocks to auto-response and `Low` to human review. 6 new tests. (B6, C5-5.)
+- **Per-signal firing statistics from audit logs** (`SignalStats`, `signal_firing_stats`; B7, B8).
+  `sink::SignalStats { blocks: u64, suspicious: u64 }` tracks how many times a named signal
+  appeared in `overlay_blocked` vs `overlay_suspicious` events across a verified audit log.
+  `sink::signal_firing_stats(text)` parses the entire log (verifying chain integrity first),
+  aggregates the `detail.signals` array of each detection event, and returns a
+  `HashMap<String, SignalStats>`. Operators can rank signals by `.total()` to find which drive
+  the most alerts, and compare `blocks / total` ratios to spot signals that mostly contribute
+  to the review queue vs confirmed dismissals — giving direct, field-data-driven evidence for
+  weight and threshold tuning. 3 new tests. (B7, B8.)
 
 ### Changed (breaking)
 - **`Verdict.signals: Vec<String>`** (was `Vec<&'static str>`). Required to

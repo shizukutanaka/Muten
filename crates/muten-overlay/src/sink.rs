@@ -270,6 +270,81 @@ pub fn consistency_proof_for_range(
     Ok(Some(crate::merkle::consistency_proof(first, &leaves)))
 }
 
+/// Per-signal occurrence counts across a verified audit log.
+///
+/// Aggregated from the `detail.signals` array of `overlay_blocked` and
+/// `overlay_suspicious` events.  Useful for threshold tuning and FP-rate
+/// estimation: operators can rank signals by `blocks + suspicious` to see
+/// which signals fire most often, and by `blocks / (blocks + suspicious)`
+/// to estimate how often a signal alone led to a dismissal.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SignalStats {
+    /// Times this signal appeared in an `overlay_blocked` event.
+    pub blocks: u64,
+    /// Times this signal appeared in an `overlay_suspicious` event.
+    pub suspicious: u64,
+}
+
+impl SignalStats {
+    /// Total appearances (blocks + suspicious).
+    #[must_use]
+    pub fn total(&self) -> u64 {
+        self.blocks + self.suspicious
+    }
+}
+
+/// Per-signal firing statistics across a **verified** audit log.
+///
+/// Parses `overlay_blocked` and `overlay_suspicious` events from `text`
+/// and aggregates the `detail.signals` array into a map keyed by signal
+/// name.  The log is verified for chain integrity before any parsing;
+/// returns a chain error if the log does not verify.
+///
+/// Use this to:
+/// - Rank signals by frequency (`total()`) to identify which drive most
+///   alerts and tune blocklist sensitivity.
+/// - Compare `blocks` vs `suspicious` ratios to spot signals that mostly
+///   contribute to review-queue noise vs confirmed dismissals.
+/// - Track how firing rates shift over time (run periodically on a
+///   rolling audit-log window).
+pub fn signal_firing_stats(
+    text: &str,
+) -> Result<std::collections::HashMap<String, SignalStats>, ChainError> {
+    verify_chain(text)?;
+    let mut stats: std::collections::HashMap<String, SignalStats> =
+        std::collections::HashMap::new();
+    for (i, raw) in text.lines().enumerate() {
+        if raw.trim().is_empty() {
+            continue;
+        }
+        let v: serde_json::Value =
+            serde_json::from_str(raw).map_err(|e| ChainError::InvalidJson(i + 1, e.to_string()))?;
+        let kind = v.get("kind").and_then(|k| k.as_str()).unwrap_or_default();
+        let is_block = kind == "overlay_blocked";
+        let is_suspicious = kind == "overlay_suspicious";
+        if !is_block && !is_suspicious {
+            continue;
+        }
+        if let Some(signals) = v
+            .get("detail")
+            .and_then(|d| d.get("signals"))
+            .and_then(|s| s.as_array())
+        {
+            for sig in signals {
+                if let Some(name) = sig.as_str() {
+                    let entry = stats.entry(name.to_string()).or_default();
+                    if is_block {
+                        entry.blocks += 1;
+                    } else {
+                        entry.suspicious += 1;
+                    }
+                }
+            }
+        }
+    }
+    Ok(stats)
+}
+
 /// An error that can occur while opening or verifying the audit chain.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ChainError {
@@ -671,5 +746,66 @@ mod tests {
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         );
         assert!(inclusion_proof_for_seq("", 0).unwrap().is_none());
+    }
+
+    // ── B7/B8: signal firing stats ────────────────────────────────
+
+    fn ev_with_signals(kind: &'static str, id: &str, signals: &[&str]) -> AuditEvent {
+        AuditEvent {
+            timestamp_ms: 1_000,
+            kind,
+            window_id: id.into(),
+            detail: serde_json::json!({
+                "x": id,
+                "signals": signals,
+            }),
+        }
+    }
+
+    #[test]
+    fn signal_firing_stats_counts_block_and_suspicious() {
+        let dir = TempDir::new().unwrap();
+        let p = dir.path().join("audit.log");
+        let sink = ChainedFileSink::open(&p).unwrap();
+        // Two events share "fullscreen"; one block also has "phone_number".
+        sink.emit(&ev_with_signals(
+            "overlay_blocked",
+            "w1",
+            &["fullscreen", "phone_number"],
+        ));
+        sink.emit(&ev_with_signals(
+            "overlay_suspicious",
+            "w2",
+            &["fullscreen"],
+        ));
+        sink.emit(&ev_with_signals("overlay_blocked", "w3", &["fullscreen"]));
+        let text = std::fs::read_to_string(&p).unwrap();
+        let stats = signal_firing_stats(&text).unwrap();
+        let fs = &stats["fullscreen"];
+        assert_eq!(fs.blocks, 2);
+        assert_eq!(fs.suspicious, 1);
+        assert_eq!(fs.total(), 3);
+        let pn = &stats["phone_number"];
+        assert_eq!(pn.blocks, 1);
+        assert_eq!(pn.suspicious, 0);
+        // Non-detection events (scareware, sweep_error) don't contribute.
+        assert!(!stats.contains_key("x"));
+    }
+
+    #[test]
+    fn signal_firing_stats_empty_log() {
+        let stats = signal_firing_stats("").unwrap();
+        assert!(stats.is_empty());
+    }
+
+    #[test]
+    fn signal_firing_stats_tampered_log_errors() {
+        let dir = TempDir::new().unwrap();
+        let p = dir.path().join("audit.log");
+        let sink = ChainedFileSink::open(&p).unwrap();
+        sink.emit(&ev("overlay_blocked", "w1"));
+        let text = std::fs::read_to_string(&p).unwrap();
+        let tampered = text.replacen("\"x\":\"w1\"", "\"x\":\"evil\"", 1);
+        assert!(signal_firing_stats(&tampered).is_err());
     }
 }
