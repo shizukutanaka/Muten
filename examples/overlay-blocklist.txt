@@ -67,6 +67,21 @@ title: your mcafee subscription
 title: your norton subscription
 title: renew your subscription now
 
+# Fake-scanner / rogue-AV progress overlays (E15).
+# Scareware displays fabricated scan-progress titles to panic the user.
+# fake_scanner_cue heuristic catches generative variants; these anchor
+# known high-volume exact phrases. Sources: Microsoft Edge Scareware Blocker
+# corpus, Malwarebytes rogue-AV telemetry, SafetyDetectives 2026 report.
+title: scanning for viruses
+title: scanning for threats
+title: removing malware from your computer
+title: system repair in progress
+title: repairing your computer
+title: threats have been found on your computer
+title: your computer is being repaired
+glob: * threats detected on your *     # "4 threats detected on your PC"
+glob: * viruses found *                 # "3 viruses found — call now"
+
 # Prize / lottery / reward scams.
 title: you have won
 title: congratulations you won
@@ -124,11 +139,31 @@ title: update your browser to continue
 title: your browser is out of date
 
 # ─────────────────────────────────────────────────────────────────
+# CREDENTIAL-HARVEST PHISHING OVERLAYS (E14).
+# Overlays that mimic bank/email/social login-alarm dialogs to steal
+# usernames, passwords, and payment details. Grounded in IC3 2024
+# phishing report (top-1 complaint category) and Anti-Phishing Working
+# Group (APWG) Q4 2025 trends.
+# ─────────────────────────────────────────────────────────────────
+title: your account has been suspended
+title: your account has been locked
+title: your account has been compromised
+title: account verification required
+title: verify your identity to continue
+title: confirm your password to restore
+title: suspicious sign-in activity detected
+title: unusual login from new device
+title: re-enter your credentials to unlock
+title: update your payment information now
+
+# ─────────────────────────────────────────────────────────────────
 # LAW-ENFORCEMENT / GOVERNMENT IMPERSONATION lock-screens.
 # FBI IC3 2025: government-impersonation complaints nearly doubled
 # (17,300 → 32,500), ~$797M lost, top-5 cyber-enabled fraud. Edge
 # security team (Oct 2025) reported scams "posing as law enforcement,
 # accusing users of crimes, demanding payment to unlock the PC".
+# authority_lure heuristic (E17) catches novel LEA phrasing; the
+# list below anchors known high-volume exact phrases.
 # ─────────────────────────────────────────────────────────────────
 title: your computer has been locked by
 title: this device has been locked for security
@@ -140,6 +175,8 @@ title: department of justice
 title: your computer has been blocked for legal reasons
 title: pay the fine to unlock
 title: penalty must be paid
+title: cybercrime unit warning
+title: interpol notice your device is blocked
 
 # ─────────────────────────────────────────────────────────────────
 # FAKE BLUE-SCREEN / SYSTEM-ERROR & FAKE CONTROL-PANEL overlays.
