@@ -114,6 +114,22 @@ pub enum CompositeCondition {
     HasPhoneNumber,
     /// The `blocklist_phone` signal fired earlier in this `classify()` call.
     HasBlocklistPhone,
+    /// The `credential_harvest_cue` signal fired (E14 — account alarm + credential demand).
+    HasCredentialHarvestCue,
+    /// The `fake_scanner_cue` signal fired (E15 — fake AV scan progress).
+    HasFakeScannerCue,
+    /// The `subscription_lure` signal fired (E16 — fake subscription expiry).
+    HasSubscriptionLure,
+    /// The `authority_lure` signal fired (E17 — LEA/government impersonation).
+    HasAuthorityLure,
+    /// The `screen_share_lure` signal fired (E18 — share-screen social instruction).
+    HasScreenShareLure,
+    /// The `crypto_drain_lure` signal fired (E19 — wallet alarm / seed-phrase harvest).
+    HasCryptoDrainLure,
+    /// The `prize_lure` signal fired (E20 — fake prize / lottery / gift-card).
+    HasPrizeLure,
+    /// The `download_trap_lure` signal fired (E21 — fake download/update gate).
+    HasDownloadTrapLure,
 }
 
 impl CompositeCondition {
@@ -130,6 +146,14 @@ impl CompositeCondition {
             "has_blocklist_title" => Some(Self::HasBlocklistTitle),
             "has_phone_number" => Some(Self::HasPhoneNumber),
             "has_blocklist_phone" => Some(Self::HasBlocklistPhone),
+            "has_credential_harvest_cue" => Some(Self::HasCredentialHarvestCue),
+            "has_fake_scanner_cue" => Some(Self::HasFakeScannerCue),
+            "has_subscription_lure" => Some(Self::HasSubscriptionLure),
+            "has_authority_lure" => Some(Self::HasAuthorityLure),
+            "has_screen_share_lure" => Some(Self::HasScreenShareLure),
+            "has_crypto_drain_lure" => Some(Self::HasCryptoDrainLure),
+            "has_prize_lure" => Some(Self::HasPrizeLure),
+            "has_download_trap_lure" => Some(Self::HasDownloadTrapLure),
             _ => None,
         }
     }
@@ -1081,5 +1105,40 @@ mod tests {
     fn weight_override_missing_value_is_dropped() {
         let rs = Ruleset::from_lines(&["weight: phone_number"]);
         assert_eq!(rs.weight_override_count(), 0);
+    }
+
+    #[test]
+    fn composite_rule_parses_e_series_conditions() {
+        // All E-series signal conditions must parse correctly.
+        let rs = Ruleset::from_lines(&[
+            "composite: crypto_phone_block 50 has_crypto_drain_lure has_phone_number",
+            "composite: gov_wallet 60 has_authority_lure has_crypto_drain_lure",
+            "composite: scanner_phone 45 has_fake_scanner_cue has_phone_number",
+            "composite: prize_check 30 has_prize_lure alert_shaped",
+            "composite: download_check 30 has_download_trap_lure unsolicited",
+            "composite: cred_harvest 40 has_credential_harvest_cue has_phone_number",
+            "composite: sub_check 25 has_subscription_lure has_blocklist_title",
+            "composite: share_check 30 has_screen_share_lure has_phone_number",
+        ]);
+        assert_eq!(rs.composite_count(), 8);
+        let names: Vec<&str> = rs
+            .composite_rules()
+            .iter()
+            .map(|r| r.name.as_str())
+            .collect();
+        assert!(names.contains(&"crypto_phone_block"));
+        assert!(names.contains(&"gov_wallet"));
+        // Verify specific condition parsing
+        let crypto_rule = rs
+            .composite_rules()
+            .iter()
+            .find(|r| r.name == "crypto_phone_block")
+            .unwrap();
+        assert!(crypto_rule
+            .conditions
+            .contains(&CompositeCondition::HasCryptoDrainLure));
+        assert!(crypto_rule
+            .conditions
+            .contains(&CompositeCondition::HasPhoneNumber));
     }
 }

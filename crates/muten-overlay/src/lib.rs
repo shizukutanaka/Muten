@@ -1345,6 +1345,14 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasBlocklistTitle => has_sig("blocklist_title"),
         C::HasPhoneNumber => has_sig("phone_number"),
         C::HasBlocklistPhone => has_sig("blocklist_phone"),
+        C::HasCredentialHarvestCue => has_sig("credential_harvest_cue"),
+        C::HasFakeScannerCue => has_sig("fake_scanner_cue"),
+        C::HasSubscriptionLure => has_sig("subscription_lure"),
+        C::HasAuthorityLure => has_sig("authority_lure"),
+        C::HasScreenShareLure => has_sig("screen_share_lure"),
+        C::HasCryptoDrainLure => has_sig("crypto_drain_lure"),
+        C::HasPrizeLure => has_sig("prize_lure"),
+        C::HasDownloadTrapLure => has_sig("download_trap_lure"),
     }
 }
 
@@ -4251,6 +4259,56 @@ mod tests {
         assert_eq!(
             category_of("download_trap_lure"),
             Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E-series conditions in composite rules ───────────────────────────
+
+    #[test]
+    fn composite_rule_with_crypto_drain_condition_fires() {
+        // An operator-defined composite rule using has_crypto_drain_lure fires
+        // when the crypto_drain_lure signal is present.
+        let rules = Ruleset::from_lines(&[
+            "composite: crypto_phone_block 50 has_crypto_drain_lure has_phone_number",
+        ]);
+        let w = OverlayWindow {
+            title: "your wallet has been compromised call 1-800-555-0100 to secure it".into(),
+            url: None,
+            coverage_percent: 0,
+            topmost: false,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 500,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "crypto_phone_block"),
+            "composite crypto_phone_block must fire when both conditions hold; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn composite_rule_with_prize_lure_condition_fires() {
+        // An operator-defined composite rule using has_prize_lure fires correctly.
+        let rules =
+            Ruleset::from_lines(&["composite: prize_coercive 40 has_prize_lure alert_shaped"]);
+        let w = OverlayWindow {
+            title: "you have won a prize claim now before it expires".into(),
+            url: None,
+            coverage_percent: 0,
+            topmost: false,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 500,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "prize_coercive"),
+            "composite prize_coercive must fire; got {:?}",
+            v.signals
         );
     }
 }

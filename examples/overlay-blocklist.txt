@@ -307,9 +307,17 @@ host: windows-defender-alert.example
 #   user_initiated   window appeared after a user click/keypress
 #   very_new         window appeared 0 < age_ms < 1000 ms ago
 #   alert_shaped     fullscreen OR modal OR no_close_button
-#   has_blocklist_title  blocklist_title signal already fired
-#   has_phone_number     phone_number signal already fired
-#   has_blocklist_phone  blocklist_phone signal already fired
+#   has_blocklist_title       blocklist_title signal already fired
+#   has_phone_number          phone_number signal already fired
+#   has_blocklist_phone       blocklist_phone signal already fired
+#   has_credential_harvest_cue  credential_harvest_cue signal (E14)
+#   has_fake_scanner_cue      fake_scanner_cue signal (E15)
+#   has_subscription_lure     subscription_lure signal (E16)
+#   has_authority_lure        authority_lure signal (E17)
+#   has_screen_share_lure     screen_share_lure signal (E18)
+#   has_crypto_drain_lure     crypto_drain_lure signal (E19)
+#   has_prize_lure            prize_lure signal (E20)
+#   has_download_trap_lure    download_trap_lure signal (E21)
 #
 # BOUNDED-WEIGHT CONVENTION (FP-aversion):
 #   A composite covering only geometry/origin (no content tell) should
@@ -333,6 +341,16 @@ host: windows-defender-alert.example
 # Unsolicited brand-new full-screen grab with no close button and a
 # blocklisted title — the shape of a classic tech-support pop-up.
 # composite: tss_popup_shape 60 unsolicited very_new fullscreen no_close_button has_blocklist_title
+
+# Crypto drain + phone number: an alert-shaped overlay showing a wallet
+# alarm AND a support phone number is an extremely high-confidence scam.
+# composite: crypto_phone_block 50 has_crypto_drain_lure has_phone_number
+
+# Authority lure + crypto drain: government-impersonation wallet freeze.
+# composite: gov_wallet_lockdown 60 has_authority_lure has_crypto_drain_lure
+
+# Fake scanner + phone: rogue-AV call-in lure (supplement to scareware module).
+# composite: rogue_av_phone 45 has_fake_scanner_cue has_phone_number
 
 # ─────────────────────────────────────────────────────────────────
 # KNOWN SCAM PHONE NUMBERS  (phone:)
