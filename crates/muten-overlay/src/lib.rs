@@ -251,6 +251,7 @@ fn signal_phrase(signal: &str) -> &str {
         "cloud_storage_abuse" => {
             "is served from cloud blob-storage infrastructure used to host scam overlays"
         }
+        "url_path_lure" => "has a URL path combining a known brand name with a scam lure word",
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -334,6 +335,7 @@ const W_TYPOSQUAT_BRAND: i32 = 25; // host label is edit-distance-1 keyboard typ
 const W_CLICKFIX: i32 = 20; // ClickFix/fake-CAPTCHA keyboard-instruction pattern (alert_shaped guard)
 const W_URGENCY_COUNTDOWN: i32 = 15; // countdown timer + urgency keyword (scam coercion, alert_shaped guard)
 const W_CLOUD_STORAGE_ABUSE: i32 = 20; // alert-shaped overlay served from known blob-storage infra (TSS delivery vector)
+const W_URL_PATH_LURE: i32 = 20; // alert-shaped overlay with brand+lure combosquat pattern in the URL path
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -374,6 +376,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "clickfix_instruction" => Some(W_CLICKFIX),
         "urgency_countdown" => Some(W_URGENCY_COUNTDOWN),
         "cloud_storage_abuse" => Some(W_CLOUD_STORAGE_ABUSE),
+        "url_path_lure" => Some(W_URL_PATH_LURE),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -667,6 +670,63 @@ const FULLSCREEN_COVERAGE: u8 = 85;
 /// ([`rules::host_str`]) so the three host-parsing sites can't drift.
 fn url_host(url: &str) -> &str {
     crate::rules::host_str(url)
+}
+
+/// Extract the path component of a URL (the part after the host and
+/// before any `?` or `#`). Returns `""` when no path is present.
+fn url_path(url: &str) -> &str {
+    let after_scheme = match url.find("://") {
+        Some(i) => &url[i + 3..],
+        None => url,
+    };
+    match after_scheme.find('/') {
+        None => "",
+        Some(slash) => {
+            let with_path = &after_scheme[slash..];
+            match with_path.find(['?', '#']) {
+                Some(end) => &with_path[..end],
+                None => with_path,
+            }
+        }
+    }
+}
+
+/// Return `true` when the URL path contains a known-brand token within
+/// 2 positions of a known lure word (after normalization).
+///
+/// The path is split on non-alphanumeric boundaries so both
+/// `/microsoft-alert/` and `/norton/remove/` produce adjacent brand+lure
+/// tokens. A window of 2 catches single-segment combosquats and
+/// two-segment paths without reaching across long unrelated paths.
+///
+/// Requires `alert_shaped` in the caller to avoid FP on legitimate
+/// webapps whose paths happen to contain a brand name.
+fn has_path_lure(url: &str) -> bool {
+    let path = url_path(url);
+    if path.is_empty() {
+        return false;
+    }
+    let norm = confusables::normalize_for_match(path);
+    let tokens: Vec<&str> = norm
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| !t.is_empty())
+        .collect();
+    if tokens.len() < 2 {
+        return false;
+    }
+    for (i, token) in tokens.iter().enumerate() {
+        if !KNOWN_BRANDS.contains(token) {
+            continue;
+        }
+        let start = i.saturating_sub(2);
+        let end = (i + 3).min(tokens.len());
+        for (j, neighbor) in tokens[start..end].iter().enumerate() {
+            if start + j != i && BRAND_LURE_WORDS.contains(neighbor) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Return `true` when `host` is a well-known cloud blob-storage endpoint
@@ -1008,6 +1068,22 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
             if is_cloud_storage_host(host) {
                 score += rules.weight_of("cloud_storage_abuse", W_CLOUD_STORAGE_ABUSE);
                 signals.push("cloud_storage_abuse".into());
+            }
+        }
+    }
+
+    // URL-path brand+lure combosquat (E12 / F8). Attackers construct paths
+    // like `/microsoft-alert/`, `/norton-remove/`, or `/paypal/login/verify`
+    // to make a scam URL look credible. Splitting the path on non-alphanumeric
+    // boundaries and checking for adjacent brand+lure token pairs detects this
+    // without complex parsing. The `alert_shaped` guard prevents a legitimate
+    // webapp at `/microsoft-alerts/faq` from firing — closable, non-fullscreen
+    // windows are normal apps, not overlays.
+    if alert_shaped {
+        if let Some(url) = w.url.as_deref() {
+            if has_path_lure(url) {
+                score += rules.weight_of("url_path_lure", W_URL_PATH_LURE);
+                signals.push("url_path_lure".into());
             }
         }
     }
@@ -3409,5 +3485,121 @@ mod tests {
                 v.signals
             );
         }
+    }
+
+    // ── E12: URL path brand+lure lure detection ───────────────────────
+
+    #[test]
+    fn url_path_lure_fires_on_hyphen_combosquat_path() {
+        // /microsoft-alert/ — brand "microsoft" + lure "alert" as hyphen tokens.
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "Security warning".into(),
+            coverage_percent: 96,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            age_ms: 0,
+            origin: Origin::Unsolicited,
+            url: Some("https://evil.example.com/microsoft-alert/index.html".into()),
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "url_path_lure"),
+            "expected url_path_lure for '/microsoft-alert/'; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn url_path_lure_fires_on_slash_separated_brand_lure() {
+        // /norton/remove/ — brand "norton" + lure "remove" as slash-separated segments.
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "AV warning".into(),
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            age_ms: 0,
+            origin: Origin::Unsolicited,
+            url: Some("https://fake-av.com/norton/remove/now".into()),
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "url_path_lure"),
+            "expected url_path_lure for '/norton/remove/now'; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn url_path_lure_does_not_fire_without_alert_shape() {
+        // A closable, non-topmost window: alert_shaped is false → no fire.
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "Helpful article".into(),
+            coverage_percent: 40,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            age_ms: 0,
+            origin: Origin::UserInitiated,
+            url: Some("https://blog.example.com/microsoft-alerts/setup-guide".into()),
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "url_path_lure"),
+            "url_path_lure must not fire for non-alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn url_path_lure_does_not_fire_without_lure_word() {
+        // Brand in path but no lure word adjacent → no fire.
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "Page notice".into(),
+            coverage_percent: 96,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            age_ms: 0,
+            origin: Origin::Unsolicited,
+            url: Some("https://news.example.com/microsoft/announces/new-feature".into()),
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "url_path_lure"),
+            "url_path_lure must not fire when no lure word is adjacent; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn has_path_lure_unit() {
+        // Brand + lure as hyphen tokens.
+        assert!(has_path_lure("https://evil.com/paypal-login/page"));
+        assert!(has_path_lure("https://evil.com/norton-remove/"));
+        // Brand + lure as slash-separated segments.
+        assert!(has_path_lure("https://evil.com/apple/support/"));
+        // Brand with lure within 2 tokens (across one intermediate token).
+        assert!(has_path_lure("https://evil.com/microsoft/security/alert"));
+        // No lure → false.
+        assert!(!has_path_lure("https://evil.com/microsoft/news/product"));
+        // No brand → false.
+        assert!(!has_path_lure("https://evil.com/account/login/verify"));
+        // Empty path → false.
+        assert!(!has_path_lure("https://evil.com"));
+    }
+
+    #[test]
+    fn url_path_lure_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("url_path_lure"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
     }
 }

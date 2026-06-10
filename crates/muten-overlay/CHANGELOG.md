@@ -255,6 +255,16 @@ MSRV 1.75, 286 tests.
   payment — drawn from the dnstwist corpus and IC3 2025 combosquat examples.
   5 new unit tests (norton/mcafee combosquat, JP brand impersonation,
   venmo/zelle combosquat, real-brand FP sanity). 381 tests total. (D11.)
+- **URL-path brand+lure lure signal** (`url_path_lure`; E12). `url_path(url)`
+  extracts the path component (after host, before `?`/`#`); `has_path_lure(url)`
+  normalizes it via the full `strip_invisibles → fold_confusables → fold_leet →
+  lowercase` pipeline, then splits on non-alphanumeric boundaries and checks for
+  a known-brand token within 2 positions of a known lure word. Catches
+  `/microsoft-alert/`, `/norton/remove/now`, and `/paypal-login/page` — paths
+  that attackers construct to make scam URLs look credible in the address bar.
+  The `alert_shaped` guard prevents legitimate webapps (whose closable windows
+  happen to contain a brand name in a path) from firing. Weight `W_URL_PATH_LURE
+  = 20`; Category: `InterfaceInterference`. 6 unit tests; 387 tests total. (E12.)
 
 ### Changed (breaking)
 - **`Verdict.signals: Vec<String>`** (was `Vec<&'static str>`). Required to
