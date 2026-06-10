@@ -706,4 +706,37 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_screen_share_lure(&s));
         }
     }
+
+    // ── E19: crypto_drain_lure ────────────────────────────────────────────
+
+    /// has_crypto_drain_lure never panics on arbitrary Unicode input.
+    #[test]
+    fn has_crypto_drain_lure_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_crypto_drain_lure(&s);
+    }
+
+    /// Plain alphanumeric-only strings lacking crypto tokens must not fire.
+    #[test]
+    fn plain_ascii_never_fires_crypto_drain_lure(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let wallet_word = has("wallet") || has("metamask") || has("coinbase")
+            || has("web3") || has("defi") || has("nft");
+        let alarm_action = has("compromised") || has("hacked") || has("flagged")
+            || has("suspended") || has("unauthorized")
+            || (has("suspicious") && has("activity"));
+        let wallet_alarm = wallet_word && alarm_action;
+        let coerce_verb = has("connect") || has("validate") || has("link");
+        let wallet_coerce = coerce_verb && wallet_word;
+        let seed_word = (has("seed") && has("phrase"))
+            || (has("recovery") && has("phrase"))
+            || (has("secret") && (has("phrase") || has("recovery")))
+            || (has("private") && has("key"))
+            || has("mnemonic");
+        let request_token = has("verify") || has("enter") || has("confirm")
+            || has("required") || has("provide") || has("submit");
+        let seed_harvest = seed_word && request_token;
+        if !(wallet_alarm || wallet_coerce || seed_harvest) {
+            prop_assert!(!muten_overlay::confusables::has_crypto_drain_lure(&s));
+        }
+    }
 }

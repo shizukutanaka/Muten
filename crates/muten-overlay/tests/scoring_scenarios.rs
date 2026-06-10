@@ -368,3 +368,48 @@ fn leet_fake_scanner_still_fires() {
         v.signals
     );
 }
+
+#[test]
+fn crypto_wallet_alarm_reaches_suspicious() {
+    // Wallet-alarm pattern: wallet word + compromise token, alert-shaped.
+    // Groundings: FBI IC3 2025 crypto investment fraud #1 ($4.57B losses).
+    let v = classify(
+        &alert_window("your wallet has been compromised click here to secure"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "crypto_drain_lure"),
+        "expected crypto_drain_lure; got {:?}",
+        v.signals
+    );
+    assert!(v.score >= SUSPICIOUS_THRESHOLD);
+}
+
+#[test]
+fn seed_phrase_harvest_reaches_suspicious() {
+    // seed_harvest pattern: seed phrase + required → in an alert-shaped window.
+    let v = classify(
+        &alert_window("seed phrase verification required to restore your wallet"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "crypto_drain_lure"),
+        "expected crypto_drain_lure for seed-phrase lure; got {:?}",
+        v.signals
+    );
+    assert!(v.score >= SUSPICIOUS_THRESHOLD);
+}
+
+#[test]
+fn crypto_news_article_does_not_fire() {
+    // FP guard: a news article about a crypto hack in a user-opened, closable tab.
+    let v = classify(
+        &closable_window("coinbase wallet hacked 200m compromised security researchers"),
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "crypto_drain_lure"),
+        "crypto_drain_lure must not fire for user-initiated closable tab; got {:?}",
+        v.signals
+    );
+}

@@ -259,6 +259,9 @@ fn signal_phrase(signal: &str) -> &str {
         "fake_scanner_cue" => "displays fake antivirus scan progress or threat-count language",
         "subscription_lure" => "displays a fake subscription or license expiry urging renewal",
         "authority_lure" => "impersonates a law-enforcement agency to demand payment or call",
+        "crypto_drain_lure" => {
+            "displays a fake crypto-wallet alarm or demands seed-phrase / private-key entry"
+        }
         "screen_share_lure" => {
             "instructs the user to share their screen or grant desktop access to a fake support agent"
         }
@@ -351,6 +354,7 @@ const W_CREDENTIAL_HARVEST: i32 = 20; // "account suspended / verify account / c
 const W_FAKE_SCANNER: i32 = 20; // fake-AV scanner progress: "scanning for threats", "N threats found", "repairing system"
 const W_SUBSCRIPTION_LURE: i32 = 15; // "subscription expired renew now" — softer scareware, lower weight (often has close button)
 const W_AUTHORITY_LURE: i32 = 25; // FBI/police/interpol/cybercrime impersonation — high-specificity ransomware-bluff tell
+const W_CRYPTO_DRAIN: i32 = 25; // wallet-drain overlay: wallet alarm / coerce-connect / seed-phrase harvest
 const W_SCREEN_SHARE: i32 = 20; // instructs victim to share screen/desktop with a "support agent"
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
@@ -398,6 +402,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "fake_scanner_cue" => Some(W_FAKE_SCANNER),
         "subscription_lure" => Some(W_SUBSCRIPTION_LURE),
         "authority_lure" => Some(W_AUTHORITY_LURE),
+        "crypto_drain_lure" => Some(W_CRYPTO_DRAIN),
         "screen_share_lure" => Some(W_SCREEN_SHARE),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
@@ -434,6 +439,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "fake_scanner_cue"
             | "subscription_lure"
             | "authority_lure"
+            | "crypto_drain_lure"
             | "screen_share_lure"
             | "remote_access_lure"
     )
@@ -982,6 +988,18 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && confusables::has_authority_lure(&normalized_title) {
         score += rules.weight_of("authority_lure", W_AUTHORITY_LURE);
         signals.push("authority_lure".into());
+    }
+
+    // Crypto / Web3 wallet-drain lure (FBI IC3 2025: #1 loss category, $4.57B).
+    // Three patterns: wallet_alarm (wallet-brand + compromise token), wallet_coerce
+    // (connect/validate your wallet), seed_harvest (seed phrase / private key +
+    // request token). W_CRYPTO_DRAIN = 25 — comparable to authority_lure because
+    // the combinations (wallet-brand + alarm) are highly scam-specific.
+    // alert_shaped guard: news articles ("Coinbase Wallet Compromised in Hack")
+    // appear in user-opened, closable tabs and do not fire.
+    if alert_shaped && confusables::has_crypto_drain_lure(&normalized_title) {
+        score += rules.weight_of("crypto_drain_lure", W_CRYPTO_DRAIN);
+        signals.push("crypto_drain_lure".into());
     }
 
     // Screen-share lure (FTC / IC3 2024 TSS pattern). Attackers walk the
@@ -4035,6 +4053,61 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("screen_share_lure"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E19: crypto_drain_lure ────────────────────────────────────────────
+
+    #[test]
+    fn crypto_drain_lure_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "your wallet has been compromised verify now to secure funds".into(),
+            url: None,
+            coverage_percent: 0,
+            topmost: false,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 500,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "crypto_drain_lure"),
+            "expected crypto_drain_lure; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_CRYPTO_DRAIN);
+    }
+
+    #[test]
+    fn crypto_drain_lure_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        // News article in a user-opened browser tab.
+        let w = OverlayWindow {
+            title: "coinbase wallet compromised in 200m hack security researchers say".into(),
+            url: None,
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 30_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "crypto_drain_lure"),
+            "crypto_drain_lure must not fire for user-initiated closable tab; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn crypto_drain_lure_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("crypto_drain_lure"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }

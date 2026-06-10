@@ -851,6 +851,57 @@ pub fn has_screen_share_lure(s: &str) -> bool {
     share_screen || remote_enable || grant_support
 }
 
+/// Detect crypto / Web3 wallet-drain overlay lures (E19).
+///
+/// Three complementary AND-pair patterns (all run on the normalized title):
+/// - **wallet_alarm**: a wallet-brand word paired with an alarm token
+///   (compromised, hacked, flagged, suspended, unauthorized, suspicious activity).
+/// - **wallet_coerce**: a connect/validate/verify action paired with a wallet brand.
+/// - **seed_harvest**: a seed-phrase or private-key word paired with a request
+///   token (verify, enter, confirm, required, provide).
+///
+/// The `alert_shaped` guard in `classify()` blocks news articles and educational
+/// content that mention these words but appear in user-opened, closable browser tabs.
+#[must_use]
+pub fn has_crypto_drain_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // wallet_alarm: wallet-brand word + alarm action
+    let wallet_word = has("wallet")
+        || has("metamask")
+        || has("coinbase")
+        || has("web3")
+        || has("defi")
+        || has("nft");
+    let alarm_action = has("compromised")
+        || has("hacked")
+        || has("flagged")
+        || has("suspended")
+        || has("unauthorized")
+        || (has("suspicious") && has("activity"));
+    let wallet_alarm = wallet_word && alarm_action;
+
+    // wallet_coerce: connect/validate/verify/link + wallet brand
+    let coerce_verb = has("connect") || has("validate") || has("verify") || has("link");
+    let wallet_coerce = coerce_verb && wallet_word;
+
+    // seed_harvest: seed/recovery phrase or private key + request
+    let seed_word = (has("seed") && has("phrase"))
+        || (has("recovery") && has("phrase"))
+        || (has("secret") && (has("phrase") || has("recovery")))
+        || (has("private") && has("key"))
+        || has("mnemonic");
+    let request_token = has("verify")
+        || has("enter")
+        || has("confirm")
+        || has("required")
+        || has("provide")
+        || has("submit");
+    let seed_harvest = seed_word && request_token;
+
+    wallet_alarm || wallet_coerce || seed_harvest
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1567,5 +1618,73 @@ mod tests {
         assert!(!has_screen_share_lure("remote desktop connection"));
         // "Grant" without "access".
         assert!(!has_screen_share_lure("grant permission requested"));
+    }
+
+    // ── has_crypto_drain_lure ─────────────────────────────────────────────
+
+    #[test]
+    fn crypto_drain_lure_fires_on_wallet_alarm() {
+        // wallet word + alarm action
+        assert!(has_crypto_drain_lure(
+            "your wallet has been compromised click here"
+        ));
+        assert!(has_crypto_drain_lure(
+            "suspicious activity detected on your wallet"
+        ));
+        assert!(has_crypto_drain_lure(
+            "your metamask wallet has been hacked"
+        ));
+        assert!(has_crypto_drain_lure(
+            "your coinbase account has been flagged"
+        ));
+        assert!(has_crypto_drain_lure(
+            "unauthorized access to your web3 wallet detected"
+        ));
+    }
+
+    #[test]
+    fn crypto_drain_lure_fires_on_wallet_coercion() {
+        assert!(has_crypto_drain_lure("connect your wallet to continue"));
+        assert!(has_crypto_drain_lure("validate your wallet now"));
+        assert!(has_crypto_drain_lure(
+            "verify your metamask wallet to restore access"
+        ));
+        assert!(has_crypto_drain_lure(
+            "link your coinbase wallet to claim funds"
+        ));
+    }
+
+    #[test]
+    fn crypto_drain_lure_fires_on_seed_harvest() {
+        assert!(has_crypto_drain_lure("seed phrase verification required"));
+        assert!(has_crypto_drain_lure(
+            "enter your recovery phrase to restore access"
+        ));
+        assert!(has_crypto_drain_lure("confirm your secret recovery phrase"));
+        assert!(has_crypto_drain_lure(
+            "provide your private key to verify ownership"
+        ));
+        assert!(has_crypto_drain_lure(
+            "mnemonic required to unlock your wallet"
+        ));
+    }
+
+    #[test]
+    fn crypto_drain_lure_does_not_fire_on_benign() {
+        // News / educational text about crypto
+        assert!(!has_crypto_drain_lure("bitcoin price reaches new high"));
+        assert!(!has_crypto_drain_lure("ethereum network upgrade completed"));
+        // Password managers / security apps using "key" without seed context
+        assert!(!has_crypto_drain_lure(
+            "your encryption key has been rotated"
+        ));
+        // Legitimate account lock without wallet/crypto context
+        assert!(!has_crypto_drain_lure(
+            "your account has been suspended for inactivity"
+        ));
+        // Remote desktop app — no crypto tokens
+        assert!(!has_crypto_drain_lure(
+            "share your screen with our support agent"
+        ));
     }
 }

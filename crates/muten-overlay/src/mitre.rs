@@ -58,7 +58,8 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         | "credential_harvest_cue"
         | "fake_scanner_cue"
         | "subscription_lure"
-        | "authority_lure" => &["T1566"],
+        | "authority_lure"
+        | "crypto_drain_lure" => &["T1566"],
         _ => &[],
     }
 }
@@ -125,6 +126,7 @@ mod tests {
         assert_eq!(techniques_of("fake_scanner_cue"), &["T1566"]);
         assert_eq!(techniques_of("subscription_lure"), &["T1566"]);
         assert_eq!(techniques_of("authority_lure"), &["T1566"]);
+        assert_eq!(techniques_of("crypto_drain_lure"), &["T1566"]);
     }
 
     #[test]
