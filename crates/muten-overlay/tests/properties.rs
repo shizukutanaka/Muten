@@ -320,4 +320,88 @@ proptest! {
         // specific random strings.
         let _ = muten_overlay::confusables::has_clickfix_instruction(&s);
     }
+
+    // ── v0.6.0 property additions ─────────────────────────────────
+
+    /// `match_title_glob` never panics on arbitrary pattern + arbitrary title.
+    #[test]
+    fn match_title_glob_never_panics(pattern in ".*", title in ".*") {
+        let rs = Ruleset::from_lines(&[&format!("glob: {pattern}")]);
+        let _ = rs.match_title_glob(&title);
+    }
+
+    /// `glob: *` (star-only pattern) matches any title — the universal
+    /// pattern is a short-circuit for "flag everything".
+    #[test]
+    fn glob_star_matches_any_title(title in ".*") {
+        let rs = Ruleset::from_lines(&["glob: *"]);
+        // After normalization the pattern is still "*" (star is a non-letter
+        // separator and passes through the pipeline unchanged).
+        prop_assert!(rs.match_title_glob(&title).is_some());
+    }
+
+    /// `Ruleset::weight_of` never panics on arbitrary signal names or defaults.
+    #[test]
+    fn weight_of_never_panics(signal in "[a-z_]{1,40}", default in any::<i32>()) {
+        let rs = Ruleset::default();
+        let _ = rs.weight_of(&signal, default);
+    }
+
+    /// Weight overrides do not break threshold consistency: score is still
+    /// clamped ≥ 0 and the decision is still consistent with the score,
+    /// regardless of what overrides are in the ruleset.
+    #[test]
+    fn classify_with_weight_overrides_is_threshold_consistent(
+        w in window_strategy(),
+        override_val in -200i32..=500,
+    ) {
+        // Apply an override to a common signal and verify consistency.
+        let rules = Ruleset::from_lines(&[&format!("weight: fullscreen {override_val}")]);
+        let v = classify(&w, &rules);
+        prop_assert!(v.score >= 0);
+        match v.decision {
+            Decision::Block => prop_assert!(v.score >= BLOCK_THRESHOLD),
+            Decision::Suspicious => prop_assert!(
+                v.score >= SUSPICIOUS_THRESHOLD && v.score < BLOCK_THRESHOLD
+            ),
+            Decision::Allow => prop_assert!(v.score < SUSPICIOUS_THRESHOLD),
+        }
+    }
+
+    /// `Verdict::confidence()` never panics on any classified window.
+    #[test]
+    fn confidence_never_panics(w in window_strategy()) {
+        use muten_overlay::ConfidenceLevel;
+        let v = classify(&w, &Ruleset::default());
+        let _conf: ConfidenceLevel = v.confidence();
+    }
+
+    /// `Verdict::score_breakdown()` never panics and returns a list
+    /// consistent with the fired signals.
+    #[test]
+    fn score_breakdown_never_panics_and_covers_signals(w in window_strategy()) {
+        let v = classify(&w, &Ruleset::default());
+        let bd = v.score_breakdown();
+        // Every signal must appear in the breakdown.
+        for sig in &v.signals {
+            prop_assert!(
+                bd.iter().any(|(name, _)| name == sig),
+                "signal {} missing from score_breakdown", sig
+            );
+        }
+    }
+
+    /// Glob ruleset parsing never panics on arbitrary text.
+    #[test]
+    fn ruleset_parse_with_glob_never_panics(raw in ".*") {
+        let prefixed = format!("glob: {raw}");
+        let _ = Ruleset::parse(&prefixed);
+    }
+
+    /// Weight override parsing never panics on arbitrary text.
+    #[test]
+    fn ruleset_parse_with_weight_never_panics(raw in ".*") {
+        let prefixed = format!("weight: {raw}");
+        let _ = Ruleset::parse(&prefixed);
+    }
 }

@@ -6,7 +6,7 @@
 > walks the **actual code surface** module by module, enumerates concrete
 > improvement points found by direct audit, and tracks their status.
 >
-> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 330 tests.
+> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 338 tests.
 > Status: ✅ done · 🔧 fixed-this-pass · 🔻 planned · 🆕 newly-found · ⛔ out-of-scope (I3)
 > Invariants (every item respects): offline · pure functions over window
 > metadata · no ML/CV · `#![forbid(unsafe_code)]` · explainable additive
