@@ -34,6 +34,7 @@ pub mod categories;
 pub mod confusables;
 pub mod controller;
 pub mod merkle;
+pub mod mitre;
 pub mod monitor;
 pub mod rules;
 pub mod scareware;
@@ -115,6 +116,10 @@ pub struct Verdict {
     /// the signals that fired, deduped and sorted. Empty when only
     /// descriptive signals fired. See the `categories` module.
     pub categories: Vec<DarkPatternCategory>,
+    /// MITRE ATT&CK® for Enterprise technique IDs (e.g. `"T1566"`) implied
+    /// by the signals that fired, sorted and deduplicated. Empty when no
+    /// signals map to an ATT&CK technique. See the `mitre` module.
+    pub mitre_techniques: Vec<String>,
     /// Set when a blocklist rule matched outright.
     pub matched_rule: Option<String>,
 }
@@ -427,6 +432,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
                 decision: Decision::Block,
                 score: BLOCK_THRESHOLD,
                 categories: categories::categories_of(&signals),
+                mitre_techniques: mitre::techniques_of_signals(&signals),
                 signals,
                 matched_rule: Some(hit),
             };
@@ -754,6 +760,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         decision,
         score,
         categories: categories::categories_of(&signals),
+        mitre_techniques: mitre::techniques_of_signals(&signals),
         signals,
         matched_rule,
     }

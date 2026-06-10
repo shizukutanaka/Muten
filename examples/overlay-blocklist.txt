@@ -282,3 +282,39 @@ process: total system care
 process: my pc optimizer
 process: segurazo
 process: one safe pc cleaner
+# --- extended families (CCCS-Yara FakeAV, Malwarebytes, SafetyDetectives 2026) ---
+process: malware crusher
+process: stronghold antivirus
+process: antivirus pro 2017
+process: antivirus pro 2018
+process: antivirus security pro
+process: windows antivirus pro
+process: windows protection suite
+process: windows security suite
+process: spyware protect 2009
+process: smart engine
+process: security tool
+process: security master av
+process: virus melt
+process: av security suite
+process: av guard online
+process: iolo system mechanic
+process: system mechanic professional
+process: reimage repair
+process: reimage pc repair
+process: disk heal
+process: winifixer
+process: winfixer
+process: errorfix
+process: error fix
+process: virus heat
+process: ie defender
+process: ie antivirus
+process: antispyware shield pro
+process: privacy protector
+process: ultimate antivirus
+process: xp antivirus
+process: vista antivirus
+process: ms antispyware
+process: best malware protection
+process: malwarebell

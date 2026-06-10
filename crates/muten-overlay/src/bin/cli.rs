@@ -285,6 +285,9 @@ fn cmd_classify(
             let cats: Vec<&str> = v.categories.iter().map(|c| c.as_str()).collect();
             println!("dark_patterns: {}", cats.join(", "));
         }
+        if !v.mitre_techniques.is_empty() {
+            println!("mitre:    {}", v.mitre_techniques.join(", "));
+        }
         if let Some(rule) = &v.matched_rule {
             println!("matched:  {rule}");
         }
@@ -346,13 +349,47 @@ fn cmd_classify_stream(window: &str, rules: Option<&std::path::Path>) -> Result<
 }
 
 fn cmd_rules(file: &std::path::Path) -> Result<ExitCode, String> {
+    use muten_overlay::rules::CompositeCondition;
+    use muten_overlay::BLOCK_THRESHOLD;
+
     let text =
         std::fs::read_to_string(file).map_err(|e| format!("reading {}: {e}", file.display()))?;
     let rs = Ruleset::parse(&text);
     println!("blocklist: {}", file.display());
-    println!("  hosts:     {}", rs.host_count());
-    println!("  titles:    {}", rs.title_count());
-    println!("  processes: {}", rs.process_count());
+    println!("  hosts:       {}", rs.host_count());
+    println!("  titles:      {}", rs.title_count());
+    println!("  phones:      {}", rs.phone_count());
+    println!("  processes:   {}", rs.process_count());
+    println!("  composites:  {}", rs.composite_count());
+
+    // Bounded-weight guard: warn when a composite rule covers only
+    // geometry/origin conditions (no content tell) but its weight alone
+    // could push a bare-shape window past BLOCK_THRESHOLD. Such a rule
+    // risks auto-blocking kiosk/lockdown shells. See SPECIFICATION §5.1.
+    let content_tells = [
+        CompositeCondition::HasBlocklistTitle,
+        CompositeCondition::HasPhoneNumber,
+        CompositeCondition::HasBlocklistPhone,
+    ];
+    let mut warnings = 0usize;
+    for rule in rs.composite_rules() {
+        let has_content_tell = rule.conditions.iter().any(|c| content_tells.contains(c));
+        if !has_content_tell && rule.weight >= BLOCK_THRESHOLD {
+            eprintln!(
+                "WARNING: composite rule '{}' has weight {} ≥ BLOCK_THRESHOLD ({}) \
+                 with no content-tell condition — a geometry-only window could \
+                 be auto-blocked, violating the observe-first FP-aversion guarantee. \
+                 Consider adding has_blocklist_title, has_phone_number, or \
+                 has_blocklist_phone, or reducing weight.",
+                rule.name, rule.weight, BLOCK_THRESHOLD
+            );
+            warnings += 1;
+        }
+    }
+    if warnings > 0 {
+        eprintln!("{warnings} bounded-weight warning(s) — see SPECIFICATION.md §5.1");
+        return Ok(ExitCode::from(1));
+    }
     Ok(ExitCode::from(0))
 }
 

@@ -7,12 +7,13 @@ environment enforcement (scam-overlay + rogue-AV detection).
 
 ## [0.6.0] — unreleased
 
-Composite AND-condition rules, canonical audit-chain hashing, NDJSON
-streaming classify, and build-info version. **API break**: `Verdict.signals`
-and `EnforceOutcome.signals` change from `Vec<&'static str>` to `Vec<String>`
-(required to accommodate operator-named composite signals; minor version bump
-per semver for a pre-1.0 crate). No new dependencies. All constraints preserved:
-offline, pure, `forbid(unsafe_code)`, MSRV 1.75, 274 tests.
+Composite AND-condition rules, canonical audit-chain hashing, NDJSON streaming
+classify, build-info version, MITRE ATT&CK® technique tags, composite weight
+guard, and expanded rogue-AV families. **API break**: `Verdict.signals` and
+`EnforceOutcome.signals` change from `Vec<&'static str>` to `Vec<String>`;
+`Verdict` gains a new `mitre_techniques: Vec<String>` field. No new
+dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
+MSRV 1.75, 286 tests.
 
 ### Added
 - **Composite AND-condition rules** (`composite: <name> <weight> <cond1> …`
@@ -51,6 +52,37 @@ offline, pure, `forbid(unsafe_code)`, MSRV 1.75, 274 tests.
   uses BTreeMap). Two new tests confirm determinism and key-insertion-order
   stability.
 
+### Added (this pass)
+- **MITRE ATT&CK® technique tags** (`mitre` module; H3). A new
+  `Verdict.mitre_techniques: Vec<String>` field carries the sorted,
+  deduplicated set of ATT&CK for Enterprise v16 technique IDs implied by the
+  signals that fired — e.g. `["T1036","T1566"]` for a homoglyph-title +
+  phone-number window. Mapping: `T1566` Phishing (phone/title lures),
+  `T1656` Impersonation (brand/combosquat/rogue-AV), `T1036` Masquerading
+  (homoglyph/mixed-script/BiDi/combining-mark evasion), `T1204` User Execution
+  (ClickFix), `T1219` Remote Access Software (RAT lure), `T1056` Input Capture
+  (modal/input_trap). The tags appear in `--json` output and the text
+  `classify` summary. Purely classification over already-computed signals; no
+  new dependencies. New public module `mitre::{techniques_of,
+  techniques_of_signals}`; 6 unit tests. (H3.)
+- **Composite weight guard in `rules` subcommand**. `muten-overlay rules
+  <file>` now checks each `composite:` rule: if a rule covers only
+  geometry/origin conditions (no `has_blocklist_title`, `has_phone_number`, or
+  `has_blocklist_phone`) and its weight is ≥ `BLOCK_THRESHOLD` (100), a
+  warning is printed to stderr and the subcommand exits 1. This machine-checks
+  the bounded-weight FP-aversion convention documented in SPECIFICATION §5.1,
+  so CI can catch inadvertent auto-Block-of-shape-only rules before they reach
+  a fleet. The `rules` output now also includes `phones:` and `composites:`
+  counts.
+- **Expanded rogue-AV / scareware process families** in
+  `examples/overlay-blocklist.txt` (+35 entries). Additional entries grounded in
+  CCCS-Yara FakeAV corpus, Malwarebytes Rogue.* detections, and SafetyDetectives
+  2026 rogue-AV guide: includes historical families (WinFixer, Antivirus Pro,
+  IE Defender, Reimage), system-optimizer rogues (iolo System Mechanic, Disk
+  Heal), and newer names (Malware Crusher, AV Guard Online). These are
+  illustrative defaults — IT should extend with fleet-specific observations
+  pushed via MDM. (G4.)
+
 ### Changed (breaking)
 - **`Verdict.signals: Vec<String>`** (was `Vec<&'static str>`). Required to
   accommodate operator-named composite signals (which are `String` at runtime).
@@ -58,6 +90,9 @@ offline, pure, `forbid(unsafe_code)`, MSRV 1.75, 274 tests.
   `.iter().any(|s| s == "signal_name")` or `.iter().any(|s| s.as_str() == "signal_name")`.
 - **`EnforceOutcome.signals: Vec<String>`** (was `Vec<&'static str>`). Same
   reason; same migration path for callers.
+- **`Verdict.mitre_techniques: Vec<String>`** (new field). Callers that
+  construct `Verdict` directly (not via `classify()`) must add this field.
+  `classify()` populates it automatically.
 - **`categories_of` now generic** over `S: AsRef<str>`. Accepts
   `&[&'static str]`, `&[String]`, `&[&&str]`, etc. without type homogenization.
   Existing callers that passed `&[&str]` slices compile without change.
