@@ -22,3 +22,8 @@
 
 # Local env
 .env
+
+# GitHub Actions workflows — the GitHub App used for automated commits
+# lacks the `workflows` permission to push .github/workflows/*.
+# Workflows are managed manually by repository owners with full access.
+.github/
