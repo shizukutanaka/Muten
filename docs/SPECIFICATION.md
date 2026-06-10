@@ -1,4 +1,4 @@
-# muten-overlay — Specification (v0.5.0)
+# muten-overlay — Specification (v0.6.0)
 
 Normative specification of the `muten-overlay` pure-domain layer: the
 types, the classifier contract, the offline blocklist grammar, the
@@ -49,9 +49,16 @@ for any missing field** (a helper that cannot determine a field omits it).
 | `age_ms` | u64 | ms on screen; **`0` means "unknown"**, not "brand new" |
 
 ### 2.3 `Verdict`
-`{ decision, score: i32 (≥0), signals: [&str], categories: [DarkPatternCategory] (sorted, deduped), matched_rule: Option<String> }`.
-`Decision` ∈ `allow | suspicious | block`. `Verdict::explain()` MUST return
-a deterministic, non-empty, period-terminated sentence for any verdict.
+`{ decision, score: i32 (≥0), signals: Vec<String>, categories: Vec<DarkPatternCategory> (sorted, deduped), matched_rule: Option<String>, mitre_techniques: Vec<String>, explanation: String }`.
+`Decision` ∈ `allow | suspicious | block`.
+
+- `Verdict::explain()` MUST return a deterministic, non-empty, period-terminated sentence for any verdict, including the confidence level (e.g. `"Block (score 130, high confidence): …"`).
+- `Verdict::confidence() -> ConfidenceLevel` returns `High` (≥2 content-tell signals), `Medium` (exactly 1), or `Low` (geometry signals only).
+- `Verdict::score_breakdown() -> Vec<(String, i32)>` returns the default weight per fired signal (compile-time constants; active weight overrides are reflected in `score` but not here).
+- `mitre_techniques` is a sorted, deduplicated list of MITRE ATT&CK for Enterprise v16 technique IDs implied by the signals (e.g. `["T1036","T1566"]`).
+
+### 2.4 `ConfidenceLevel` (serde `snake_case`)
+`high` | `medium` | `low`. Populated by `Verdict::confidence()`.
 
 ## 3. Classifier contract (`classify(&OverlayWindow, &Ruleset) -> Verdict`)
 
@@ -64,7 +71,12 @@ Precedence:
 
 ### 3.1 Signal weights (named constants, I6)
 
-| signal | weight | condition |
+Default weights are compile-time constants. Any can be overridden at runtime
+via `weight:` lines in the pushed blocklist (§5.2); `classify()` calls
+`Ruleset::weight_of(signal, default)` for every signal, so the actual score
+reflects active overrides.
+
+| signal | default weight | condition |
 |---|--:|---|
 | `fullscreen` | +30 | `coverage_percent ≥ 85` |
 | `topmost` | +15 | `topmost` |
@@ -73,24 +85,24 @@ Precedence:
 | `unsolicited` | +25 | `origin = unsolicited` |
 | `user_initiated` | −40 | `origin = user_initiated` |
 | `very_new` | +10 | `0 < age_ms < 1000` |
-| `blocklist_title` | +40 | normalized title contains a `title:` pattern |
+| `blocklist_title` | +40 | normalized title matches a `title:` pattern (substring) or a `glob:` pattern (§5.1) |
 | `phone_number` | +35 | alert-shaped **and** a 7–15-digit phone number in the title |
 | `blocklist_phone` | +40 | the title contains a number on the curated `phone:` blocklist (known scam number). High-confidence, so unlike `phone_number` it does **not** require the alert shape; additive, not an auto-block (like `blocklist_title`). Matched digits-only on the folded title |
 | `mixed_script` | +30 | raw title or host token mixes Latin with Cyrillic/Greek |
-| `whole_script_confusable` | +30 | raw title or host **label** (dot-split for URLs) is entirely Cyrillic or Greek where every letter folds to an ASCII Latin look-alike (UTS#39 §5 whole-script confusable; blind spot of `mixed_script`). The FP guard: legitimate Cyrillic/Greek text uses letters without ASCII folds (п, θ…), which fail the fold-to-ASCII check |
-| `compat_chars_present` | +20 | raw title or host contains enclosed/circled Latin letters (U+24B6–U+24E9, Ⓐ–Ⓩ / ⓐ–ⓩ); used in phishing to bypass plain-text filters. `normalize_for_match` now folds these to ASCII for blocklist matching; this signal fires on their mere presence in the raw text |
-| `mixed_number_systems` | +20 | a single whitespace-delimited token in the raw title or host mixes decimal digits from two numbering systems, e.g. ASCII `5` and Arabic-Indic `٥` (ICU `SpoofChecker.MIXED_NUMBERS`). No legitimate number mixes systems. ASCII and full-width digits are the **same** system, so legitimate Japanese full-width numerals beside ASCII do not fire (JP FP guard) |
-| `excessive_combining_marks` | +20 | the raw title or host stacks **3 or more** combining marks on one base character ("Zalgo" obfuscation). The threshold-of-3 is the FP guard: legitimate scripts (Vietnamese, Arabic, Indic, IPA) stack at most one or two combining marks, so they never fire |
-| `bidi_override` | +30 | raw title or host contains an LRO/RLO BiDi directional override (Trojan Source); isolates/marks used by legit RTL text do not fire |
-| `brand_impersonation` | +40 | a host label's UTS#39 skeleton equals a built-in known brand but is not the literal brand (homograph/typosquat); the real brand domain never fires |
-| `combosquat_brand` | +30 | a host label joins a built-in known brand and a scam-lure word (`support`, `secure`, `verify`, `login`, `account`…) as distinct **hyphen-delimited tokens** — e.g. `apple-support`, `paypal-secure-login` (combosquatting; Kintis et al. ACM CCS 2017). Blind spot of `brand_impersonation` (which needs the label skeleton to *equal* a brand). FP guard: the hyphen-delimiter + exact-token requirement means legitimate concatenations (`windowsupdate.com`), bare brands, and subdomains (`support.apple.com`) never fire. Each token is folded to its skeleton first, so homoglyph combosquats also match |
-| `clickfix_instruction` | +20 | `alert_shaped` AND normalized title contains ClickFix/fake-CAPTCHA instruction tokens: keyboard-shortcut references (`win+r`, `ctrl+v`), run-dialog phrases (`open run`, `paste the command`), or CAPTCHA framing (`captcha`, `verify`+`human`, `not a robot`). The `alert_shaped` guard prevents firing on legitimate reCAPTCHA pages (not fullscreen/modal). Leet and homoglyph evasion are defeated by `normalize_for_match` before the check. ForcedAction category. (MS Security Blog 2025: +517 % ClickFix surge) |
-| `remote_access_lure` | +20 | normalized title names a known remote-access tool (`anydesk`, `teamviewer`, `ultraviewer`, `logmein`, `rustdesk`…) **AND** independent fake-alert evidence already fired (`blocklist_title` ∨ `phone_number` ∨ `clickfix_instruction`). Pure **context amplification** (FBI IC3 2024): these tools are legitimate, so the name alone is never a tell — the signal can only *add* to an already-suspicious window, never block alone. A legitimate remote-support session has the tool name but none of the alert tells, so it never fires. InterfaceInterference category |
+| `whole_script_confusable` | +30 | raw title or host **label** (dot-split for URLs) is entirely Cyrillic or Greek where every letter folds to an ASCII Latin look-alike (UTS#39 §5 whole-script confusable) |
+| `compat_chars_present` | +20 | raw title or host contains enclosed/circled Latin letters (U+24B6–U+24E9) |
+| `mixed_number_systems` | +20 | a single whitespace-delimited token mixes decimal digits from two numbering systems |
+| `excessive_combining_marks` | +20 | the raw title or host stacks **3 or more** combining marks on one base character ("Zalgo") |
+| `bidi_override` | +30 | raw title or host contains an LRO/RLO BiDi directional override (Trojan Source) |
+| `brand_impersonation` | +40 | a host label's UTS#39 skeleton equals a built-in known brand but is not the literal brand |
+| `combosquat_brand` | +30 | a host label joins a known brand and a scam-lure word as hyphen-delimited tokens |
+| `clickfix_instruction` | +20 | `alert_shaped` AND normalized title contains ClickFix/fake-CAPTCHA instruction tokens |
+| `remote_access_lure` | +20 | normalized title names a remote-access tool AND independent fake-alert evidence already fired |
 | `input_trap` | +5 | `fullscreen ∧ topmost ∧ blocks_input` (bounded composite) |
 | `sudden_fullscreen_takeover` | +5 | `unsolicited ∧ fullscreen ∧ topmost ∧ 0<age_ms<1000` (bounded composite) |
 
 `alert_shaped` ≜ `coverage ≥ 85 ∨ blocks_input ∨ !has_close_button`.
-Final `score = max(0, Σ weights)`.
+Final `score = max(0, Σ weights)` (using effective weights from §5.2 overrides).
 
 ### 3.2 Thresholds & monotonicity
 `score ≥ BLOCK_THRESHOLD (100)` → Block; `≥ SUSPICIOUS_THRESHOLD (50)` →
@@ -104,8 +116,8 @@ bounded composite alone — the lock shape caps at 95, the takeover shape at
 
 `normalize_for_match(s)` ≜ `strip_invisibles ∘ fold_confusables ∘
 fold_leet_in_words ∘ to_ascii_lowercase`, idempotent. Used **symmetrically**
-for both stored `title:` patterns (at parse) and titles (at match), so the
-two sides cannot drift. `strip_invisibles` removes zero-width / BiDi
+for both stored `title:` / `glob:` patterns (at parse) and titles (at match),
+so the two sides cannot drift. `strip_invisibles` removes zero-width / BiDi
 controls and MUST NOT lengthen the string. `fold_leet_in_words` folds leet
 digits only inside tokens containing a letter (pure-digit runs — phone
 numbers — survive). The phone-number scan runs on `fold_confusables` only
@@ -115,17 +127,37 @@ on the **raw** string (folding erases the evidence) and ignores CJK/Kana.
 ## 5. Blocklist grammar (`Ruleset::parse`)
 
 Plain text, one rule per line; `#` starts a comment. A malformed line MUST
-be skipped, never abort the load. Prefixes: `host:` (host + any
-subdomain), `title:` (substring on the normalized title), `process:`
-(separator-insensitive substring), `phone:` (a known scam phone number,
-matched digits-only on the confusable-folded title; an 11-digit NANP `1`
-country code is normalized away so the formatting on either side is
-irrelevant; rules with `< 7` digits are dropped as over-broad). A bare
-line is a `host:` rule. Host matching strips invisibles and folds
-typosquat/homoglyph confusables; the **original** authored rule text is
-returned as `matched_rule`.
+be skipped, never abort the load. Prefixes:
 
-### 5.1 Composite AND-condition rules (`composite:`)
+| Prefix | Match semantics |
+|---|---|
+| `host:` | host + any subdomain; strips invisibles + folds confusables |
+| `title:` | substring (contains) on the normalized title |
+| `glob:` | full-string wildcard on the normalized title (§5.1) |
+| `phone:` | known scam number, digits-only on the folded title; NANP/JP/UK/AU prefixes normalized; rules with `< 7` digits dropped as over-broad |
+| `process:` | separator-insensitive substring on process name |
+| `composite:` | declarative AND-condition rule (§5.2) |
+| `weight:` | per-signal weight override (§5.3) |
+| *(bare)* | treated as `host:` |
+
+The **original authored** rule text is returned as `matched_rule` for audit
+readability.
+
+### 5.1 Glob title patterns (`glob:`)
+
+Grammar: `glob: <pattern>` where `*` matches any run of code points
+(including none) and `?` matches exactly one code point. Matching is
+**full-string** (both anchored). Use `*` at either end for prefix/suffix/contains
+semantics (e.g. `glob: *infected*` is equivalent to `title: infected`).
+
+The pattern is normalized through the same pipeline as `title:` at parse
+time; `*` and `?` are non-alphanumeric separators and pass through
+`normalize_for_match` unchanged. The matcher is O(m × n) worst-case, O(1)
+space (backtrack-pointer algorithm, no regex dep, no ReDoS risk). Both
+`title:` and `glob:` rules contribute the `blocklist_title` signal; at most
+one fires per window (the first match wins).
+
+### 5.2 Composite AND-condition rules (`composite:`)
 
 Grammar: `composite: <name> <weight> <cond1> [<cond2> …]`
 
@@ -152,8 +184,20 @@ are silently dropped. Available condition tokens:
 geometry/origin (no content tell) SHOULD keep the total score below
 `BLOCK_THRESHOLD` (100). The built-in `input_trap` and
 `sudden_fullscreen_takeover` use weight 5 for this reason. Add content-tell
-conditions to justify higher weights (a blocklisted title is already
-high-confidence evidence).
+conditions to justify higher weights.
+
+### 5.3 Per-signal weight overrides (`weight:`)
+
+Grammar: `weight: <signal_name> <i32_value>`
+
+Overrides the default compile-time weight for any named signal. Operators
+who observe — via `signal_firing_stats()` (§8.2) — that a signal has a high
+FP rate in their fleet can lower its weight in the MDM-pushed blocklist
+without recompiling. Negative values are allowed (softening or negating
+relief signals). Unknown signal names are stored for future compatibility.
+Malformed values (non-numeric, missing) are silently dropped. Accessed via
+`Ruleset::weight_of(signal, default)`, which `classify()` uses for every
+heuristic signal.
 
 ## 6. Scareware (`assess(repeat_count, process_name, &Ruleset)`)
 
@@ -172,6 +216,13 @@ notable outcome: `overlay_blocked`, `overlay_suspicious`,
 `scareware_detected`, `overlay_sweep_error`. **`Allow` is not audited.**
 The clock and `process_of` are injected (determinism). A single dismiss or
 controller error MUST NOT abort the sweep.
+
+`sweep()` returns `SweepOutcome { dismissed: u32, detections: u32 }`.
+`detections` counts Block + Suspicious verdicts; the caller (`run()`) uses it
+to shorten the inter-sweep sleep when threats are actively re-spawning:
+if `RunConfig::alert_interval_ms` is set and the previous sweep had
+`detections > 0`, `run()` sleeps for `alert_interval_ms` instead of
+`interval_ms`. The default (`alert_interval_ms = None`) restores prior behavior.
 
 ## 8. Audit chain (`sink`, format-compatible with `muten-audit-chain`)
 
@@ -196,12 +247,33 @@ RFC 6962 **Merkle Tree Hash** over the ordered per-event link hashes
 root is a single 32-byte commitment to the whole ordered event set;
 publishing or signing it out-of-band **anchors** the log's state at a
 point in time, so later tampering is provable against the anchored root
-without the original file. `inclusion_proof_for_seq` yields an
-`O(log n)` audit path proving a specific event is committed by the root,
-verified by `merkle::verify_inclusion` (RFC 9162 §2.1.3.2). The
-`monitor --audit-log` summary carries `merkle_root`. Consistency proofs
-between two tree sizes (RFC 9162 §2.1.4) are deferred until a rotation
-workflow needs them.
+without the original file.
+
+`inclusion_proof_for_seq` yields an `O(log n)` audit path proving a specific
+event is committed by the root, verified by `merkle::verify_inclusion`
+(RFC 9162 §2.1.3.2).
+
+`consistency_proof(first, leaves)` generates an `O(log n)` proof that
+`leaves[..first]` is a prefix of the full leaf set (RFC 9162 §2.1.4, the
+SUBPROOF recursive algorithm). `verify_consistency(first, n, proof, old_root,
+new_root)` verifies the proof against two published roots without the
+original leaves — any holder of two Merkle roots from different time points
+can prove no events were inserted or reordered between the snapshots.
+`sink::consistency_proof_for_range(text, first)` wraps both over a verified
+audit log.
+
+The `monitor --audit-log` summary carries `merkle_root`.
+
+### 8.2 Signal firing statistics (`sink::signal_firing_stats`)
+
+`signal_firing_stats(text: &str) -> Result<HashMap<String, SignalStats>, ChainError>`
+parses a verified audit log (chain integrity checked first) and aggregates
+the `detail.signals` array of each `overlay_blocked` / `overlay_suspicious`
+event into a `HashMap<String, SignalStats>`. `SignalStats { blocks: u64,
+suspicious: u64 }` with `total()`. This closes the loop with §5.3: operators
+rank signals by `total()` to find which drive the most alerts, compare
+`blocks / total` ratios to spot review-queue noise, and adjust `weight:`
+overrides accordingly.
 
 ## 9. OS controller / helper protocol
 
@@ -216,7 +288,8 @@ window JSON (so partial JSON per §2.2 MUST parse). `ControllerError` ∈
 
 Subcommands: `classify`, `rules`, `scareware`, `enforce`, `monitor`.
 All decision subcommands accept `--json`: `classify`/`scareware` emit a
-verdict object (the `classify` JSON additionally carries `explanation`);
+verdict object (the `classify` JSON additionally carries `explanation`,
+`confidence`, `score_breakdown`, `mitre_techniques`);
 `enforce` emits a JSON array of per-window outcomes; `monitor` emits the
 audit-event document (or a verifiable summary `{sweeps, dismissals,
 event_count, head, merkle_root, verified}` when `--audit-log` is set,
@@ -230,7 +303,18 @@ output and `--json` MUST stay plain so machine consumers are unaffected.
 Block (or any window blocked) · `7` Scareware · `1` error. These MUST be
 documented in `--help`.
 
-### 10.1 NDJSON streaming classify (`classify --stream`)
+The `rules` subcommand prints counts for all rule types:
+`hosts`, `titles`, `globs`, `phones`, `processes`, `composites`,
+`weight overrides`.
+
+### 10.1 `cli` feature flag
+
+The binary and `clap` dependency are gated behind the `cli` Cargo feature
+(default enabled). Library-only consumers can add `default-features = false`
+to skip clap. The `tests/cli_contract.rs` integration tests are also gated
+with `required-features = ["cli"]`.
+
+### 10.2 NDJSON streaming classify (`classify --stream`)
 
 `classify <path|-> --stream` reads one `OverlayWindow` JSON object per line
 from the given file or stdin (`-`). Each non-empty line produces one verdict
@@ -241,24 +325,43 @@ all Allow, `5` if any Suspicious and none Block, `6` if any Block. An entirely
 empty input stream exits 0 with no output. `--stream` implies JSON output;
 combining `--stream --json` is legal and has the same effect.
 
-### 10.2 `--version` build info
+### 10.3 `--version` build info
 
 `muten-overlay --version` prints `<version> (commit <hash>)` where `<hash>`
 is the short git commit hash embedded at compile time by `build.rs`. Falls
 back to `(commit unknown)` in environments without git.
 
 ## 11. JSON output schema (`classify --json` / `--stream`)
-`{ decision: "allow|suspicious|block", score: int, signals: [string],
-categories: [string], matched_rule: string|null, explanation: string }`.
+```json
+{
+  "decision": "allow|suspicious|block",
+  "score": 130,
+  "signals": ["fullscreen", "blocklist_title", "phone_number"],
+  "categories": ["interface_interference"],
+  "matched_rule": "your computer is infected",
+  "mitre_techniques": ["T1036", "T1566"],
+  "explanation": "Block (score 130, high confidence): a full-screen window…",
+  "confidence": "high",
+  "score_breakdown": [
+    {"signal": "fullscreen", "weight": 30},
+    {"signal": "blocklist_title", "weight": 40},
+    {"signal": "phone_number", "weight": 35}
+  ]
+}
+```
+
 `signals` is a `Vec<String>` (named signal keys plus any operator-defined
-composite rule names from §5.1). `categories` values are snake_case strings
-from the Gray et al. (2018) dark-pattern taxonomy.
+composite rule names from §5.2). `categories` values are snake_case strings
+from the Gray et al. (2018) dark-pattern taxonomy. `confidence` is one of
+`"high"`, `"medium"`, `"low"` (§2.4). `score_breakdown` lists the default
+compile-time weight per fired signal; the sum may differ from `score` when
+active `weight:` overrides are in play. `mitre_techniques` is sorted and
+deduplicated.
 
 ## 12. Non-goals (I3)
 ML/CV black boxes; network/certificate/WHOIS signals; process termination
 or registry edits; blockchain audit. See `docs/IMPROVEMENT_CATALOG_2026H2.md`
-for researched future work (Merkle anchoring, signed config, UTS#39
-skeleton, etc.).
+for researched future work.
 
 ## 13. Conformance gaps (found by this spec; fixed in the same change)
 
@@ -284,7 +387,7 @@ skeleton, etc.).
    surviving prefix iff that prefix verifies; a tampered complete line
    still refuses. Tests cover recovery, lone-torn-line→empty, and
    tampered-prefix-still-refuses.
-
-Open (tracked in the catalog, not in this change): `#[non_exhaustive]` on
-public enums (C3-5) — deferred (forces `_` arms downstream; the enums are
-conceptually closed).
+5. **§8.1 Merkle consistency proofs "deferred".** v0.5.0 said consistency
+   proofs between two tree sizes were deferred until a rotation workflow
+   needs them. **Implemented in v0.6.0:** `merkle::consistency_proof` /
+   `merkle::verify_consistency` / `sink::consistency_proof_for_range`.
