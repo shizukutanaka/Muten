@@ -49,8 +49,8 @@ pub use monitor::{AuditEvent, AuditSink, MemorySink, Monitor, RunConfig};
 pub use rules::Ruleset;
 pub use scareware::{assess, RepeatTracker, ScarewareDecision, ScarewareVerdict};
 pub use sink::{
-    hmac_sha256, sign_checkpoint, verify_chain, verify_checkpoint_sig, ChainedFileSink,
-    CheckpointSig, GENESIS,
+    hmac_sha256, rotate_log, sign_checkpoint, verify_chain, verify_chain_continued,
+    verify_checkpoint_sig, ChainedFileSink, CheckpointSig, GENESIS,
 };
 
 use serde::{Deserialize, Serialize};

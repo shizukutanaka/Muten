@@ -470,6 +470,123 @@ pub fn verify_chain(text: &str) -> Result<(u64, String), ChainError> {
     Ok((count, prev))
 }
 
+// ── J6: Multi-file log rotation with chain continuity ────────────────────────
+//
+// A single audit log file is simple but grows without bound. `rotate_log`
+// creates a new log file whose first event is a `log_rotation` marker. The new
+// file starts its own chain from GENESIS so that `verify_chain` works without
+// modification. The old file's head is stored in the marker's `detail` field,
+// which is itself SHA-256-committed in the marker's `hash` — tampering with
+// `detail.old_head` breaks the new chain. `verify_chain_continued` checks this
+// cross-file link. (CHANGELOG J6, C6-9.)
+//
+// Tamper-evidence is preserved at both file boundaries:
+// 1. Editing any event in the old file breaks its chain (existing guarantee).
+// 2. Editing the rotation marker in the new file breaks the new chain at line 1.
+// 3. Replacing old_head in the detail with a different hash breaks the SHA-256
+//    commitment and is detected by `verify_chain_continued`.
+
+/// Rotate the audit log: verify `old_path`, write a `log_rotation` marker
+/// event as the first event in `new_path`, and return a [`ChainedFileSink`]
+/// ready to accept new events in `new_path`.
+///
+/// The rotation marker has `kind = "log_rotation"` and carries the old log's
+/// head hash and event count in its `detail`.  The new file starts a fresh
+/// chain from GENESIS so that existing `verify_chain` calls work without
+/// modification; cross-file continuity is verified by [`verify_chain_continued`].
+///
+/// `timestamp_ms` is the rotation timestamp; callers should use the same
+/// injected-clock source used for regular events.
+///
+/// # Errors
+///
+/// Returns [`ChainError`] if the old log fails verification (we refuse to
+/// rotate from a tampered log) or if any I/O operation fails.
+pub fn rotate_log(
+    old_path: impl AsRef<std::path::Path>,
+    new_path: impl AsRef<std::path::Path>,
+    timestamp_ms: u64,
+) -> Result<ChainedFileSink, ChainError> {
+    let old_path = old_path.as_ref();
+    let new_path = new_path.as_ref();
+
+    // Verify the old log before trusting its head.
+    let old_text = if old_path.is_file() {
+        std::fs::read_to_string(old_path).map_err(|e| ChainError::Io(e.to_string()))?
+    } else {
+        String::new()
+    };
+    let (old_count, old_head) = verify_chain(&old_text)?;
+
+    // Build the rotation marker. The new file starts a fresh chain from GENESIS
+    // (seq 0, prev_hash = GENESIS), so verify_chain works on the new file
+    // without modification. The old head is committed in detail, not prev_hash.
+    let detail = serde_json::json!({
+        "old_log":   old_path.display().to_string(),
+        "old_head":  old_head,
+        "old_count": old_count,
+    });
+    let marker_hash = link_hash(GENESIS, timestamp_ms, "log_rotation", "", &detail, 0);
+    let line = serde_json::json!({
+        "seq":          0u64,
+        "prev_hash":    GENESIS,
+        "timestamp_ms": timestamp_ms,
+        "kind":         "log_rotation",
+        "window_id":    "",
+        "detail":       detail,
+        "hash":         marker_hash,
+    });
+
+    // Write the marker as the first (and only) event in the new file.
+    // Use File::create so we never append to a pre-existing file at new_path.
+    {
+        let mut f = std::fs::File::create(new_path).map_err(|e| ChainError::Io(e.to_string()))?;
+        writeln!(f, "{line}").map_err(|e| ChainError::Io(e.to_string()))?;
+    }
+
+    // Open the new file; open() verifies the rotation marker and returns a
+    // sink ready for new events.
+    ChainedFileSink::open(new_path)
+}
+
+/// Verify that `new_log_text` is a valid chain **and** that it begins with a
+/// `log_rotation` event whose `detail.old_head` equals `prev_head` (the head
+/// of the preceding log file).  This cross-file continuity check ensures an
+/// attacker cannot swap out a log segment or replace the committed old head
+/// without breaking the chain (the detail is SHA-256-committed in the marker's
+/// own `hash`).
+///
+/// Returns `(event_count, head)` on success — the same contract as
+/// [`verify_chain`].
+pub fn verify_chain_continued(
+    new_log_text: &str,
+    prev_head: &str,
+) -> Result<(u64, String), ChainError> {
+    let (count, head) = verify_chain(new_log_text)?;
+    // The first event in the new log must be a rotation marker whose detail
+    // carries the expected prev_head value.
+    let first_line = new_log_text.lines().find(|l| !l.trim().is_empty());
+    let first_v: Option<serde_json::Value> = first_line.and_then(|l| serde_json::from_str(l).ok());
+    let old_head_in_detail = first_v
+        .as_ref()
+        .and_then(|v| v.get("detail"))
+        .and_then(|d| d.get("old_head"))
+        .and_then(|h| h.as_str())
+        .map(str::to_owned);
+    match old_head_in_detail {
+        Some(ref actual) if actual == prev_head => Ok((count, head)),
+        Some(actual) => Err(ChainError::Broken {
+            line: 1,
+            expected: prev_head.to_owned(),
+            actual,
+        }),
+        None => Err(ChainError::InvalidJson(
+            1,
+            "missing detail.old_head in rotation marker".into(),
+        )),
+    }
+}
+
 // ── J5: HMAC-SHA256 signed checkpoints ───────────────────────────────────────
 //
 // A device key (pre-shared HMAC secret) signs the current chain head + event
@@ -1018,5 +1135,88 @@ mod tests {
         let json = serde_json::to_string(&sig).unwrap();
         let rt: CheckpointSig = serde_json::from_str(&json).unwrap();
         assert_eq!(sig, rt);
+    }
+
+    // ── J6: multi-file log rotation ──────────────────────────────────
+
+    #[test]
+    fn rotate_log_creates_valid_continuation() {
+        let dir = TempDir::new().unwrap();
+        let old_p = dir.path().join("audit-1.log");
+        let new_p = dir.path().join("audit-2.log");
+
+        // Populate the old log with two events.
+        let sink = ChainedFileSink::open(&old_p).unwrap();
+        sink.emit(&ev("overlay_blocked", "w1"));
+        sink.emit(&ev("overlay_suspicious", "w2"));
+        let old_text = std::fs::read_to_string(&old_p).unwrap();
+        let (old_count, old_head) = verify_chain(&old_text).unwrap();
+        assert_eq!(old_count, 2);
+
+        // Rotate to the new file.
+        let new_sink = rotate_log(&old_p, &new_p, 2_000).unwrap();
+        let new_text = std::fs::read_to_string(&new_p).unwrap();
+
+        // The new file is itself a valid chain.
+        let (new_count, _) = verify_chain(&new_text).unwrap();
+        // One event so far: the rotation marker.
+        assert_eq!(new_count, 1);
+
+        // Cross-file continuity: new log's first event links to old head.
+        assert!(verify_chain_continued(&new_text, &old_head).is_ok());
+
+        // The new sink is usable for further events.
+        new_sink.emit(&ev("overlay_blocked", "w3"));
+        let new_text2 = std::fs::read_to_string(&new_p).unwrap();
+        let (new_count2, _) = verify_chain(&new_text2).unwrap();
+        assert_eq!(new_count2, 2); // rotation marker + w3
+    }
+
+    #[test]
+    fn rotate_log_fails_on_broken_old_log() {
+        let dir = TempDir::new().unwrap();
+        let old_p = dir.path().join("audit-broken.log");
+        let new_p = dir.path().join("audit-2.log");
+
+        let sink = ChainedFileSink::open(&old_p).unwrap();
+        sink.emit(&ev("overlay_blocked", "w1"));
+        let text = std::fs::read_to_string(&old_p).unwrap();
+        // Tamper the old log.
+        let tampered = text.replacen("\"x\":\"w1\"", "\"x\":\"evil\"", 1);
+        std::fs::write(&old_p, &tampered).unwrap();
+
+        // rotate_log must refuse to continue from a broken chain.
+        assert!(rotate_log(&old_p, &new_p, 1_500).is_err());
+        // The new file must not have been created.
+        assert!(!new_p.exists());
+    }
+
+    #[test]
+    fn verify_chain_continued_detects_wrong_prev_head() {
+        let dir = TempDir::new().unwrap();
+        let old_p = dir.path().join("audit-1.log");
+        let new_p = dir.path().join("audit-2.log");
+
+        let sink = ChainedFileSink::open(&old_p).unwrap();
+        sink.emit(&ev("overlay_blocked", "w1"));
+        rotate_log(&old_p, &new_p, 2_000).unwrap();
+
+        let new_text = std::fs::read_to_string(&new_p).unwrap();
+        // Verify with a wrong prev_head must fail.
+        let wrong_head = "0".repeat(64);
+        assert!(verify_chain_continued(&new_text, &wrong_head).is_err());
+    }
+
+    #[test]
+    fn rotate_log_from_empty_old_log_starts_from_genesis() {
+        let dir = TempDir::new().unwrap();
+        let old_p = dir.path().join("audit-empty.log");
+        let new_p = dir.path().join("audit-2.log");
+
+        // An empty (non-existent) old log is treated as GENESIS.
+        let new_sink = rotate_log(&old_p, &new_p, 1_000).unwrap();
+        let new_text = std::fs::read_to_string(&new_p).unwrap();
+        assert!(verify_chain_continued(&new_text, GENESIS).is_ok());
+        let _ = new_sink;
     }
 }

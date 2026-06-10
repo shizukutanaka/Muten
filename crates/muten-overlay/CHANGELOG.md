@@ -156,6 +156,16 @@ MSRV 1.75, 286 tests.
   the most alerts, and compare `blocks / total` ratios to spot signals that mostly contribute
   to the review queue vs confirmed dismissals — giving direct, field-data-driven evidence for
   weight and threshold tuning. 3 new tests. (B7, B8.)
+- **Multi-file log rotation with chain continuity** (`rotate_log`, `verify_chain_continued`; J6).
+  `rotate_log(old_path, new_path, timestamp_ms)` verifies the old log (returns `ChainError` on
+  tampered input), then creates a fresh GENESIS-anchored chain in `new_path` whose first event is
+  a `log_rotation` marker. The old chain's head is recorded in the marker's `detail.old_head`
+  field, which is itself SHA-256-committed in the marker's `hash` — so tampering with the
+  cross-file reference breaks the new chain at line 1. The new file is immediately openable
+  with `ChainedFileSink::open()` for further events. `verify_chain_continued(new_log_text,
+  prev_head)` verifies the new chain AND checks that `detail.old_head == prev_head`, providing
+  the cross-file continuity guarantee. Tamper-evidence is preserved at both file boundaries.
+  4 unit tests. (J6.)
 - **cargo-fuzz targets** (`fuzz/` sub-crate; N6). A new `crates/muten-overlay/fuzz/`
   sub-crate (its own `Cargo.toml`, `libfuzzer-sys` dep isolated there) provides four
   coverage-guided fuzz targets runnable with `cargo +nightly fuzz run <target>`:

@@ -6,7 +6,7 @@
 > walks the **actual code surface** module by module, enumerates concrete
 > improvement points found by direct audit, and tracks their status.
 >
-> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 364 tests.
+> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 368 tests.
 > Status: ✅ done · 🔧 fixed-this-pass · 🔻 planned · 🆕 newly-found · ⛔ out-of-scope (I3)
 > Invariants (every item respects): offline · pure functions over window
 > metadata · no ML/CV · `#![forbid(unsafe_code)]` · explainable additive
@@ -128,7 +128,7 @@ with priority (★–★★★).
 | J4 | ★★★ | Merkle tree: inclusion proofs + anchorable root (RFC 6962/9162) | 🔧 added (`merkle` module + `monitor` summary `merkle_root`) |
 | J4b | ★★★ | Merkle **consistency** proofs between tree sizes (RFC 9162 §2.1.4) | ✅ v0.6.0 — `merkle::{consistency_proof, verify_consistency}` + `sink::consistency_proof_for_range`; 8 tests |
 | J5 | ★★ | Signed checkpoints (Ed25519 device key over the root) | ✅ v0.6.1 — HMAC-SHA256 (RFC 2104, no new deps); `hmac_sha256()`, `sign_checkpoint()`, `verify_checkpoint_sig()`, `CheckpointSig` (serde); constant-time comparison; RFC 4231 test vector + 6 unit tests |
-| J6 | ★ | Multi-file rotation w/ chain continuity | 🔻 C6-9 |
+| J6 | ★ | Multi-file rotation w/ chain continuity | ✅ v0.6.1 — `rotate_log(old, new, ts)`: verifies old chain, writes `log_rotation` marker (GENESIS-anchored new chain, old head committed in hash-covered detail), returns new `ChainedFileSink`; `verify_chain_continued(text, prev_head)`: checks `detail.old_head` for cross-file link; 4 unit tests |
 
 ## K. OS controller / helpers (`controller.rs` + `installer/`)
 
