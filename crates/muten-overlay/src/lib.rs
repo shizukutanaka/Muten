@@ -241,6 +241,9 @@ fn signal_phrase(signal: &str) -> &str {
         "brand_impersonation" => "uses a look-alike domain impersonating a known brand",
         "combosquat_brand" => "uses a domain combining a known brand with a scam keyword",
         "clickfix_instruction" => "instructs the user to run a command or pass a fake CAPTCHA",
+        "urgency_countdown" => {
+            "displays a countdown timer alongside an urgent warning to coerce rapid action"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -321,6 +324,7 @@ const W_SUDDEN_TAKEOVER: i32 = 5; // unsolicited instant full-screen seizure (bo
 const W_BRAND_IMPERSONATION: i32 = 40; // host label is a homograph of a known brand
 const W_COMBOSQUAT: i32 = 30; // host label joins a known brand + a scam lure word (combosquatting)
 const W_CLICKFIX: i32 = 20; // ClickFix/fake-CAPTCHA keyboard-instruction pattern (alert_shaped guard)
+const W_URGENCY_COUNTDOWN: i32 = 15; // countdown timer + urgency keyword (scam coercion, alert_shaped guard)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -358,6 +362,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "brand_impersonation" => Some(W_BRAND_IMPERSONATION),
         "combosquat_brand" => Some(W_COMBOSQUAT),
         "clickfix_instruction" => Some(W_CLICKFIX),
+        "urgency_countdown" => Some(W_URGENCY_COUNTDOWN),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -384,6 +389,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "brand_impersonation"
             | "combosquat_brand"
             | "clickfix_instruction"
+            | "urgency_countdown"
             | "remote_access_lure"
     )
 }
@@ -684,6 +690,16 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && confusables::has_clickfix_instruction(&normalized_title) {
         score += rules.weight_of("clickfix_instruction", W_CLICKFIX);
         signals.push("clickfix_instruction".into());
+    }
+
+    // Countdown-timer urgency cue (E7). Scam overlays pair a visible
+    // "M:SS" countdown with fear language to pressure the target into calling
+    // a fake support number before the countdown ends. The alert_shaped guard
+    // ensures clocks, media players, and meeting timers never fire — those are
+    // user-initiated or closable and therefore not alert_shaped.
+    if alert_shaped && confusables::has_urgency_countdown(&normalized_title) {
+        score += rules.weight_of("urgency_countdown", W_URGENCY_COUNTDOWN);
+        signals.push("urgency_countdown".into());
     }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
@@ -2788,5 +2804,78 @@ mod tests {
         let v = classify(&w, &rules);
         assert_eq!(v.score, 0);
         assert_eq!(v.decision, Decision::Allow);
+    }
+
+    // ── E7: urgency_countdown signal ─────────────────────────────────
+
+    #[test]
+    fn urgency_countdown_fires_on_alert_shaped_window() {
+        // Fullscreen modal with "expires in 5:00" — the classic scam timer.
+        let w = OverlayWindow {
+            title: "your session expires in 5:00 call support".into(),
+            url: None,
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "urgency_countdown"),
+            "expected urgency_countdown; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_URGENCY_COUNTDOWN);
+    }
+
+    #[test]
+    fn urgency_countdown_does_not_fire_without_alert_shape() {
+        // Same scam title but NOT alert-shaped (has close, not fullscreen) —
+        // should not fire because a normal browser tab can show countdowns.
+        let w = OverlayWindow {
+            title: "your session expires in 5:00 call support".into(),
+            url: None,
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "urgency_countdown"),
+            "must not fire on non-alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn urgency_countdown_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("urgency_countdown"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    #[test]
+    fn urgency_countdown_leet_evasion_defeated() {
+        // "3xp1r3s" → "expires" after normalize_for_match, then countdown fires.
+        let w = OverlayWindow {
+            title: "system 3xp1r3s in 2:59".into(),
+            coverage_percent: 100,
+            has_close_button: false,
+            blocks_input: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "urgency_countdown"),
+            "expected urgency_countdown after leet folding; got {:?}",
+            v.signals
+        );
     }
 }

@@ -404,4 +404,29 @@ proptest! {
         let prefixed = format!("weight: {raw}");
         let _ = Ruleset::parse(&prefixed);
     }
+
+    // ── v0.6.1 / E7 property additions ───────────────────────────
+
+    /// `has_urgency_countdown` never panics on arbitrary Unicode input.
+    #[test]
+    fn has_urgency_countdown_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_urgency_countdown(&s);
+    }
+
+    /// Pure ASCII without any urgency keyword never fires urgency_countdown.
+    /// The property is checked on the raw string — if it contains no urgency
+    /// prefix from the fixed list, the function must return false.
+    #[test]
+    fn no_urgency_keyword_never_fires_urgency_countdown(
+        s in "[a-z0-9 .]{1,60}"
+    ) {
+        const URGENCY: &[&str] = &[
+            "expir", "warn", "alert", "infect", "block", "lock", "urgent",
+            "critical", "threat", "danger", "support", "call",
+        ];
+        let has_any = URGENCY.iter().any(|kw| s.contains(kw));
+        if !has_any {
+            prop_assert!(!muten_overlay::confusables::has_urgency_countdown(&s));
+        }
+    }
 }

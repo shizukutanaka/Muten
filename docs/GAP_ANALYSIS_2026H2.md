@@ -6,7 +6,7 @@
 > walks the **actual code surface** module by module, enumerates concrete
 > improvement points found by direct audit, and tracks their status.
 >
-> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 338 tests.
+> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 349 tests.
 > Status: ✅ done · 🔧 fixed-this-pass · 🔻 planned · 🆕 newly-found · ⛔ out-of-scope (I3)
 > Invariants (every item respects): offline · pure functions over window
 > metadata · no ML/CV · `#![forbid(unsafe_code)]` · explainable additive
@@ -77,7 +77,7 @@ with priority (★–★★★).
 | E4 | ★★ | Crypto-recovery / refund re-victimization families (IC3 2024) | 🔧 added to example blocklist + coverage test |
 | E5 | ★★ | Full-width digit phone numbers (JP 0120 フリーダイヤル) | ✅ folded before scan (verified) |
 | E6 | ★ | International phone formats → per-country weight (0120/+44) | ✅ v0.6.0 |
-| E7 | ★ | Countdown/timer urgency cue (`\d+:\d{2}` + urgency word) | 🔻 C1-8 — FP-prone (media players); needs strong gating |
+| E7 | ★ | Countdown/timer urgency cue (`\d+:\d{2}` + urgency word) | ✅ v0.6.1 — `has_urgency_countdown()` in confusables.rs; `urgency_countdown` signal (W=15); `alert_shaped` guard eliminates media-player FPs; leet-evasion defeated via `normalize_for_match`; 9 unit tests + 2 property tests |
 | E8 | ★ | Remote-access tool as `process:` family (not just title) | 🔻 needs collector process attribution |
 
 ## F. Blocklist engine (`rules.rs`)

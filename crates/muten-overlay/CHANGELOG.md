@@ -156,6 +156,19 @@ MSRV 1.75, 286 tests.
   the most alerts, and compare `blocks / total` ratios to spot signals that mostly contribute
   to the review queue vs confirmed dismissals — giving direct, field-data-driven evidence for
   weight and threshold tuning. 3 new tests. (B7, B8.)
+- **Countdown/timer urgency cue** (`urgency_countdown` signal; E7).
+  `confusables::has_urgency_countdown(s)` detects a `M:SS` or `MM:SS` countdown pattern
+  combined with at least one urgency keyword (`expir`, `warn`, `alert`, `infect`, `block`,
+  `lock`, `urgent`, `critical`, `threat`, `danger`, `support`, `call`) in the normalized
+  window title. Scam overlays routinely pair a visible countdown with fear language ("Your
+  session expires in 5:00 — call support now!") to coerce rapid action before the target
+  can think. The `alert_shaped` guard (full-screen / modal / no-close) in `classify()`
+  eliminates false positives from clock apps, media players, and meeting timers, which
+  are user-initiated or closable and therefore never `alert_shaped`. Leet-coded urgency
+  words (`3xp1r3s`) are defeated via `normalize_for_match` before the check. Weight
+  `W_URGENCY_COUNTDOWN = 15` (weak supporting signal, not sufficient to block alone).
+  Category: `InterfaceInterference` (urgency / scarcity coercion). 9 unit tests + 2
+  property tests; total now 349. (E7.)
 
 ### Changed (breaking)
 - **`Verdict.signals: Vec<String>`** (was `Vec<&'static str>`). Required to

@@ -565,6 +565,70 @@ pub fn has_clickfix_instruction(s: &str) -> bool {
     shortcut || run_cmd || captcha_frame
 }
 
+/// Detect a countdown/timer pattern (`M:SS` or `MM:SS`) combined with an
+/// urgency keyword in a normalized window title.
+///
+/// Scam overlays routinely pair a visible countdown with fear language
+/// ("Your session expires in 5:00 — call support now!", "INFECTED! 2:59
+/// remaining — activate immediately") to coerce rapid action before the
+/// target can think. Legitimate applications that display countdowns (media
+/// players, meeting timers) are either user-initiated (suppressed by the
+/// `alert_shaped` guard in `classify()`) or contain none of the urgency
+/// keywords below.
+///
+/// The caller is responsible for passing a string already processed through
+/// [`normalize_for_match`] so that leet-coded urgency words (`3xp1r3s`) are
+/// correctly folded before the keyword search.
+///
+/// # False-positive guard
+///
+/// Only fires when the window is `alert_shaped` (full-screen / modal /
+/// no-close) in `classify()` — the same guard used for `clickfix_instruction`.
+/// A clock app, a media player countdown, or a cooking timer has none of the
+/// urgency keywords AND is not alert-shaped.
+#[must_use]
+pub fn has_urgency_countdown(s: &str) -> bool {
+    const URGENCY: &[&str] = &[
+        "expir", "warn", "alert", "infect", "block", "lock", "urgent", "critical", "threat",
+        "danger", "support", "call",
+    ];
+    if !URGENCY.iter().any(|kw| s.contains(kw)) {
+        return false;
+    }
+    // Look for M:SS or MM:SS — a countdown timer display.
+    // Avoids matching port numbers (host:80 — one or two digits right of colon,
+    // but those typically have 4+ digits) and IPv6 (many colons, 4-hex groups).
+    let chars: Vec<char> = s.chars().collect();
+    let n = chars.len();
+    if n < 4 {
+        return false;
+    }
+    // i is the position of the colon; we need chars[i-1] and chars[i+1..=i+2].
+    for i in 1..n - 2 {
+        if chars[i] != ':' {
+            continue;
+        }
+        // Right side: exactly 2 ASCII digits (not 3+, which would be a port or
+        // seconds-within-hours in HH:MM:SS).
+        if !chars[i + 1].is_ascii_digit() || !chars[i + 2].is_ascii_digit() {
+            continue;
+        }
+        if i + 3 < n && chars[i + 3].is_ascii_digit() {
+            continue;
+        }
+        // Left side: 1 or 2 ASCII digits (not 3+).
+        if !chars[i - 1].is_ascii_digit() {
+            continue;
+        }
+        // Reject if there are 3+ consecutive digits to the left of the colon.
+        if i >= 3 && chars[i - 2].is_ascii_digit() && chars[i - 3].is_ascii_digit() {
+            continue;
+        }
+        return true;
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -917,5 +981,56 @@ mod tests {
         let leet = normalize_for_match("v3r1fy you are hum4n");
         assert_eq!(leet, "verify you are human");
         assert!(has_clickfix_instruction(&leet));
+    }
+
+    // ── has_urgency_countdown ─────────────────────────────────────
+
+    #[test]
+    fn urgency_countdown_fires_on_scam_patterns() {
+        // "expires in M:SS" — single-digit minutes + urgency keyword.
+        assert!(has_urgency_countdown("your session expires in 5:00"));
+        // "critical" urgency with MM:SS.
+        assert!(has_urgency_countdown("system critical error 02:59"));
+        // "infected" + countdown.
+        assert!(has_urgency_countdown(
+            "your computer infected 1:30 call now"
+        ));
+        // "support" as urgency keyword.
+        assert!(has_urgency_countdown("call support immediately 0:30"));
+        // "threat" keyword + countdown.
+        assert!(has_urgency_countdown("threat detected 59:59"));
+        // "warn" prefix inside a word.
+        assert!(has_urgency_countdown("warning system locked 3:00"));
+    }
+
+    #[test]
+    fn urgency_countdown_does_not_fire_without_urgency_keyword() {
+        // Countdown present but no scam urgency word.
+        assert!(!has_urgency_countdown("next update in 5:00"));
+        assert!(!has_urgency_countdown("meeting at 12:30 today"));
+        assert!(!has_urgency_countdown("video 1:45 remaining"));
+    }
+
+    #[test]
+    fn urgency_countdown_does_not_fire_without_countdown_pattern() {
+        // Urgency keyword present but no countdown.
+        assert!(!has_urgency_countdown("your computer is infected"));
+        assert!(!has_urgency_countdown("critical system error"));
+        assert!(!has_urgency_countdown("call support now"));
+    }
+
+    #[test]
+    fn urgency_countdown_does_not_fire_on_port_numbers() {
+        // Port-style "host:8080" has 4 digits right of colon → rejected.
+        assert!(!has_urgency_countdown("alert server infected:8080"));
+        // 3 digits right → also rejected.
+        assert!(!has_urgency_countdown("warn system error:123"));
+    }
+
+    #[test]
+    fn urgency_countdown_defeats_leet_via_normalize() {
+        // "3xp1r3s" → "expires" after normalize_for_match.
+        let norm = normalize_for_match("3xp1r3s in 4:59 call 1-800");
+        assert!(has_urgency_countdown(&norm));
     }
 }
