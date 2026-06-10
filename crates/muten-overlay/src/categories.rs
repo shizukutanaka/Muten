@@ -113,7 +113,8 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         | "url_path_lure"
         | "credential_harvest_cue"
         | "fake_scanner_cue"
-        | "subscription_lure" => Some(InterfaceInterference),
+        | "subscription_lure"
+        | "authority_lure" => Some(InterfaceInterference),
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }
@@ -236,6 +237,10 @@ mod tests {
         );
         assert_eq!(
             category_of("subscription_lure"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+        assert_eq!(
+            category_of("authority_lure"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }

@@ -258,6 +258,7 @@ fn signal_phrase(signal: &str) -> &str {
         }
         "fake_scanner_cue" => "displays fake antivirus scan progress or threat-count language",
         "subscription_lure" => "displays a fake subscription or license expiry urging renewal",
+        "authority_lure" => "impersonates a law-enforcement agency to demand payment or call",
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -346,6 +347,7 @@ const W_FORCED_RETENTION: i32 = 20; // "do not close" / "do not turn off" instru
 const W_CREDENTIAL_HARVEST: i32 = 20; // "account suspended / verify account / confirm password" credential-phish cue
 const W_FAKE_SCANNER: i32 = 20; // fake-AV scanner progress: "scanning for threats", "N threats found", "repairing system"
 const W_SUBSCRIPTION_LURE: i32 = 15; // "subscription expired renew now" — softer scareware, lower weight (often has close button)
+const W_AUTHORITY_LURE: i32 = 25; // FBI/police/interpol/cybercrime impersonation — high-specificity ransomware-bluff tell
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -391,6 +393,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "credential_harvest_cue" => Some(W_CREDENTIAL_HARVEST),
         "fake_scanner_cue" => Some(W_FAKE_SCANNER),
         "subscription_lure" => Some(W_SUBSCRIPTION_LURE),
+        "authority_lure" => Some(W_AUTHORITY_LURE),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -425,6 +428,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "credential_harvest_cue"
             | "fake_scanner_cue"
             | "subscription_lure"
+            | "authority_lure"
             | "remote_access_lure"
     )
 }
@@ -960,6 +964,18 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && confusables::has_subscription_lure(&normalized_title) {
         score += rules.weight_of("subscription_lure", W_SUBSCRIPTION_LURE);
         signals.push("subscription_lure".into());
+    }
+
+    // Law-enforcement / authority impersonation (E17 — FBI IC3 2024
+    // warning on LEA-impersonation scams; Symantec Reveton/Winlock analysis;
+    // Europol Operation Strikeback 2025). Overlays impersonating the FBI,
+    // police, Interpol, or cybercrime units to demand payment or a call are
+    // a distinct class from brand_impersonation (which checks the host).
+    // W_AUTHORITY_LURE = 25 (high-specificity: LEA agency name + coercion
+    // token is very rarely a legitimate window title combination).
+    if alert_shaped && confusables::has_authority_lure(&normalized_title) {
+        score += rules.weight_of("authority_lure", W_AUTHORITY_LURE);
+        signals.push("authority_lure".into());
     }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
@@ -3890,6 +3906,62 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("subscription_lure"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E17: authority_lure ───────────────────────────────────────────────
+
+    #[test]
+    fn authority_lure_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        // Full-screen + no close + FBI impersonation.
+        let w = OverlayWindow {
+            title: "fbi warning your computer has been locked".into(),
+            coverage_percent: 99,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            age_ms: 500,
+            origin: Origin::Unsolicited,
+            url: None,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "authority_lure"),
+            "expected authority_lure; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_AUTHORITY_LURE);
+    }
+
+    #[test]
+    fn authority_lure_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        // A news article in a user-opened browser tab.
+        let w = OverlayWindow {
+            title: "fbi warning new phishing campaign targets banks".into(),
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            age_ms: 30_000,
+            origin: Origin::UserInitiated,
+            url: None,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "authority_lure"),
+            "authority_lure must not fire for user-initiated closable tab; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn authority_lure_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("authority_lure"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }

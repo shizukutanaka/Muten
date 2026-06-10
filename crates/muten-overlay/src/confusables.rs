@@ -772,6 +772,55 @@ pub fn has_subscription_lure(s: &str) -> bool {
     subject && expired && action
 }
 
+/// Detect law-enforcement / authority-impersonation language in a normalized
+/// window title.
+///
+/// A class of ransomware-style bluff overlay ("Reveton", "Winlock") and
+/// modern tech-support-scam spinoffs lock the screen and impersonate the
+/// FBI, police, Interpol, or a generic "cybercrime unit" to coerce payment
+/// or a call.  These produce titles like "FBI WARNING: Your computer has
+/// been locked" or "Cybercrime Division Notice — Call Now".  No current
+/// signal catches this because:
+///   - `brand_impersonation` checks URL *hosts*, not window titles.
+///   - `fake_scanner_cue` covers rogue-AV language, not LEA language.
+///   - `phone_number` fires only if a phone number is visible.
+///
+/// Pattern: an authority-agency token AND a coercion/action token.
+/// The `alert_shaped` guard in `classify()` prevents browser tabs showing
+/// news headlines ("FBI Warning: New Phishing Attack") from firing, as those
+/// are user-initiated and closable.
+///
+/// Grounded in Symantec Threat Intelligence Reveton/Winlock analysis, FBI
+/// IC3 2024 warning on law-enforcement impersonation scams, and Europol
+/// Operation Strikeback 2025 ransomware-overlay takedowns.
+#[must_use]
+pub fn has_authority_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    // Law-enforcement agency tokens.
+    let agency = has("fbi")
+        || has("cia")
+        || has("interpol")
+        || has("cybercrime")
+        || has("homeland security")
+        || has("department of justice")
+        || has("national security")
+        || has("metropolitan police")
+        || has("cyber police")
+        || has("law enforcement");
+    // Coercion / action tokens that, combined with an agency, signal a bluff.
+    let coercion = has("warning")
+        || has("notice")
+        || has("locked")
+        || has("blocked")
+        || has("suspended")
+        || has("illegal")
+        || has("violation")
+        || has("fine")
+        || has("penalty")
+        || has("arrested");
+    agency && coercion
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1380,5 +1429,63 @@ mod tests {
         // Cyrillic 'е' in "expired" → 'e' after normalize_for_match.
         let norm = normalize_for_match("subscription has еxpired renew now");
         assert!(has_subscription_lure(&norm));
+    }
+
+    // ── has_authority_lure ───────────────────────────────────────────────
+
+    #[test]
+    fn authority_lure_fires_on_lea_impersonation() {
+        // Classic Reveton/Winlock titles.
+        assert!(has_authority_lure(
+            "fbi warning your computer has been locked"
+        ));
+        assert!(has_authority_lure(
+            "fbi cyber notice illegal activity detected"
+        ));
+        assert!(has_authority_lure(
+            "interpol warning your device is blocked"
+        ));
+        assert!(has_authority_lure(
+            "cybercrime division notice you are violating the law"
+        ));
+        assert!(has_authority_lure("homeland security warning"));
+        assert!(has_authority_lure(
+            "department of justice illegal content notice"
+        ));
+        assert!(has_authority_lure(
+            "law enforcement violation fine required"
+        ));
+        assert!(has_authority_lure(
+            "cyber police your computer is locked call now"
+        ));
+        assert!(has_authority_lure(
+            "national security agency warning illegal"
+        ));
+        assert!(has_authority_lure(
+            "cia notice you are arrested pay penalty"
+        ));
+    }
+
+    #[test]
+    fn authority_lure_does_not_fire_on_benign_titles() {
+        // "warning" alone without an agency token.
+        assert!(!has_authority_lure("warning low battery"));
+        // Agency name in a legitimate context without a coercion word.
+        assert!(!has_authority_lure("fbi crime statistics report 2024"));
+        // Security blog article title — no coercion pairing expected.
+        assert!(!has_authority_lure(
+            "how to report cybercrime to authorities"
+        ));
+        // Only coercion words, no agency.
+        assert!(!has_authority_lure(
+            "your account has been locked please call"
+        ));
+    }
+
+    #[test]
+    fn authority_lure_defeats_homoglyphs_via_normalize() {
+        // Cyrillic 'і' in "warning" → 'i' after normalize_for_match.
+        let norm = normalize_for_match("fbі warnіng your computer is locked");
+        assert!(has_authority_lure(&norm));
     }
 }

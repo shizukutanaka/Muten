@@ -657,4 +657,28 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_subscription_lure(&s));
         }
     }
+
+    // ── E17: authority_lure ───────────────────────────────────────────────
+
+    /// has_authority_lure never panics on arbitrary Unicode input.
+    #[test]
+    fn has_authority_lure_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_authority_lure(&s);
+    }
+
+    /// A string lacking both agency AND coercion tokens must not fire authority_lure.
+    #[test]
+    fn plain_ascii_never_fires_authority_lure(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let has_agency = has("fbi") || has("cia") || has("interpol") || has("cybercrime")
+            || has("homeland security") || has("department of justice")
+            || has("national security") || has("metropolitan police")
+            || has("cyber police") || has("law enforcement");
+        let has_coercion = has("warning") || has("notice") || has("locked") || has("blocked")
+            || has("suspended") || has("illegal") || has("violation")
+            || has("fine") || has("penalty") || has("arrested");
+        if !(has_agency && has_coercion) {
+            prop_assert!(!muten_overlay::confusables::has_authority_lure(&s));
+        }
+    }
 }

@@ -294,6 +294,23 @@ MSRV 1.75, 286 tests.
   Category: `InterfaceInterference`. MITRE: T1566 (phishing lure). Homoglyph/leet
   variants are defeated via `normalize_for_match`. 3 confusables unit tests +
   3 lib unit tests + 2 property tests. (E14.)
+- **Law-enforcement / authority impersonation signal** (`authority_lure`; E17).
+  `has_authority_lure(s)` fires when the normalized window title contains both
+  an *agency token* (fbi, cia, interpol, cybercrime, homeland security, department
+  of justice, national security, metropolitan police, cyber police, law enforcement)
+  AND a *coercion token* (warning, notice, locked, blocked, suspended, illegal,
+  violation, fine, penalty, arrested). This covers the Reveton/Winlock ransomware-
+  bluff overlay family and modern TSS spinoffs that impersonate law enforcement to
+  coerce payment or a call. No existing signal catches this because
+  `brand_impersonation` checks URL hosts, not titles, and `fake_scanner_cue` covers
+  rogue-AV language. The `alert_shaped` guard prevents news-article browser tabs
+  ("FBI Warning: New Phishing Campaign") from firing, as those are user-initiated
+  and closable. Weight `W_AUTHORITY_LURE = 25` (higher than other cue signals —
+  an LEA agency name in a locked, full-screen overlay is an extremely high-specificity
+  combination). Category: `InterfaceInterference`. MITRE: T1566. Grounded in
+  Symantec Reveton/Winlock analysis, FBI IC3 2024 LEA-impersonation warning, and
+  Europol Operation Strikeback 2025. 3 confusables unit tests + 3 lib unit tests +
+  2 property tests + 2 taxonomy tests; 430 tests total. (E17.)
 - **Subscription/license expiry coercion signal** (`subscription_lure`; E16).
   `has_subscription_lure(s)` fires when the normalized window title contains all
   three word groups: (1) *subject* — "subscription", "license", "protection",
