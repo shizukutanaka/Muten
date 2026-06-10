@@ -107,6 +107,14 @@ MSRV 1.75, 286 tests.
   inserted or re-ordered between the snapshots. 8 new tests including exhaustive
   coverage of all prefix sizes 1..=25 with tamper checks. (J4b.)
 
+- **`cli` feature flag** (N4). A new `[features] cli` gates the binary and its
+  `clap` dependency. `default = ["cli"]` keeps existing `cargo build` /
+  `cargo install` behavior unchanged. Library-only consumers (embedding
+  muten-overlay as a crate dependency) can add `default-features = false` to
+  skip clap entirely. The CLI integration tests (`tests/cli_contract.rs`) are
+  gated with `required-features = ["cli"]` so `cargo test --no-default-features`
+  (library-only) passes cleanly. `cargo build --no-default-features --lib`
+  compiles only the domain library. (N4, C3-4.)
 - **Signal-quality confidence** (`ConfidenceLevel`; B6). A new `pub enum ConfidenceLevel { High, Medium, Low }` and `Verdict::confidence()` method indicate how much the verdict relies on high-fidelity (text-analysis / rule-based) signals vs low-fidelity geometry signals (fullscreen / topmost / modal). `High` when ≥2 text signals fired; `Medium` when exactly one; `Low` when only geometry signals fired. A new `pub fn signal_weight(name: &str) -> Option<i32>` exposes the built-in signal weights for external tooling, and `Verdict::score_breakdown()` returns per-signal `(name, weight)` pairs. The `explain()` output now includes the confidence level, e.g. "Block (score 130, high confidence): ...". The `--json` output gains `confidence` and `score_breakdown` fields. SIEM operators can route `High` confidence blocks to auto-response and `Low` to human review. 6 new tests. (B6, C5-5.)
 
 ### Changed (breaking)

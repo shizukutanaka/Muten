@@ -13,18 +13,33 @@ categories   = ["command-line-utilities", "os"]
 [lints.rust]
 unsafe_code = "forbid"
 
+# The `cli` feature gates the binary (requires clap). It is on by default
+# so that `cargo install` / `cargo build` produces the binary unchanged.
+# Library-only consumers can opt out with `default-features = false` in
+# their dependency declaration, skipping the clap compile overhead.
+[features]
+default = ["cli"]
+cli = ["dep:clap"]
+
 [[bin]]
 name = "muten-overlay"
 path = "src/bin/cli.rs"
+required-features = ["cli"]
 
 [dependencies]
 serde      = { version = "=1.0.215", features = ["derive"] }
 serde_json = "=1.0.133"
 thiserror  = "=1.0.69"
-clap       = { version = "=4.5.20", features = ["derive"] }
+clap       = { version = "=4.5.20", features = ["derive"], optional = true }
 sha2 = "=0.10.8"
 hex = "=0.4.3"
 
 [dev-dependencies]
 proptest = { version = "=1.4.0", default-features = false, features = ["std"] }
 tempfile = "=3.13.0"
+
+# Gate the CLI integration tests on the cli feature so that
+# `cargo test --no-default-features` doesn't fail for a missing binary.
+[[test]]
+name = "cli_contract"
+required-features = ["cli"]
