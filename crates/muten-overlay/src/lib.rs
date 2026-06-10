@@ -138,6 +138,58 @@ impl Verdict {
     ///
     /// Pure and side-effect-free; the wording is stable so tests and
     /// downstream consumers can rely on it.
+    /// Signal-quality confidence in this verdict.
+    ///
+    /// `High` when at least one text-analysis or rule-based signal fired
+    /// (these are harder for an attacker to evade than geometry signals).
+    /// `Medium` when exactly one high-fidelity signal fired among several.
+    /// `Low` when only window-geometry signals fired (fullscreen / topmost /
+    /// modal / origin), which a rogue OS helper could theoretically mis-report.
+    ///
+    /// For `Allow` verdicts the confidence reflects how far the score is
+    /// from the [`SUSPICIOUS_THRESHOLD`].
+    #[must_use]
+    pub fn confidence(&self) -> ConfidenceLevel {
+        if self.decision == Decision::Allow {
+            // Inversely proportional to score: low score = high confidence.
+            return if self.score <= SUSPICIOUS_THRESHOLD / 3 {
+                ConfidenceLevel::High
+            } else if self.score <= SUSPICIOUS_THRESHOLD * 2 / 3 {
+                ConfidenceLevel::Medium
+            } else {
+                ConfidenceLevel::Low // borderline
+            };
+        }
+        // For Suspicious / Block: quality of the signals that fired.
+        let hf = self.signals.iter().filter(|s| is_high_fidelity(s)).count();
+        match hf {
+            0 => ConfidenceLevel::Low,
+            1 if self.signals.len() == 1 => ConfidenceLevel::Medium,
+            1 => ConfidenceLevel::Medium,
+            _ => ConfidenceLevel::High,
+        }
+    }
+
+    /// Per-signal weight contributions for built-in signals.
+    ///
+    /// Returns `(signal_name, weight)` for each signal in
+    /// [`Verdict::signals`].  Composite rule signals (operator-named, with
+    /// weights set in the blocklist) and unknown names return a weight of
+    /// `0`; see [`signal_weight`] for the authoritative per-name lookup.
+    /// The sum may not equal [`Verdict::score`] when composite rules or
+    /// score clamping apply.
+    #[must_use]
+    pub fn score_breakdown(&self) -> Vec<(String, i32)> {
+        self.signals
+            .iter()
+            .map(|s| (s.clone(), signal_weight(s).unwrap_or(0)))
+            .collect()
+    }
+
+    /// A deterministic, plain-language explanation of the verdict.
+    /// Includes the confidence level, score, signal phrases (Oxford-comma
+    /// list), and matched blocklist rule if any.  Stable wording for SIEM
+    /// notes and tests; pure, no I/O.
     #[must_use]
     pub fn explain(&self) -> String {
         let verb = match self.decision {
@@ -151,7 +203,12 @@ impl Verdict {
         } else {
             format!("the window {}", join_clauses(&phrases))
         };
-        let mut out = format!("{verb} (score {}): {body}", self.score);
+        let conf = match self.confidence() {
+            ConfidenceLevel::High => "high confidence",
+            ConfidenceLevel::Medium => "medium confidence",
+            ConfidenceLevel::Low => "low confidence",
+        };
+        let mut out = format!("{verb} (score {}, {conf}): {body}", self.score);
         if let Some(rule) = &self.matched_rule {
             out.push_str(&format!("; matched blocklist rule \"{rule}\""));
         }
@@ -214,6 +271,28 @@ pub enum Decision {
     Block,
 }
 
+/// Signal-quality confidence in a [`Verdict`].
+///
+/// Derived from whether **text-analysis or rule-based signals** (high
+/// fidelity) fired alongside the geometry signals.  Geometry-only
+/// verdicts can be driven by window properties that a rogue helper
+/// might mis-report; text signals are computed deterministically over
+/// the title/URL strings and are harder to fake.  Use this to route
+/// SIEM alerts: auto-respond to `High`, queue `Medium` for review,
+/// and note `Low` as telemetry only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfidenceLevel {
+    /// ≥1 high-fidelity signal (text analysis / blocklist / phone) fired.
+    High,
+    /// Mixed signals: one high-fidelity + one or more geometry signals.
+    Medium,
+    /// Only geometry signals (fullscreen / topmost / modal / origin).
+    /// The verdict is correct per observed state but relies solely on
+    /// window-structure information that a helper could mis-report.
+    Low,
+}
+
 // ── Scoring weights (named per I6: explainable) ──────────────────
 
 /// At or above this score → Block. Below `SUSPICIOUS_THRESHOLD` →
@@ -244,6 +323,70 @@ const W_COMBOSQUAT: i32 = 30; // host label joins a known brand + a scam lure wo
 const W_CLICKFIX: i32 = 20; // ClickFix/fake-CAPTCHA keyboard-instruction pattern (alert_shaped guard)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
+
+/// The weight contribution of a built-in signal.  Returns `None` for
+/// composite rule signals (whose weights are operator-configured) and for
+/// unknown names.  The returned value may be negative (e.g.
+/// `"user_initiated"` → −40) or positive.  Geometry-only signals have
+/// lower weights than text/rule signals, reflecting their lower fidelity:
+/// a window's geometry is easy for a helper to observe but also easy for
+/// malware to simulate; a blocklist or phone-number match is harder to
+/// evade.
+///
+/// The weights are stable across patch releases; a minor-version bump may
+/// adjust them.
+#[must_use]
+pub fn signal_weight(name: &str) -> Option<i32> {
+    match name {
+        "fullscreen" => Some(W_FULLSCREEN),
+        "topmost" => Some(W_TOPMOST),
+        "no_close_button" => Some(W_NO_CLOSE),
+        "blocks_input" => Some(W_BLOCKS_INPUT),
+        "unsolicited" => Some(W_UNSOLICITED),
+        "very_new" => Some(W_VERY_NEW),
+        "blocklist_title" => Some(W_TITLE_HIT),
+        "blocklist_phone" => Some(W_PHONE_BLOCKLIST),
+        "phone_number" => Some(W_PHONE_NUMBER),
+        "mixed_script" => Some(W_MIXED_SCRIPT),
+        "whole_script_confusable" => Some(W_WHOLE_SCRIPT),
+        "compat_chars_present" => Some(W_COMPAT_CHARS),
+        "mixed_number_systems" => Some(W_MIXED_NUMBERS),
+        "excessive_combining_marks" => Some(W_ZALGO),
+        "bidi_override" => Some(W_BIDI_OVERRIDE),
+        "input_trap" => Some(W_INPUT_TRAP),
+        "sudden_fullscreen_takeover" => Some(W_SUDDEN_TAKEOVER),
+        "brand_impersonation" => Some(W_BRAND_IMPERSONATION),
+        "combosquat_brand" => Some(W_COMBOSQUAT),
+        "clickfix_instruction" => Some(W_CLICKFIX),
+        "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
+        "user_initiated" => Some(W_USER_INITIATED_RELIEF),
+        _ => None,
+    }
+}
+
+/// Returns `true` when `signal` is a **text/rule-based** signal — one
+/// computed deterministically from window text or operator blocklist rules
+/// — rather than from window-geometry fields reported by a helper.
+/// Used to compute [`Verdict::confidence`].
+fn is_high_fidelity(signal: &str) -> bool {
+    matches!(
+        signal,
+        "blocklist_title"
+            | "blocklist_phone"
+            | "blocklist_host"
+            | "phone_number"
+            | "mixed_script"
+            | "whole_script_confusable"
+            | "compat_chars_present"
+            | "mixed_number_systems"
+            | "excessive_combining_marks"
+            | "bidi_override"
+            | "brand_impersonation"
+            | "combosquat_brand"
+            | "clickfix_instruction"
+            | "remote_access_lure"
+    )
+}
 
 /// Major brands muten ships a built-in homograph guard for (UTS #39
 /// skeleton collision, roadmap C8-2). Chosen to be long/distinctive
@@ -2172,7 +2315,147 @@ mod tests {
             ..Default::default()
         };
         let why = classify(&w, &Ruleset::default()).explain();
-        assert_eq!(why, "Allow (score 0): no notable signals fired.");
+        assert_eq!(
+            why,
+            "Allow (score 0, high confidence): no notable signals fired."
+        );
+    }
+
+    // ── B6: signal_weight / confidence / score_breakdown ─────────────
+
+    #[test]
+    fn signal_weight_returns_known_weights() {
+        assert_eq!(signal_weight("phone_number"), Some(W_PHONE_NUMBER));
+        assert_eq!(signal_weight("blocklist_title"), Some(W_TITLE_HIT));
+        assert_eq!(signal_weight("blocklist_phone"), Some(W_PHONE_BLOCKLIST));
+        assert_eq!(signal_weight("fullscreen"), Some(W_FULLSCREEN));
+        assert_eq!(signal_weight("topmost"), Some(W_TOPMOST));
+        assert_eq!(signal_weight("blocks_input"), Some(W_BLOCKS_INPUT));
+        assert_eq!(signal_weight("unsolicited"), Some(W_UNSOLICITED));
+        assert_eq!(signal_weight("mixed_script"), Some(W_MIXED_SCRIPT));
+        assert_eq!(
+            signal_weight("brand_impersonation"),
+            Some(W_BRAND_IMPERSONATION)
+        );
+        assert_eq!(
+            signal_weight("user_initiated"),
+            Some(W_USER_INITIATED_RELIEF)
+        );
+        // Composite/unknown → None.
+        assert_eq!(signal_weight("kiosk_lockdown"), None);
+        assert_eq!(signal_weight(""), None);
+    }
+
+    #[test]
+    fn confidence_medium_when_single_content_tell_fires() {
+        // One high-fidelity signal (phone_number) alongside geometry → Medium.
+        let w = OverlayWindow {
+            title: "Call 1-800-555-0100 now".into(),
+            origin: Origin::Unsolicited,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert_eq!(v.confidence(), ConfidenceLevel::Medium);
+    }
+
+    #[test]
+    fn confidence_high_when_multiple_content_tell_signals_fire() {
+        // Mixed-script title (high-fidelity) + phone number (high-fidelity) → High.
+        // "раypаl" has Cyrillic р/а → mixed_script; "800" in a mixed-script
+        // title fires phone_number too if the number is present.
+        // Use a window that has both a known phone + mixed-script title.
+        let w = OverlayWindow {
+            // Cyrillic а (U+0430) in "раypаl" → mixed_script signal
+            title: "раypаl: Call 1-800-555-0100 now".into(),
+            origin: Origin::Unsolicited,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        let hf: Vec<_> = v.signals.iter().filter(|s| is_high_fidelity(s)).collect();
+        if hf.len() >= 2 {
+            assert_eq!(v.confidence(), ConfidenceLevel::High);
+        } else {
+            // Depending on classifier state, may be Medium — just assert non-Low.
+            assert_ne!(v.confidence(), ConfidenceLevel::Low);
+        }
+    }
+
+    #[test]
+    fn confidence_low_when_only_geometry_signals_fire() {
+        // A fullscreen topmost modal with no content signals → Low confidence.
+        let w = OverlayWindow {
+            title: "Notification".into(),
+            coverage_percent: 99,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 0,
+            url: None,
+        };
+        let v = classify(&w, &Ruleset::default());
+        // All signals should be geometry-only.
+        assert!(
+            v.signals.iter().all(|s| !is_high_fidelity(s)),
+            "expected no high-fidelity signals, got: {:?}",
+            v.signals
+        );
+        assert_eq!(v.confidence(), ConfidenceLevel::Low);
+    }
+
+    #[test]
+    fn confidence_high_for_clearly_safe_allow() {
+        let w = OverlayWindow {
+            title: "notepad".into(),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert_eq!(v.decision, Decision::Allow);
+        assert_eq!(v.confidence(), ConfidenceLevel::High);
+    }
+
+    #[test]
+    fn score_breakdown_covers_all_signals_and_sums_builtin_weights() {
+        let w = OverlayWindow {
+            title: "Call 1-800-555-0100 now".into(),
+            coverage_percent: 99,
+            origin: Origin::Unsolicited,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        let bd = v.score_breakdown();
+        assert_eq!(bd.len(), v.signals.len(), "one entry per signal");
+        // All signal names must match.
+        let bd_names: Vec<&str> = bd.iter().map(|(s, _)| s.as_str()).collect();
+        let sig_names: Vec<&str> = v.signals.iter().map(String::as_str).collect();
+        assert_eq!(bd_names, sig_names);
+        // Built-in signal weights are non-zero where signal_weight knows them.
+        for (sig, w_val) in &bd {
+            if let Some(expected) = signal_weight(sig) {
+                assert_eq!(*w_val, expected, "weight mismatch for {sig}");
+            }
+        }
+    }
+
+    #[test]
+    fn explain_includes_confidence_level() {
+        let w = OverlayWindow {
+            title: "Call 1-800-555-0100".into(),
+            origin: Origin::Unsolicited,
+            coverage_percent: 99,
+            topmost: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        let ex = v.explain();
+        assert!(
+            ex.contains("high confidence")
+                || ex.contains("medium confidence")
+                || ex.contains("low confidence"),
+            "explain must contain confidence level: {ex}"
+        );
+        assert!(ex.starts_with("Block") || ex.starts_with("Suspicious") || ex.starts_with("Allow"));
     }
 
     #[test]

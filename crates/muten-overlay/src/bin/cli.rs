@@ -268,12 +268,26 @@ fn cmd_classify(
     let v = classify(&w, &rs);
 
     if json {
-        // Serialize the verdict and splice in the natural-language
-        // explanation, so a SIEM gets the structured fields *and* the
-        // human sentence in one object.
+        // Serialize the verdict and splice in computed fields that aren't
+        // in the struct (explanation, confidence, score_breakdown) so a
+        // SIEM gets structured fields AND the human sentence in one object.
         let mut val = serde_json::to_value(&v).map_err(|e| format!("serializing verdict: {e}"))?;
         if let Some(obj) = val.as_object_mut() {
             obj.insert("explanation".into(), serde_json::Value::String(v.explain()));
+            obj.insert(
+                "confidence".into(),
+                serde_json::to_value(v.confidence())
+                    .map_err(|e| format!("serializing confidence: {e}"))?,
+            );
+            let breakdown: Vec<serde_json::Value> = v
+                .score_breakdown()
+                .into_iter()
+                .map(|(sig, w)| serde_json::json!({"signal": sig, "weight": w}))
+                .collect();
+            obj.insert(
+                "score_breakdown".into(),
+                serde_json::Value::Array(breakdown),
+            );
         }
         println!(
             "{}",
@@ -346,6 +360,20 @@ fn cmd_classify_stream(window: &str, rules: Option<&std::path::Path>) -> Result<
             serde_json::to_value(&v).map_err(|e| format!("line {lineno}: serializing: {e}"))?;
         if let Some(obj) = val.as_object_mut() {
             obj.insert("explanation".into(), serde_json::Value::String(v.explain()));
+            obj.insert(
+                "confidence".into(),
+                serde_json::to_value(v.confidence())
+                    .map_err(|e| format!("line {lineno}: serializing confidence: {e}"))?,
+            );
+            let breakdown: Vec<serde_json::Value> = v
+                .score_breakdown()
+                .into_iter()
+                .map(|(sig, w)| serde_json::json!({"signal": sig, "weight": w}))
+                .collect();
+            obj.insert(
+                "score_breakdown".into(),
+                serde_json::Value::Array(breakdown),
+            );
         }
         println!(
             "{}",
