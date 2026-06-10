@@ -82,12 +82,17 @@ title: your computer is being repaired
 glob: * threats detected on your *     # "4 threats detected on your PC"
 glob: * viruses found *                 # "3 viruses found — call now"
 
-# Prize / lottery / reward scams.
+# Prize / lottery / reward scams (prize_lure E20).
+# Sources: FTC 2024 annual report (prize/sweepstakes sub-type of imposter scams).
 title: you have won
 title: congratulations you won
 title: claim your prize
 title: you are today's winner
 title: gift card winner
+title: you have been selected as winner
+title: you are eligible to claim your reward
+title: your prize expires soon claim now
+glob: * won a * gift card *              # "You won a $500 Amazon gift card — claim"
 
 # ─────────────────────────────────────────────────────────────────
 # CRYPTO / REFUND / "RECOVERY" RE-VICTIMIZATION scams. FBI IC3 2024:
@@ -137,6 +142,23 @@ title: a font is required to display this page
 title: failed to load font
 title: update your browser to continue
 title: your browser is out of date
+
+# ─────────────────────────────────────────────────────────────────
+# FAKE DOWNLOAD / FAKE-UPDATE GATES (download_trap_lure E21).
+# Drive-by-download malware delivery overlays that demand the user install
+# a fake plugin, codec, or software component. Distinct from ClickFix
+# (keyboard-shortcut path). Sources: Microsoft Edge security team (2025),
+# FBI IC3 2024 malware delivery analysis.
+# ─────────────────────────────────────────────────────────────────
+title: download required to continue
+title: installation required to access this page
+title: update required to view this content
+title: codec required to play this video
+title: flash player required to play
+title: browser plugin required
+title: media player required to play this content
+glob: * required to view this *          # "Codec required to view this video"
+glob: * required to play this *          # "Plugin required to play this content"
 
 # ─────────────────────────────────────────────────────────────────
 # CREDENTIAL-HARVEST PHISHING OVERLAYS (E14).

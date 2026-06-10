@@ -45,7 +45,7 @@ fn alert_with_title(title: &str) -> OverlayWindow {
 #[test]
 fn blocklist_parses_with_substantial_coverage() {
     let rs = load_example_blocklist();
-    assert!(rs.title_count() >= 85, "titles: {}", rs.title_count());
+    assert!(rs.title_count() >= 100, "titles: {}", rs.title_count());
     assert!(
         rs.process_count() >= 10,
         "processes: {}",
@@ -243,6 +243,42 @@ fn covers_fake_scanner_rogue_av() {
         assert!(
             v.signals.iter().any(|s| s == "blocklist_title"),
             "fake-scanner phrase not covered: {title:?}"
+        );
+    }
+}
+
+#[test]
+fn covers_prize_lottery_scam() {
+    let rs = load_example_blocklist();
+    for title in [
+        "you have won",
+        "congratulations you won",
+        "claim your prize",
+        "you are today's winner",
+        "you have been selected as winner",
+    ] {
+        let v = classify(&alert_with_title(title), &rs);
+        assert!(
+            v.signals.iter().any(|s| s == "blocklist_title"),
+            "prize/lottery phrase not covered: {title:?}"
+        );
+    }
+}
+
+#[test]
+fn covers_download_trap_fake_plugin() {
+    let rs = load_example_blocklist();
+    for title in [
+        "download required to continue",
+        "installation required to access this page",
+        "update required to view this content",
+        "flash player required to play",
+        "browser plugin required",
+    ] {
+        let v = classify(&alert_with_title(title), &rs);
+        assert!(
+            v.signals.iter().any(|s| s == "blocklist_title"),
+            "download-trap/fake-plugin phrase not covered: {title:?}"
         );
     }
 }
