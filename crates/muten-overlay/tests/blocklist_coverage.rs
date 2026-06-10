@@ -210,3 +210,39 @@ fn homoglyph_law_enforcement_title_still_caught() {
         v.signals
     );
 }
+
+#[test]
+fn covers_credential_harvest_phishing() {
+    let rs = load_example_blocklist();
+    for title in [
+        "your account has been suspended",
+        "suspicious sign-in activity detected",
+        "verify your identity to continue",
+        "update your payment information now",
+        "unusual login from new device",
+    ] {
+        let v = classify(&alert_with_title(title), &rs);
+        assert!(
+            v.signals.iter().any(|s| s == "blocklist_title"),
+            "credential harvest phrase not covered: {title:?}"
+        );
+    }
+}
+
+#[test]
+fn covers_fake_scanner_rogue_av() {
+    let rs = load_example_blocklist();
+    for title in [
+        "scanning for viruses",
+        "scanning for threats",
+        "system repair in progress",
+        "repairing your computer",
+        "threats have been found on your computer",
+    ] {
+        let v = classify(&alert_with_title(title), &rs);
+        assert!(
+            v.signals.iter().any(|s| s == "blocklist_title"),
+            "fake-scanner phrase not covered: {title:?}"
+        );
+    }
+}
