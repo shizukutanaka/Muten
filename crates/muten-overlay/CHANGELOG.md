@@ -293,7 +293,26 @@ MSRV 1.75, 286 tests.
   = 20` (additive; combined with other social-engineering signals reaches Suspicious).
   Category: `InterfaceInterference`. MITRE: T1566 (phishing lure). Homoglyph/leet
   variants are defeated via `normalize_for_match`. 3 confusables unit tests +
-  3 lib unit tests; 403 tests total. (E14.)
+  3 lib unit tests + 2 property tests. (E14.)
+- **Fake-scanner / threat-count language signal** (`fake_scanner_cue`; E15).
+  `has_fake_scanner_cue(s)` detects five rogue-AV overlay language patterns in
+  the normalized window title: (1) *scanning lure* — "scanning for viruses/threats/
+  malware/spyware"; (2) *threat count* — "N threats/viruses/infections detected/
+  found/identified"; (3) *removal action* — "removing/removed malware/virus/
+  spyware"; (4) *repair lure* — "repair/repairing your system/computer/pc"; (5)
+  *system error* — "critical system error detected". Grounded in Microsoft Edge
+  Scareware Blocker corpus, Malwarebytes rogue-AV samples, and SafetyDetectives
+  2026 fake-antivirus guide. Real OS security scanners run as tray processes and
+  never lock the desktop with a scan-progress window title; the `alert_shaped`
+  guard eliminates FPs from legitimate AV software the user deliberately opened.
+  Leet/homoglyph evasion ("v1rus", "thr34t") defeated via `normalize_for_match`.
+  Weight `W_FAKE_SCANNER = 20`. Category: `InterfaceInterference` (false authority
+  impersonation). MITRE: T1566 (Phishing — fake security alert). `is_high_fidelity`
+  updated to include all new text-based signals (cloud_storage_abuse, url_path_lure,
+  forced_retention_cue, credential_harvest_cue, fake_scanner_cue) so `Verdict::
+  confidence()` correctly accounts for them. 3 confusables unit tests + 3 lib
+  unit tests + 3 property tests + 2 taxonomy tests (MITRE + categories); 414 tests
+  total. (E15.)
 
 ### Changed (breaking)
 - **`Verdict.signals: Vec<String>`** (was `Vec<&'static str>`). Required to

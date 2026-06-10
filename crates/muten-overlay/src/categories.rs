@@ -111,7 +111,8 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         | "urgency_countdown"
         | "typosquat_brand"
         | "url_path_lure"
-        | "credential_harvest_cue" => Some(InterfaceInterference),
+        | "credential_harvest_cue"
+        | "fake_scanner_cue" => Some(InterfaceInterference),
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }
@@ -218,6 +219,18 @@ mod tests {
         );
         assert_eq!(
             category_of("remote_access_lure"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+        assert_eq!(
+            category_of("forced_retention_cue"),
+            Some(DarkPatternCategory::Obstruction)
+        );
+        assert_eq!(
+            category_of("credential_harvest_cue"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+        assert_eq!(
+            category_of("fake_scanner_cue"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }

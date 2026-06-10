@@ -256,6 +256,7 @@ fn signal_phrase(signal: &str) -> &str {
         "credential_harvest_cue" => {
             "alarms the user about account compromise or demands credential re-entry"
         }
+        "fake_scanner_cue" => "displays fake antivirus scan progress or threat-count language",
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -342,6 +343,7 @@ const W_CLOUD_STORAGE_ABUSE: i32 = 20; // alert-shaped overlay served from known
 const W_URL_PATH_LURE: i32 = 20; // alert-shaped overlay with brand+lure combosquat pattern in the URL path
 const W_FORCED_RETENTION: i32 = 20; // "do not close" / "do not turn off" instruction in title (high-specificity scam tell)
 const W_CREDENTIAL_HARVEST: i32 = 20; // "account suspended / verify account / confirm password" credential-phish cue
+const W_FAKE_SCANNER: i32 = 20; // fake-AV scanner progress: "scanning for threats", "N threats found", "repairing system"
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -385,6 +387,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "url_path_lure" => Some(W_URL_PATH_LURE),
         "forced_retention_cue" => Some(W_FORCED_RETENTION),
         "credential_harvest_cue" => Some(W_CREDENTIAL_HARVEST),
+        "fake_scanner_cue" => Some(W_FAKE_SCANNER),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -413,6 +416,11 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "typosquat_brand"
             | "clickfix_instruction"
             | "urgency_countdown"
+            | "cloud_storage_abuse"
+            | "url_path_lure"
+            | "forced_retention_cue"
+            | "credential_harvest_cue"
+            | "fake_scanner_cue"
             | "remote_access_lure"
     )
 }
@@ -924,6 +932,17 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && confusables::has_credential_harvest_cue(&normalized_title) {
         score += rules.weight_of("credential_harvest_cue", W_CREDENTIAL_HARVEST);
         signals.push("credential_harvest_cue".into());
+    }
+
+    // Fake-scanner / threat-count language (E15 — Microsoft Edge Scareware Blocker
+    // corpus; Malwarebytes rogue-AV samples). Rogue AV and TSS overlays display
+    // fabricated progress: "Scanning for threats…", "4 threats found!", "Repairing
+    // your system". Real OS security scanners run as tray processes and never lock
+    // the desktop with a scan-progress title — the alert_shaped guard eliminates FPs
+    // from legitimate security software the user deliberately opened.
+    if alert_shaped && confusables::has_fake_scanner_cue(&normalized_title) {
+        score += rules.weight_of("fake_scanner_cue", W_FAKE_SCANNER);
+        signals.push("fake_scanner_cue".into());
     }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
@@ -3742,6 +3761,62 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("credential_harvest_cue"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E15: fake_scanner_cue ─────────────────────────────────────────────
+
+    #[test]
+    fn fake_scanner_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        // Full-screen + no close + "4 threats found" = alert-shaped scareware.
+        let w = OverlayWindow {
+            title: "4 threats detected on your pc remove now".into(),
+            coverage_percent: 99,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            age_ms: 1_000,
+            origin: Origin::Unsolicited,
+            url: None,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "fake_scanner_cue"),
+            "expected fake_scanner_cue; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_FAKE_SCANNER);
+    }
+
+    #[test]
+    fn fake_scanner_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        // User opened a legitimate AV scan summary — closable, user-initiated.
+        let w = OverlayWindow {
+            title: "scanning for threats complete 0 found".into(),
+            coverage_percent: 30,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            age_ms: 5_000,
+            origin: Origin::UserInitiated,
+            url: None,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "fake_scanner_cue"),
+            "fake_scanner_cue must not fire for user-initiated closable AV summary; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn fake_scanner_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("fake_scanner_cue"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }

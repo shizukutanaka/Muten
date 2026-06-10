@@ -48,14 +48,15 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         "clickfix_instruction" => &["T1204"],
         "remote_access_lure" => &["T1219"],
         "blocks_input" | "input_trap" => &["T1056"],
-        // Urgency-coercion, forced-retention, and cloud-lure delivery are
-        // social-engineering hooks that steer victims toward the attacker's
-        // call or site: T1566 Phishing.
+        // Urgency-coercion, forced-retention, cloud-lure delivery, and
+        // fake-scanner overlays are social-engineering hooks that steer
+        // victims toward the attacker's call or site: T1566 Phishing.
         "urgency_countdown"
         | "cloud_storage_abuse"
         | "blocklist_host"
         | "forced_retention_cue"
-        | "credential_harvest_cue" => &["T1566"],
+        | "credential_harvest_cue"
+        | "fake_scanner_cue" => &["T1566"],
         _ => &[],
     }
 }
@@ -116,6 +117,9 @@ mod tests {
         assert_eq!(techniques_of("remote_access_lure"), &["T1219"]);
         assert_eq!(techniques_of("blocks_input"), &["T1056"]);
         assert_eq!(techniques_of("input_trap"), &["T1056"]);
+        assert_eq!(techniques_of("forced_retention_cue"), &["T1566"]);
+        assert_eq!(techniques_of("credential_harvest_cue"), &["T1566"]);
+        assert_eq!(techniques_of("fake_scanner_cue"), &["T1566"]);
     }
 
     #[test]

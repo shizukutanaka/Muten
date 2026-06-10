@@ -710,6 +710,41 @@ pub fn has_credential_harvest_cue(s: &str) -> bool {
     account_alarm || cred_instruction
 }
 
+/// Detect fake-scanner / threat-count language in a normalized window title.
+///
+/// Rogue-AV and tech-support-scam overlays display fake progress titles like
+/// "Scanning for threats…", "4 threats found!", "Removing malware…", or
+/// "System repair in progress".  Real OS scanners run as tray apps and never
+/// put a progress message in a *window title* while also blocking the desktop.
+///
+/// Call on the output of `normalize_for_match` to defeat leet/homoglyph
+/// evasion; combine with the `alert_shaped` guard in `classify()` to keep
+/// FPs to zero for legitimate security software the user deliberately opened.
+///
+/// Patterns grounded in Microsoft Edge Scareware Blocker corpus, Malwarebytes
+/// rogue-AV samples, and SafetyDetectives 2026 fake-antivirus guide.
+#[must_use]
+pub fn has_fake_scanner_cue(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    // "scanning for viruses / threats / malware / spyware"
+    let scanning_lure =
+        has("scanning") && (has("virus") || has("threat") || has("malware") || has("spyware"));
+    // "N threats / viruses / infections detected / found"
+    let threat_count = (has("threat") || has("virus") || has("infection"))
+        && (has("detected") || has("found") || has("identified"));
+    // "removing virus/malware/spyware" or "malware removed"
+    let removal_action = (has("removing") || has("removed"))
+        && (has("virus") || has("malware") || has("spyware") || has("threat") || has("infection"));
+    // "repair in progress", "repairing your pc/system/computer"
+    let repair_lure = (has("repair")
+        && (has("progress") || has("your") || has("system") || has("computer") || has("pc")))
+        || (has("repairing") && (has("system") || has("computer") || has("pc") || has("file")));
+    // "system error detected", "critical system error"
+    let system_error =
+        has("system") && has("error") && (has("detected") || has("critical") || has("found"));
+    scanning_lure || threat_count || removal_action || repair_lure || system_error
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1228,5 +1263,53 @@ mod tests {
         assert!(!has_credential_harvest_cue("verify your email address"));
         // "account" alone without an alarm pairing does not fire.
         assert!(!has_credential_harvest_cue("account settings"));
+    }
+
+    // ── has_fake_scanner_cue ─────────────────────────────────────────────
+
+    #[test]
+    fn fake_scanner_fires_on_scareware_titles() {
+        // Fake scanning progress.
+        assert!(has_fake_scanner_cue("scanning for viruses please wait"));
+        assert!(has_fake_scanner_cue("scanning for threats on your system"));
+        assert!(has_fake_scanner_cue("scanning for malware"));
+        assert!(has_fake_scanner_cue("scanning for spyware"));
+        // Threat-count language.
+        assert!(has_fake_scanner_cue("4 threats detected on your pc"));
+        assert!(has_fake_scanner_cue("3 viruses found remove now"));
+        assert!(has_fake_scanner_cue("12 infections identified"));
+        // Removal language.
+        assert!(has_fake_scanner_cue("removing malware from your computer"));
+        assert!(has_fake_scanner_cue("virus removed successfully"));
+        assert!(has_fake_scanner_cue("removing spyware do not close"));
+        // Repair language.
+        assert!(has_fake_scanner_cue("repairing your system please wait"));
+        assert!(has_fake_scanner_cue("system repair in progress"));
+        assert!(has_fake_scanner_cue("repair your pc now"));
+        // System-error language.
+        assert!(has_fake_scanner_cue("critical system error detected"));
+        assert!(has_fake_scanner_cue("system error found contact support"));
+    }
+
+    #[test]
+    fn fake_scanner_does_not_fire_on_benign_titles() {
+        // Legitimate IDE / build output titles.
+        assert!(!has_fake_scanner_cue("build in progress"));
+        assert!(!has_fake_scanner_cue("installing update please wait"));
+        assert!(!has_fake_scanner_cue("download complete"));
+        // A real security product whose user-opened window shows summary.
+        // "removed" alone without a threat word must not fire.
+        assert!(!has_fake_scanner_cue("item removed from cart"));
+        // "error" alone without system+detected does not fire.
+        assert!(!has_fake_scanner_cue("error loading page"));
+        // "repair" alone (e.g. Word repair dialog header).
+        assert!(!has_fake_scanner_cue("repair complete"));
+    }
+
+    #[test]
+    fn fake_scanner_defeats_leet_via_normalize() {
+        // "v1rus" → "virus", "thr34t" → "threat" after normalize_for_match.
+        let norm = normalize_for_match("sc4nning for v1rus3s");
+        assert!(has_fake_scanner_cue(&norm));
     }
 }

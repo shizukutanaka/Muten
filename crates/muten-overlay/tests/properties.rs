@@ -561,4 +561,80 @@ proptest! {
             Decision::Allow => prop_assert!(v.score < SUSPICIOUS_THRESHOLD),
         }
     }
+
+    // ── E14: credential_harvest_cue / E15: fake_scanner_cue ──────────────
+
+    /// has_credential_harvest_cue never panics on arbitrary Unicode input.
+    #[test]
+    fn has_credential_harvest_cue_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_credential_harvest_cue(&s);
+    }
+
+    /// A string lacking all trigger keyword pairs must not fire credential harvest.
+    #[test]
+    fn plain_ascii_never_fires_credential_harvest(s in "[a-z .,!?]{1,60}") {
+        // Pairs that trigger: ("account","suspended"), ("account","locked"),
+        // ("account","disabled"), ("account","blocked"), ("account","compromised"),
+        // ("unusual","sign"), ("suspicious","sign"), ("unusual","login"),
+        // ("suspicious","login"), ("suspicious","activity"),
+        // ("verify","account"), ("confirm","password"), ("confirm","identity"),
+        // ("verify","identity"), ("re-enter","password"), ("enter","credentials"),
+        // ("update","payment").
+        let has = |a: &str| s.contains(a);
+        let could_fire = (has("account") && (has("suspended") || has("locked") || has("disabled") || has("blocked") || has("compromised")))
+            || (has("unusual") && (has("sign") || has("login")))
+            || (has("suspicious") && (has("sign") || has("login") || has("activity")))
+            || (has("verify") && (has("account") || has("identity")))
+            || (has("confirm") && (has("password") || has("identity")))
+            || (has("re-enter") && has("password"))
+            || (has("enter") && has("credentials"))
+            || (has("update") && has("payment"));
+        if !could_fire {
+            prop_assert!(!muten_overlay::confusables::has_credential_harvest_cue(&s));
+        }
+    }
+
+    /// has_fake_scanner_cue never panics on arbitrary Unicode input.
+    #[test]
+    fn has_fake_scanner_cue_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_fake_scanner_cue(&s);
+    }
+
+    /// A string lacking all scanner-lure patterns must not fire fake_scanner_cue.
+    #[test]
+    fn plain_ascii_never_fires_fake_scanner(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let could_fire = (has("scanning") && (has("virus") || has("threat") || has("malware") || has("spyware")))
+            || ((has("threat") || has("virus") || has("infection")) && (has("detected") || has("found") || has("identified")))
+            || ((has("removing") || has("removed")) && (has("virus") || has("malware") || has("spyware") || has("threat") || has("infection")))
+            || (has("repair") && (has("progress") || has("your") || has("system") || has("computer") || has("pc")))
+            || (has("repairing") && (has("system") || has("computer") || has("pc") || has("file")))
+            || (has("system") && has("error") && (has("detected") || has("critical") || has("found")));
+        if !could_fire {
+            prop_assert!(!muten_overlay::confusables::has_fake_scanner_cue(&s));
+        }
+    }
+
+    /// classify is threshold-consistent on alert-shaped windows with scanner language.
+    #[test]
+    fn classify_never_panics_with_fake_scanner_title(title in ".*") {
+        let w = OverlayWindow {
+            title,
+            url: None,
+            coverage_percent: 99,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 500,
+        };
+        let v = classify(&w, &Ruleset::default());
+        match v.decision {
+            Decision::Block => prop_assert!(v.score >= BLOCK_THRESHOLD),
+            Decision::Suspicious => prop_assert!(
+                v.score >= SUSPICIOUS_THRESHOLD && v.score < BLOCK_THRESHOLD
+            ),
+            Decision::Allow => prop_assert!(v.score < SUSPICIOUS_THRESHOLD),
+        }
+    }
 }
