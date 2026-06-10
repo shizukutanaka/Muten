@@ -218,6 +218,17 @@ MSRV 1.75, 286 tests.
   `W_URGENCY_COUNTDOWN = 15` (weak supporting signal, not sufficient to block alone).
   Category: `InterfaceInterference` (urgency / scarcity coercion). 9 unit tests + 2
   property tests; total now 349. (E7.)
+- **GlitchFix / CrashFix browser-error ClickFix variants** (E9).
+  `has_clickfix_instruction()` now also fires on browser-error lures introduced in
+  the GlitchFix campaign (Huntress / The Hacker News, Jan 2026): "browser stopped
+  working", "browser stopped abnormally", "font required / missing", and "update
+  browser to continue / required / click". These lures embed the same Win+R clipboard
+  paste instruction as classic ClickFix but wrap it in a fake browser-crash or missing-
+  font dialog. The "update browser" arm requires an explicit gating word ("continue",
+  "required", "click", "press") to avoid FPs from benign browser update notifications.
+  `s.contains("system font")` directly catches the canonical GlitchFix phrase.
+  2 new unit tests (glitchfix_patterns_fire, glitchfix_does_not_fire_on_benign_browser_text).
+  370 tests total. (E9.)
 
 ### Changed (breaking)
 - **`Verdict.signals: Vec<String>`** (was `Vec<&'static str>`). Required to

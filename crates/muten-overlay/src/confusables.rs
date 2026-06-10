@@ -562,7 +562,19 @@ pub fn has_clickfix_instruction(s: &str) -> bool {
         || (s.contains("verify") && s.contains("human"))
         || (s.contains("confirm") && s.contains("human"));
 
-    shortcut || run_cmd || captcha_frame
+    // GlitchFix / CrashFix / browser-error variants (Huntress Jan 2026,
+    // The Hacker News GlitchFix Jan 2026). These lures present a "browser
+    // stopped working" / "font required" / "browser update" dialog and ask
+    // the user to paste a clipboard payload — same ClickFix technique.
+    let glitchfix = (s.contains("browser") && s.contains("stopped"))
+        || (s.contains("browser") && s.contains("abnormally"))
+        || (s.contains("font") && (s.contains("required") || s.contains("missing")))
+        || (s.contains("update") && s.contains("browser")
+            && (s.contains("continue") || s.contains("required")
+                || s.contains("click") || s.contains("press")))
+        || s.contains("system font");
+
+    shortcut || run_cmd || captcha_frame || glitchfix
 }
 
 /// Detect a countdown/timer pattern (`M:SS` or `MM:SS`) combined with an
@@ -981,6 +993,25 @@ mod tests {
         let leet = normalize_for_match("v3r1fy you are hum4n");
         assert_eq!(leet, "verify you are human");
         assert!(has_clickfix_instruction(&leet));
+    }
+
+    #[test]
+    fn glitchfix_patterns_fire() {
+        // GlitchFix / CrashFix browser-error variants (Huntress Jan 2026).
+        assert!(has_clickfix_instruction("browser stopped abnormally"));
+        assert!(has_clickfix_instruction("your browser stopped working"));
+        assert!(has_clickfix_instruction("system font required to continue"));
+        assert!(has_clickfix_instruction("font missing please install"));
+        assert!(has_clickfix_instruction("update your browser to continue"));
+        assert!(has_clickfix_instruction("system font needs updating"));
+    }
+
+    #[test]
+    fn glitchfix_does_not_fire_on_benign_browser_text() {
+        // "browser" or "font" alone without the lure pairing does not fire.
+        assert!(!has_clickfix_instruction("open browser settings"));
+        assert!(!has_clickfix_instruction("change font size"));
+        assert!(!has_clickfix_instruction("check for browser update"));
     }
 
     // ── has_urgency_countdown ─────────────────────────────────────
