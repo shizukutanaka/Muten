@@ -34,7 +34,11 @@
 pub fn techniques_of(signal: &str) -> &'static [&'static str] {
     match signal {
         "phone_number" | "blocklist_phone" | "blocklist_title" => &["T1566"],
-        "brand_impersonation" | "combosquat_brand" | "rogue_av_process" => &["T1656"],
+        "brand_impersonation"
+        | "combosquat_brand"
+        | "typosquat_brand"
+        | "url_path_lure"
+        | "rogue_av_process" => &["T1656"],
         "mixed_script"
         | "whole_script_confusable"
         | "bidi_override"
@@ -44,6 +48,10 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         "clickfix_instruction" => &["T1204"],
         "remote_access_lure" => &["T1219"],
         "blocks_input" | "input_trap" => &["T1056"],
+        // Urgency-coercion and cloud-lure delivery are social-engineering
+        // hooks that steer victims toward the attacker's call or site:
+        // T1566 Phishing (the threat-facing technique observed).
+        "urgency_countdown" | "cloud_storage_abuse" | "blocklist_host" => &["T1566"],
         _ => &[],
     }
 }
@@ -89,7 +97,11 @@ mod tests {
         assert_eq!(techniques_of("blocklist_title"), &["T1566"]);
         assert_eq!(techniques_of("brand_impersonation"), &["T1656"]);
         assert_eq!(techniques_of("combosquat_brand"), &["T1656"]);
+        assert_eq!(techniques_of("typosquat_brand"), &["T1656"]);
+        assert_eq!(techniques_of("url_path_lure"), &["T1656"]);
         assert_eq!(techniques_of("rogue_av_process"), &["T1656"]);
+        assert_eq!(techniques_of("urgency_countdown"), &["T1566"]);
+        assert_eq!(techniques_of("cloud_storage_abuse"), &["T1566"]);
         assert_eq!(techniques_of("mixed_script"), &["T1036"]);
         assert_eq!(techniques_of("bidi_override"), &["T1036"]);
         assert_eq!(techniques_of("compat_chars_present"), &["T1036"]);
