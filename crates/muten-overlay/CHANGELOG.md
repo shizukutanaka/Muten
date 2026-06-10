@@ -124,6 +124,18 @@ MSRV 1.75, 286 tests.
   (library-only) passes cleanly. `cargo build --no-default-features --lib`
   compiles only the domain library. (N4, C3-4.)
 - **Signal-quality confidence** (`ConfidenceLevel`; B6). A new `pub enum ConfidenceLevel { High, Medium, Low }` and `Verdict::confidence()` method indicate how much the verdict relies on high-fidelity (text-analysis / rule-based) signals vs low-fidelity geometry signals (fullscreen / topmost / modal). `High` when ≥2 text signals fired; `Medium` when exactly one; `Low` when only geometry signals fired. A new `pub fn signal_weight(name: &str) -> Option<i32>` exposes the built-in signal weights for external tooling, and `Verdict::score_breakdown()` returns per-signal `(name, weight)` pairs. The `explain()` output now includes the confidence level, e.g. "Block (score 130, high confidence): ...". The `--json` output gains `confidence` and `score_breakdown` fields. SIEM operators can route `High` confidence blocks to auto-response and `Low` to human review. 6 new tests. (B6, C5-5.)
+- **Per-signal weight externalization** (`weight:` rule kind; B9 / C5-3). A new
+  `weight: <signal> <value>` blocklist line lets operators override any named signal's
+  additive contribution without recompiling. Fleet managers who observe from
+  `signal_firing_stats()` that, say, `mixed_script` has a high FP rate in their
+  environment can add `weight: mixed_script 10` to their MDM-pushed blocklist to soften
+  it, while all other signals remain at their compiled defaults. The override is stored
+  in `Ruleset::weight_overrides` (a `BTreeMap`) and applied through the new
+  `Ruleset::weight_of(signal, default)` helper. All 22 heuristic `score +=` calls in
+  `classify()` route through `weight_of` so every tunable signal is reachable. Malformed
+  values (non-numeric, missing) are silently ignored — one bad override line never
+  disables the whole list. New accessor `Ruleset::weight_override_count()`. The `rules`
+  subcommand now prints a `weight overrides:` count. 7 new tests; 330 total. (C5-3.)
 - **Glob title patterns in the blocklist** (`glob:` rule kind; F6). A new `glob: <pattern>`
   rule type complements the existing `title:` (substring) rules with full-string wildcard
   matching: `*` matches any run of characters (including none), `?` matches exactly one.

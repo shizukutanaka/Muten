@@ -588,28 +588,28 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     let mut matched_rule = None;
 
     if w.coverage_percent >= FULLSCREEN_COVERAGE {
-        score += W_FULLSCREEN;
+        score += rules.weight_of("fullscreen", W_FULLSCREEN);
         signals.push("fullscreen".into());
     }
     if w.topmost {
-        score += W_TOPMOST;
+        score += rules.weight_of("topmost", W_TOPMOST);
         signals.push("topmost".into());
     }
     if !w.has_close_button {
-        score += W_NO_CLOSE;
+        score += rules.weight_of("no_close_button", W_NO_CLOSE);
         signals.push("no_close_button".into());
     }
     if w.blocks_input {
-        score += W_BLOCKS_INPUT;
+        score += rules.weight_of("blocks_input", W_BLOCKS_INPUT);
         signals.push("blocks_input".into());
     }
     match w.origin {
         Origin::Unsolicited => {
-            score += W_UNSOLICITED;
+            score += rules.weight_of("unsolicited", W_UNSOLICITED);
             signals.push("unsolicited".into());
         }
         Origin::UserInitiated => {
-            score += W_USER_INITIATED_RELIEF;
+            score += rules.weight_of("user_initiated", W_USER_INITIATED_RELIEF);
             signals.push("user_initiated".into());
         }
         Origin::Unknown => {}
@@ -621,7 +621,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // W_VERY_NEW unconditionally, turning the signal into constant
     // noise. Only a real, small, *nonzero* age counts as very_new.
     if w.age_ms > 0 && w.age_ms < 1000 {
-        score += W_VERY_NEW;
+        score += rules.weight_of("very_new", W_VERY_NEW);
         signals.push("very_new".into());
     }
     // Title blocklist: substring rules (`title:`) and glob rules (`glob:`).
@@ -631,7 +631,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         .match_title(&w.title)
         .or_else(|| rules.match_title_glob(&w.title));
     if let Some(rule) = title_rule {
-        score += W_TITLE_HIT;
+        score += rules.weight_of("blocklist_title", W_TITLE_HIT);
         signals.push("blocklist_title".into());
         matched_rule = Some(rule);
     }
@@ -642,7 +642,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // it does not require the alert shape. Additive (not an auto-block),
     // consistent with `blocklist_title`; surfaces the matched rule.
     if let Some(rule) = rules.match_phone(&w.title) {
-        score += W_PHONE_BLOCKLIST;
+        score += rules.weight_of("blocklist_phone", W_PHONE_BLOCKLIST);
         signals.push("blocklist_phone".into());
         if matched_rule.is_none() {
             matched_rule = Some(rule);
@@ -660,7 +660,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     let alert_shaped =
         w.coverage_percent >= FULLSCREEN_COVERAGE || w.blocks_input || !w.has_close_button;
     if alert_shaped && contains_phone_number(&confusables::fold_confusables(&w.title)) {
-        score += W_PHONE_NUMBER;
+        score += rules.weight_of("phone_number", W_PHONE_NUMBER);
         signals.push("phone_number".into());
     }
 
@@ -682,7 +682,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // is not modal / full-screen / no-close, so this never fires for it.
     let normalized_title = confusables::normalize_for_match(&w.title);
     if alert_shaped && confusables::has_clickfix_instruction(&normalized_title) {
-        score += W_CLICKFIX;
+        score += rules.weight_of("clickfix_instruction", W_CLICKFIX);
         signals.push("clickfix_instruction".into());
     }
 
@@ -699,7 +699,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     let fake_alert_present =
         has_sig("blocklist_title") || has_sig("phone_number") || has_sig("clickfix_instruction");
     if fake_alert_present && mentions_remote_access_tool(&normalized_title) {
-        score += W_REMOTE_ACCESS_LURE;
+        score += rules.weight_of("remote_access_lure", W_REMOTE_ACCESS_LURE);
         signals.push("remote_access_lure".into());
     }
 
@@ -716,7 +716,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
             .as_deref()
             .is_some_and(|u| confusables::has_confusable_mixed_script(url_host(u)));
     if mixed_script {
-        score += W_MIXED_SCRIPT;
+        score += rules.weight_of("mixed_script", W_MIXED_SCRIPT);
         signals.push("mixed_script".into());
     }
 
@@ -738,7 +738,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
                 .any(confusables::has_whole_script_confusable)
         });
     if whole_script {
-        score += W_WHOLE_SCRIPT;
+        score += rules.weight_of("whole_script_confusable", W_WHOLE_SCRIPT);
         signals.push("whole_script_confusable".into());
     }
 
@@ -753,7 +753,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     let compat_chars = confusables::has_compat_alpha(&w.title)
         || w.url.as_deref().is_some_and(confusables::has_compat_alpha);
     if compat_chars {
-        score += W_COMPAT_CHARS;
+        score += rules.weight_of("compat_chars_present", W_COMPAT_CHARS);
         signals.push("compat_chars_present".into());
     }
 
@@ -767,7 +767,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
             .as_deref()
             .is_some_and(confusables::has_mixed_number_systems);
     if mixed_numbers {
-        score += W_MIXED_NUMBERS;
+        score += rules.weight_of("mixed_number_systems", W_MIXED_NUMBERS);
         signals.push("mixed_number_systems".into());
     }
 
@@ -780,7 +780,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
             .as_deref()
             .is_some_and(confusables::has_excessive_combining_marks);
     if zalgo {
-        score += W_ZALGO;
+        score += rules.weight_of("excessive_combining_marks", W_ZALGO);
         signals.push("excessive_combining_marks".into());
     }
 
@@ -793,7 +793,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     let bidi_override = confusables::has_bidi_override(&w.title)
         || w.url.as_deref().is_some_and(confusables::has_bidi_override);
     if bidi_override {
-        score += W_BIDI_OVERRIDE;
+        score += rules.weight_of("bidi_override", W_BIDI_OVERRIDE);
         signals.push("bidi_override".into());
     }
 
@@ -809,7 +809,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         .and_then(brand_impersonation)
         .is_some()
     {
-        score += W_BRAND_IMPERSONATION;
+        score += rules.weight_of("brand_impersonation", W_BRAND_IMPERSONATION);
         signals.push("brand_impersonation".into());
     }
 
@@ -827,7 +827,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         .and_then(combosquat)
         .is_some()
     {
-        score += W_COMBOSQUAT;
+        score += rules.weight_of("combosquat_brand", W_COMBOSQUAT);
         signals.push("combosquat_brand".into());
     }
 
@@ -851,7 +851,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // Any real content/provenance evidence still pushes it over.
     let input_trap = w.blocks_input && w.topmost && w.coverage_percent >= FULLSCREEN_COVERAGE;
     if input_trap {
-        score += W_INPUT_TRAP;
+        score += rules.weight_of("input_trap", W_INPUT_TRAP);
         signals.push("input_trap".into());
     }
 
@@ -870,7 +870,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         && w.age_ms > 0
         && w.age_ms < 1000;
     if sudden_takeover {
-        score += W_SUDDEN_TAKEOVER;
+        score += rules.weight_of("sudden_fullscreen_takeover", W_SUDDEN_TAKEOVER);
         signals.push("sudden_fullscreen_takeover".into());
     }
 
@@ -2748,5 +2748,45 @@ mod tests {
             .filter(|s| s.as_str() == "blocklist_title")
             .count();
         assert_eq!(count, 1, "blocklist_title must fire at most once");
+    }
+
+    // ── C5-3: weight overrides in classify() ─────────────────────────
+
+    #[test]
+    fn weight_override_changes_score() {
+        // A window with only a `fullscreen` signal. With default weight (30)
+        // the score is 30. Override it to 60 → score is 60.
+        let rules_default = Ruleset::default();
+        let rules_boosted = Ruleset::from_lines(&["weight: fullscreen 60"]);
+        let w = OverlayWindow {
+            title: "plain window".into(),
+            coverage_percent: 100,
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v_default = classify(&w, &rules_default);
+        let v_boosted = classify(&w, &rules_boosted);
+        assert!(
+            v_boosted.score > v_default.score,
+            "boosted weight must yield higher score"
+        );
+        assert_eq!(v_default.score, 30, "default fullscreen weight is 30");
+        assert_eq!(v_boosted.score, 60, "overridden fullscreen weight is 60");
+    }
+
+    #[test]
+    fn weight_override_to_zero_silences_signal() {
+        // With fullscreen weight set to 0, a fullscreen window that normally
+        // scores 30 should score 0 (assuming no other signals).
+        let rules = Ruleset::from_lines(&["weight: fullscreen 0"]);
+        let w = OverlayWindow {
+            title: "plain window".into(),
+            coverage_percent: 100,
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &rules);
+        assert_eq!(v.score, 0);
+        assert_eq!(v.decision, Decision::Allow);
     }
 }

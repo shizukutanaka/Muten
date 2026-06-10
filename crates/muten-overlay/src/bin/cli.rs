@@ -398,6 +398,7 @@ fn cmd_rules(file: &std::path::Path) -> Result<ExitCode, String> {
     println!("  phones:      {}", rs.phone_count());
     println!("  processes:   {}", rs.process_count());
     println!("  composites:  {}", rs.composite_count());
+    println!("  weight overrides: {}", rs.weight_override_count());
 
     // Bounded-weight guard: warn when a composite rule covers only
     // geometry/origin conditions (no content tell) but its weight alone

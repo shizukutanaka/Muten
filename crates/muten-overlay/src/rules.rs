@@ -48,7 +48,7 @@
 //! actually sees, kept small enough to audit by eye.
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// The parsed offline blocklist. Parse with [`Ruleset::parse`] (or
 /// [`Ruleset::from_lines`] in tests). An empty `Ruleset::default()`
@@ -68,6 +68,9 @@ pub struct Ruleset {
     phone_patterns: Vec<PhonePattern>,
     /// Declarative AND-condition composite rules (`composite:` prefix).
     composite_rules: Vec<CompositeRule>,
+    /// Per-signal weight overrides from `weight:` lines.  Operators can
+    /// raise or lower any named signal's contribution without rebuilding.
+    weight_overrides: BTreeMap<String, i32>,
 }
 
 /// A blocklist phone rule. `digits` is the number with every non-digit
@@ -194,6 +197,7 @@ impl Ruleset {
         let mut process_patterns = Vec::new();
         let mut phone_patterns = Vec::new();
         let mut composite_rules = Vec::new();
+        let mut weight_overrides = BTreeMap::new();
         for raw in text.lines() {
             let line = strip_comment(raw).trim();
             if line.is_empty() {
@@ -276,6 +280,21 @@ impl Ruleset {
                         }
                     }
                 }
+            } else if let Some(rest) = line.strip_prefix("weight:") {
+                // Per-signal weight override.
+                // Format: weight: <signal_name> <value>
+                // Allows operators to tune any named signal's additive
+                // contribution without recompiling.  The value is any i32
+                // (including negative, to soften or negate a relief signal).
+                // Unknown signal names are silently stored — classify() will
+                // look them up later; this future-proofs against new signals
+                // added after the blocklist was authored.
+                let mut parts = rest.split_whitespace();
+                if let (Some(sig), Some(val_str)) = (parts.next(), parts.next()) {
+                    if let Ok(val) = val_str.parse::<i32>() {
+                        weight_overrides.insert(sig.to_ascii_lowercase(), val);
+                    }
+                }
             } else {
                 // Bare line → treat as host.
                 if let Some(h) = normalize_host(line) {
@@ -290,6 +309,7 @@ impl Ruleset {
             process_patterns,
             phone_patterns,
             composite_rules,
+            weight_overrides,
         }
     }
 
@@ -323,10 +343,31 @@ impl Ruleset {
     pub fn composite_count(&self) -> usize {
         self.composite_rules.len()
     }
+    /// Number of per-signal weight overrides (`weight:` lines) loaded.
+    pub fn weight_override_count(&self) -> usize {
+        self.weight_overrides.len()
+    }
     /// Access the composite AND-condition rules (for evaluation in classify).
     #[must_use]
     pub fn composite_rules(&self) -> &[CompositeRule] {
         &self.composite_rules
+    }
+
+    /// Effective weight for a named signal.  Returns the operator-supplied
+    /// override from a `weight:` blocklist line if one exists, otherwise
+    /// falls back to `default` (the compile-time constant for that signal).
+    ///
+    /// `classify()` uses this for every signal so that a fleet-pushed
+    /// blocklist can tune sensitivity without a rebuild — an operator who
+    /// observes from `signal_firing_stats()` that `mixed_script` has a high
+    /// FP rate in their environment can lower its weight while keeping all
+    /// other signals at their compiled defaults.
+    #[must_use]
+    pub fn weight_of(&self, signal: &str, default: i32) -> i32 {
+        self.weight_overrides
+            .get(signal)
+            .copied()
+            .unwrap_or(default)
     }
 
     /// Does `url` resolve to a blocked host? Returns the matched rule
@@ -997,5 +1038,48 @@ mod tests {
     fn glob_empty_ruleset_matches_nothing() {
         let rs = Ruleset::default();
         assert!(rs.match_title_glob("any title at all").is_none());
+    }
+
+    // ── C5-3: weight overrides ────────────────────────────────────────
+
+    #[test]
+    fn weight_override_parses_and_returns() {
+        let rs = Ruleset::from_lines(&[
+            "weight: phone_number 99",
+            "weight: mixed_script 0",
+            "weight: user_initiated -10",
+        ]);
+        assert_eq!(rs.weight_override_count(), 3);
+        assert_eq!(rs.weight_of("phone_number", 35), 99);
+        assert_eq!(rs.weight_of("mixed_script", 30), 0);
+        assert_eq!(rs.weight_of("user_initiated", -40), -10);
+    }
+
+    #[test]
+    fn weight_of_falls_back_to_default_when_no_override() {
+        let rs = Ruleset::default();
+        assert_eq!(rs.weight_of("phone_number", 35), 35);
+        assert_eq!(rs.weight_of("nonexistent_signal", 42), 42);
+    }
+
+    #[test]
+    fn weight_override_is_case_normalised() {
+        let rs = Ruleset::from_lines(&["weight: Phone_Number 50"]);
+        // Signal names are lower-cased at parse time.
+        assert_eq!(rs.weight_of("phone_number", 35), 50);
+    }
+
+    #[test]
+    fn weight_override_malformed_value_is_silently_dropped() {
+        let rs = Ruleset::from_lines(&["weight: phone_number not_a_number"]);
+        assert_eq!(rs.weight_override_count(), 0);
+        // Falls back to default.
+        assert_eq!(rs.weight_of("phone_number", 35), 35);
+    }
+
+    #[test]
+    fn weight_override_missing_value_is_dropped() {
+        let rs = Ruleset::from_lines(&["weight: phone_number"]);
+        assert_eq!(rs.weight_override_count(), 0);
     }
 }

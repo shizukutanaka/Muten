@@ -6,7 +6,7 @@
 > walks the **actual code surface** module by module, enumerates concrete
 > improvement points found by direct audit, and tracks their status.
 >
-> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 323 tests.
+> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 330 tests.
 > Status: ✅ done · 🔧 fixed-this-pass · 🔻 planned · 🆕 newly-found · ⛔ out-of-scope (I3)
 > Invariants (every item respects): offline · pure functions over window
 > metadata · no ML/CV · `#![forbid(unsafe_code)]` · explainable additive
@@ -40,6 +40,7 @@ with priority (★–★★★).
 | B6 | ★★ | Confidence-weighted signals (decay low-fidelity helper fields) | ✅ v0.6.0 — `ConfidenceLevel` enum + `Verdict::confidence()` + `signal_weight()` + `score_breakdown()`; 6 tests |
 | B7 | ★★ | Threshold rationale doc + audit-log-driven A/B of firing rates | ✅ v0.6.0 `signal_firing_stats()` in sink.rs |
 | B8 | ★ | Per-signal FP-rate aggregation from audit log | ✅ v0.6.0 `SignalStats { blocks, suspicious }` |
+| B9 | ★★ | Per-signal weight externalization (operators tune without rebuild) | ✅ v0.6.0 — `weight: <signal> <value>` blocklist line; `Ruleset::weight_of()`; `classify()` uses overrides for all 22 signals; 7 tests |
 
 ## C. Text normalization (`confusables.rs`: pipeline)
 
