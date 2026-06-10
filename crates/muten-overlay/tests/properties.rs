@@ -429,4 +429,60 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_urgency_countdown(&s));
         }
     }
+
+    // ── D10: typosquat_brand property additions ───────────────────
+
+    /// The real brand domain must never fire typosquat_brand — it is the
+    /// target, not the impersonator. Only edit-distance-1 *variants* fire.
+    #[test]
+    fn real_brand_never_fires_typosquat(
+        brand in prop_oneof![
+            Just("google"), Just("paypal"), Just("microsoft"),
+            Just("apple"), Just("amazon")
+        ],
+    ) {
+        let url = format!("http://{brand}.com/page");
+        let w = OverlayWindow {
+            title: "anything".into(),
+            url: Some(url),
+            coverage_percent: 0,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::Unknown,
+            age_ms: 1_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        prop_assert!(
+            !v.signals.iter().any(|s| s == "typosquat_brand"),
+            "real brand must not fire typosquat_brand"
+        );
+    }
+
+    /// `classify` never panics on arbitrary URLs (typosquat path).
+    #[test]
+    fn classify_never_panics_with_arbitrary_url(
+        host in "[a-z]{3,12}\\.[a-z]{2,4}",
+    ) {
+        let url = format!("http://{host}/x");
+        let w = OverlayWindow {
+            title: "anything".into(),
+            url: Some(url),
+            coverage_percent: 0,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::Unknown,
+            age_ms: 1_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        // Just verify it doesn't panic and thresholds are consistent.
+        match v.decision {
+            Decision::Block => prop_assert!(v.score >= BLOCK_THRESHOLD),
+            Decision::Suspicious => prop_assert!(
+                v.score >= SUSPICIOUS_THRESHOLD && v.score < BLOCK_THRESHOLD
+            ),
+            Decision::Allow => prop_assert!(v.score < SUSPICIOUS_THRESHOLD),
+        }
+    }
 }

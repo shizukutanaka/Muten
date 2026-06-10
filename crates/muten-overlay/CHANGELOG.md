@@ -156,6 +156,18 @@ MSRV 1.75, 286 tests.
   the most alerts, and compare `blocks / total` ratios to spot signals that mostly contribute
   to the review queue vs confirmed dismissals — giving direct, field-data-driven evidence for
   weight and threshold tuning. 3 new tests. (B7, B8.)
+- **Keyboard-adjacent typosquatting** (`typosquat_brand` signal; D10).
+  `levenshtein_distance(a, b)` implements the standard 2-row DP Levenshtein
+  distance with an early-exit when lengths differ by more than 1. `typosquat_brand(host)`
+  checks each host label's confusable skeleton against all entries in `KNOWN_BRANDS` for
+  edit distance exactly 1 — catching deletions ("gogle"), insertions ("googlee"),
+  substitutions ("googlo"), and adjacent transpositions that happen to have edit distance 1.
+  This fills the gap between `brand_impersonation` (skeleton equals brand = distance 0)
+  and `combosquat_brand` (hyphenated brand+lure). The signals are mutually exclusive:
+  typosquat_brand only fires when the skeleton is NOT identical to the brand. Weight
+  `W_TYPOSQUAT_BRAND = 25` (lower than brand_impersonation=40, since single-edit
+  variants are less certain than skeleton-exact homographs). Category:
+  `InterfaceInterference`. 7 unit tests + 2 property tests; total 357. (D10.)
 - **Countdown/timer urgency cue** (`urgency_countdown` signal; E7).
   `confusables::has_urgency_countdown(s)` detects a `M:SS` or `MM:SS` countdown pattern
   combined with at least one urgency keyword (`expir`, `warn`, `alert`, `infect`, `block`,

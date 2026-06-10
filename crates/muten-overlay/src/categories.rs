@@ -106,7 +106,8 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         | "brand_impersonation"
         | "combosquat_brand"
         | "remote_access_lure"
-        | "urgency_countdown" => Some(InterfaceInterference),
+        | "urgency_countdown"
+        | "typosquat_brand" => Some(InterfaceInterference),
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }

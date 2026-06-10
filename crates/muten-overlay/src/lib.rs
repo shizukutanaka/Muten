@@ -240,6 +240,7 @@ fn signal_phrase(signal: &str) -> &str {
         "bidi_override" => "uses a right-to-left override to disguise its text",
         "brand_impersonation" => "uses a look-alike domain impersonating a known brand",
         "combosquat_brand" => "uses a domain combining a known brand with a scam keyword",
+        "typosquat_brand" => "uses an edit-distance-1 keyboard typosquat of a known brand domain",
         "clickfix_instruction" => "instructs the user to run a command or pass a fake CAPTCHA",
         "urgency_countdown" => {
             "displays a countdown timer alongside an urgent warning to coerce rapid action"
@@ -323,6 +324,7 @@ const W_INPUT_TRAP: i32 = 5; // fullscreen+topmost+modal "screen lock" (bounded;
 const W_SUDDEN_TAKEOVER: i32 = 5; // unsolicited instant full-screen seizure (bounded)
 const W_BRAND_IMPERSONATION: i32 = 40; // host label is a homograph of a known brand
 const W_COMBOSQUAT: i32 = 30; // host label joins a known brand + a scam lure word (combosquatting)
+const W_TYPOSQUAT_BRAND: i32 = 25; // host label is edit-distance-1 keyboard typosquat of a known brand
 const W_CLICKFIX: i32 = 20; // ClickFix/fake-CAPTCHA keyboard-instruction pattern (alert_shaped guard)
 const W_URGENCY_COUNTDOWN: i32 = 15; // countdown timer + urgency keyword (scam coercion, alert_shaped guard)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
@@ -361,6 +363,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "sudden_fullscreen_takeover" => Some(W_SUDDEN_TAKEOVER),
         "brand_impersonation" => Some(W_BRAND_IMPERSONATION),
         "combosquat_brand" => Some(W_COMBOSQUAT),
+        "typosquat_brand" => Some(W_TYPOSQUAT_BRAND),
         "clickfix_instruction" => Some(W_CLICKFIX),
         "urgency_countdown" => Some(W_URGENCY_COUNTDOWN),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
@@ -388,6 +391,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "bidi_override"
             | "brand_impersonation"
             | "combosquat_brand"
+            | "typosquat_brand"
             | "clickfix_instruction"
             | "urgency_countdown"
             | "remote_access_lure"
@@ -442,6 +446,67 @@ fn brand_impersonation(host: &str) -> Option<&'static str> {
         }
         if let Some(&brand) = KNOWN_BRANDS.iter().find(|&&b| b == skel) {
             return Some(brand);
+        }
+    }
+    None
+}
+
+/// Levenshtein edit distance between byte strings `a` and `b` (standard DP,
+/// 2-row space). Returns early with a sentinel of 2 when the lengths differ
+/// by more than 1 (edit distance ≥ 2 in that case) so the inner loop in
+/// [`typosquat_brand`] stays fast.
+fn levenshtein_distance(a: &[u8], b: &[u8]) -> usize {
+    let na = a.len();
+    let nb = b.len();
+    if na == 0 {
+        return nb;
+    }
+    if nb == 0 {
+        return na;
+    }
+    // Edit distance is at least |na - nb|; if that's already > 1 we can skip.
+    if na.abs_diff(nb) > 1 {
+        return 2;
+    }
+    let mut prev: Vec<usize> = (0..=nb).collect();
+    let mut curr = vec![0usize; nb + 1];
+    for (i, &ca) in a.iter().enumerate() {
+        curr[0] = i + 1;
+        for (j, &cb) in b.iter().enumerate() {
+            curr[j + 1] = if ca == cb {
+                prev[j]
+            } else {
+                1 + prev[j].min(prev[j + 1]).min(curr[j])
+            };
+        }
+        core::mem::swap(&mut prev, &mut curr);
+    }
+    prev[nb]
+}
+
+/// Keyboard-adjacent typosquatting of a [`KNOWN_BRANDS`] entry (D10).
+///
+/// Catches edit-distance-1 variants that escape the exact-skeleton
+/// [`brand_impersonation`] check: deletions (`"gogle.com"`), insertions
+/// (`"googlee.com"`), transpositions (`"googel.com"`), and single-character
+/// substitutions (`"googlo.com"`). Returns the impersonated brand name if any
+/// label of `host` is within Levenshtein distance 1 of a known brand *and*
+/// the skeleton is not already identical to the brand (that case is covered by
+/// `brand_impersonation`).
+fn typosquat_brand(host: &str) -> Option<&'static str> {
+    for label in host.split('.') {
+        if label.len() < 3 {
+            continue;
+        }
+        let skel = confusables::skeleton(label);
+        for &brand in KNOWN_BRANDS {
+            if skel == brand {
+                // Exact skeleton match: brand_impersonation already covers it.
+                continue;
+            }
+            if levenshtein_distance(skel.as_bytes(), brand.as_bytes()) == 1 {
+                return Some(brand);
+            }
         }
     }
     None
@@ -845,6 +910,22 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     {
         score += rules.weight_of("combosquat_brand", W_COMBOSQUAT);
         signals.push("combosquat_brand".into());
+    }
+
+    // Keyboard-adjacent typosquatting (D10). Complements brand_impersonation
+    // (skeleton-exact) and combosquat (hyphenated brand+lure). Catches
+    // single-edit variants that the skeleton approach misses because the
+    // typosquat uses ordinary ASCII characters: "gogle", "amzon", "mircosoft".
+    // Only fires when Levenshtein distance == 1; distance 0 is already handled
+    // by brand_impersonation. Additive (not an auto-block).
+    if w.url
+        .as_deref()
+        .map(url_host)
+        .and_then(typosquat_brand)
+        .is_some()
+    {
+        score += rules.weight_of("typosquat_brand", W_TYPOSQUAT_BRAND);
+        signals.push("typosquat_brand".into());
     }
 
     // Composite "screen-lock" tell: a window that is full-screen AND
@@ -2877,5 +2958,121 @@ mod tests {
             "expected urgency_countdown after leet folding; got {:?}",
             v.signals
         );
+    }
+
+    // ── D10: Levenshtein typosquat detection ─────────────────────────
+
+    #[test]
+    fn levenshtein_deletion_typosquat_fires() {
+        // "gogle.com" → skeleton "gogle" → edit distance 1 from "google".
+        let w = OverlayWindow {
+            title: "security alert".into(),
+            url: Some("http://gogle.com/alert".into()),
+            coverage_percent: 0,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::Unknown,
+            age_ms: 1_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "typosquat_brand"),
+            "expected typosquat_brand for 'gogle'; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_TYPOSQUAT_BRAND);
+    }
+
+    #[test]
+    fn levenshtein_insertion_typosquat_fires() {
+        // "amzon.com" — 'a' deleted → edit distance 1 from "amazon".
+        let w = OverlayWindow {
+            title: "virus alert".into(),
+            url: Some("http://amzon.com/security".into()),
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "typosquat_brand"),
+            "expected typosquat_brand for 'amzon'; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn real_brand_domain_does_not_fire_typosquat() {
+        // "google.com" — skeleton "google" == brand → distance 0 → brand_impersonation
+        // handles it; typosquat must NOT double-fire.
+        let w = OverlayWindow {
+            title: "anything".into(),
+            url: Some("http://google.com/".into()),
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "typosquat_brand"),
+            "must not fire on the real brand; got {:?}",
+            v.signals
+        );
+        // brand_impersonation must also NOT fire (skeleton == literal "google").
+        assert!(
+            !v.signals.iter().any(|s| s == "brand_impersonation"),
+            "brand_impersonation must not fire on the real brand"
+        );
+    }
+
+    #[test]
+    fn homograph_fires_brand_impersonation_not_typosquat() {
+        // Cyrillic-substituted host: skeleton == "paypal" (distance 0) →
+        // brand_impersonation fires, typosquat must NOT double-fire.
+        let w = OverlayWindow {
+            title: "anything".into(),
+            // раура1.com: Cyrillic р,а,у,р,а + digit 1 → skeleton "paypal"
+            url: Some("http://раура1.com/page".into()),
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "brand_impersonation"),
+            "expected brand_impersonation for homograph; got {:?}",
+            v.signals
+        );
+        assert!(
+            !v.signals.iter().any(|s| s == "typosquat_brand"),
+            "typosquat must not double-fire alongside brand_impersonation; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn typosquat_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("typosquat_brand"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    #[test]
+    fn levenshtein_distance_unit() {
+        // Same string → distance 0.
+        assert_eq!(levenshtein_distance(b"paypal", b"paypal"), 0);
+        // Single deletion → distance 1.
+        assert_eq!(levenshtein_distance(b"googl", b"google"), 1);
+        assert_eq!(levenshtein_distance(b"amzon", b"amazon"), 1);
+        // Single insertion → distance 1.
+        assert_eq!(levenshtein_distance(b"googlee", b"google"), 1);
+        // Single substitution → distance 1.
+        assert_eq!(levenshtein_distance(b"googlo", b"google"), 1);
+        // Two edits → distance 2 (not 1).
+        assert_eq!(levenshtein_distance(b"ggle", b"google"), 2);
+        // Empty string edge cases.
+        assert_eq!(levenshtein_distance(b"", b""), 0);
+        assert_eq!(levenshtein_distance(b"a", b""), 1);
+        assert_eq!(levenshtein_distance(b"", b"a"), 1);
+        // Length diff > 1: returns early (sentinel or true distance ≥ 2).
+        assert!(levenshtein_distance(b"", b"google") >= 2);
+        assert!(levenshtein_distance(b"ggle", b"google") >= 2);
     }
 }

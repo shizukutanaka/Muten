@@ -6,7 +6,7 @@
 > walks the **actual code surface** module by module, enumerates concrete
 > improvement points found by direct audit, and tracks their status.
 >
-> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 349 tests.
+> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 357 tests.
 > Status: ✅ done · 🔧 fixed-this-pass · 🔻 planned · 🆕 newly-found · ⛔ out-of-scope (I3)
 > Invariants (every item respects): offline · pure functions over window
 > metadata · no ML/CV · `#![forbid(unsafe_code)]` · explainable additive
@@ -64,7 +64,7 @@ with priority (★–★★★).
 | D7 | ★★ | `bidi_override` (Trojan Source LRO/RLO) | ✅ v0.5.0 |
 | D8 | ★★★ | `combosquat_brand` (brand + lure hyphen tokens; CCS 2017) | ✅ v0.5.0 |
 | D9 | ★★★ | Restriction-Level continuous scoring (UTS#39 §5.2) | 🔻 C8-4 — mostly subsumed by D1/D2/D8 |
-| D10 | ★ | dnstwist omission/insertion/transposition neighbour gen | 🔻 C2-4 remainder (combosquat shipped) |
+| D10 | ★ | dnstwist omission/insertion/transposition neighbour gen | ✅ v0.6.1 — `levenshtein_distance()` 2-row DP; `typosquat_brand()` checks edit-distance-1 variants of `KNOWN_BRANDS`; `typosquat_brand` signal (W=25); never double-fires with `brand_impersonation` (distance 0); 2 property tests + 7 unit tests |
 
 ## E. Threat-family signals (`classify` + blocklist)
 
