@@ -624,7 +624,13 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         score += W_VERY_NEW;
         signals.push("very_new".into());
     }
-    if let Some(rule) = rules.match_title(&w.title) {
+    // Title blocklist: substring rules (`title:`) and glob rules (`glob:`).
+    // Both are treated as the same signal and weight — the distinction is only
+    // in how the pattern is expressed, not in how much evidence it provides.
+    let title_rule = rules
+        .match_title(&w.title)
+        .or_else(|| rules.match_title_glob(&w.title));
+    if let Some(rule) = title_rule {
         score += W_TITLE_HIT;
         signals.push("blocklist_title".into());
         matched_rule = Some(rule);
@@ -2697,5 +2703,50 @@ mod tests {
             category_of("clickfix_instruction"),
             Some(DarkPatternCategory::ForcedAction)
         );
+    }
+
+    // ── F6: glob title patterns in classify() ────────────────────────
+
+    #[test]
+    fn classify_fires_blocklist_title_on_glob_match() {
+        // A glob pattern fires the `blocklist_title` signal with the same
+        // weight as a `title:` substring rule.
+        let rules = Ruleset::from_lines(&["glob: *your computer is infected*"]);
+        let w = OverlayWindow {
+            title: "⚠ Your Computer Is Infected — Call Support ⚠".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            ..Default::default()
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "blocklist_title"),
+            "blocklist_title must fire when a glob rule matches"
+        );
+        assert_eq!(v.decision, Decision::Block);
+        assert_eq!(
+            v.matched_rule.as_deref(),
+            Some("*your computer is infected*")
+        );
+    }
+
+    #[test]
+    fn glob_and_title_rules_coexist_without_double_counting() {
+        // Both rule types in the same ruleset: only one `blocklist_title` signal.
+        let rules = Ruleset::from_lines(&["title: infected", "glob: *security alert*"]);
+        let w = OverlayWindow {
+            title: "security alert: you are infected".into(),
+            ..Default::default()
+        };
+        let v = classify(&w, &rules);
+        let count = v
+            .signals
+            .iter()
+            .filter(|s| s.as_str() == "blocklist_title")
+            .count();
+        assert_eq!(count, 1, "blocklist_title must fire at most once");
     }
 }

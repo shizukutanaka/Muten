@@ -6,7 +6,7 @@
 > walks the **actual code surface** module by module, enumerates concrete
 > improvement points found by direct audit, and tracks their status.
 >
-> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 312 tests.
+> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 323 tests.
 > Status: ✅ done · 🔧 fixed-this-pass · 🔻 planned · 🆕 newly-found · ⛔ out-of-scope (I3)
 > Invariants (every item respects): offline · pure functions over window
 > metadata · no ML/CV · `#![forbid(unsafe_code)]` · explainable additive
@@ -88,7 +88,7 @@ with priority (★–★★★).
 | F3 | ★★ | host match folds confusables + strips invisibles | ✅ v0.5.0 |
 | F4 | ★★★ | **Single** URL→host extractor (was 3, had drift) | 🔧 unified to `host_str`/`host_of` |
 | F5 | ★ | IPv6 literal hosts (`http://[::1]/`) were mangled by `:port` split | 🔧 `host_str` now keeps the bracketed literal; regression test |
-| F6 | ★ | Regex/glob title patterns (bounded, ReDoS-safe) | 🔻 C5-8 |
+| F6 | ★ | Regex/glob title patterns (bounded, ReDoS-safe) | ✅ v0.6.0 — `glob: <pat>` rule kind; `*`/`?` full-string, normalized; `Ruleset::match_title_glob()` + `glob_count()`; 11 tests |
 | F7 | ★ | Distill large community lists → focused offline list (MDM) | 🔻 C1-2/C1-6 (transformer tool, offline) |
 
 ## G. Scareware detection (`scareware.rs`)

@@ -124,6 +124,17 @@ MSRV 1.75, 286 tests.
   (library-only) passes cleanly. `cargo build --no-default-features --lib`
   compiles only the domain library. (N4, C3-4.)
 - **Signal-quality confidence** (`ConfidenceLevel`; B6). A new `pub enum ConfidenceLevel { High, Medium, Low }` and `Verdict::confidence()` method indicate how much the verdict relies on high-fidelity (text-analysis / rule-based) signals vs low-fidelity geometry signals (fullscreen / topmost / modal). `High` when ≥2 text signals fired; `Medium` when exactly one; `Low` when only geometry signals fired. A new `pub fn signal_weight(name: &str) -> Option<i32>` exposes the built-in signal weights for external tooling, and `Verdict::score_breakdown()` returns per-signal `(name, weight)` pairs. The `explain()` output now includes the confidence level, e.g. "Block (score 130, high confidence): ...". The `--json` output gains `confidence` and `score_breakdown` fields. SIEM operators can route `High` confidence blocks to auto-response and `Low` to human review. 6 new tests. (B6, C5-5.)
+- **Glob title patterns in the blocklist** (`glob:` rule kind; F6). A new `glob: <pattern>`
+  rule type complements the existing `title:` (substring) rules with full-string wildcard
+  matching: `*` matches any run of characters (including none), `?` matches exactly one.
+  Use `*` at both ends for contains-style matching (`glob: *infected*`), or anchor one end
+  for prefix/suffix patterns (`glob: WARNING: *`). The pattern is normalized through the
+  same `strip_invisibles → fold_confusables → fold_leet_in_words → lowercase` pipeline as
+  `title:` at parse time, so homoglyph/leet evasion is handled symmetrically. The matching
+  algorithm is O(m × n) with O(1) extra space (no regex dep; ReDoS-immune).  Both rule
+  types contribute the `blocklist_title` signal at the same weight; at most one fires per
+  window.  New public methods `Ruleset::match_title_glob()` and `Ruleset::glob_count()`.
+  The `rules` CLI subcommand now shows a `globs:` count.  11 new tests. (F6.)
 - **Per-signal firing statistics from audit logs** (`SignalStats`, `signal_firing_stats`; B7, B8).
   `sink::SignalStats { blocks: u64, suspicious: u64 }` tracks how many times a named signal
   appeared in `overlay_blocked` vs `overlay_suspicious` events across a verified audit log.

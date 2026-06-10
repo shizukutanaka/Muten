@@ -2,18 +2,40 @@
 //!
 //! ## Format
 //!
-//! A plain-text file, one rule per line. Two rule kinds:
+//! A plain-text file, one rule per line. Rule kinds:
 //!
 //! ```text
 //! # comments start with '#'
 //! host: win-prize-now.example      # block any URL on this host (or subdomain)
 //! title: your computer is infected # substring match against the window title
+//! glob: *your computer*infected*   # full-string glob match (*, ?)
+//! phone: 1-800-555-0100            # curated scam phone number (digits-only match)
+//! process: pc protector plus       # rogue-AV process-name substring
+//! composite: <name> <weight> <cond…> # AND-condition named rule
 //! ```
 //!
 //! Bare lines (no prefix) are treated as `host:` rules, which is the
 //! common case and matches the muscle memory of hosts-file / pi-hole
 //! users. Matching is case-insensitive; hosts match the registered
 //! domain and any subdomain (`a.b.evil.example` matches `evil.example`).
+//!
+//! ### `glob:` patterns
+//!
+//! Unlike `title:` (which is a substring/contains match), `glob:` patterns
+//! are full-string: the entire normalized title must match.  Use `*` at
+//! either end for prefix, suffix, or contains behaviour:
+//!
+//! ```text
+//! glob: *your computer is infected*   # contains (equivalent to title:)
+//! glob: WARNING: *                    # any title that starts "warning: "
+//! glob: * security alert *            # contains " security alert " anywhere
+//! ```
+//!
+//! `*` matches any run of characters (including none); `?` matches exactly
+//! one character.  Both the pattern and the title are normalized through
+//! the same pipeline as `title:` (`strip_invisibles → fold_confusables →
+//! fold_leet_in_words → lowercase`) before matching, so evasion via
+//! homoglyphs, zero-width characters, and leetspeak is handled uniformly.
 //!
 //! ## Why offline
 //!
@@ -37,6 +59,8 @@ pub struct Ruleset {
     hosts: BTreeSet<String>,
     /// Title substrings to flag.
     title_patterns: Vec<TitlePattern>,
+    /// Title glob patterns (`*`/`?` wildcards, full-string match).
+    glob_patterns: Vec<GlobPattern>,
     /// Known rogue-AV / scareware process-name substrings (lower-cased).
     /// e.g. "pc protector plus", "advanced mac cleaner", "registrysmart".
     process_patterns: Vec<String>,
@@ -148,6 +172,16 @@ struct TitlePattern {
     display: String,
 }
 
+/// A blocklist glob-pattern title rule.  `key` is the pattern after
+/// normalization (same pipeline as `TitlePattern`; `*`/`?` preserved);
+/// `display` is the authored text for audit-log readability.  Full-string
+/// matching: the entire normalized title must match the entire pattern.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct GlobPattern {
+    key: String,
+    display: String,
+}
+
 impl Ruleset {
     /// Parse a blocklist from its text form. Unknown/blank lines are
     /// skipped silently; a malformed entry never aborts the load
@@ -156,6 +190,7 @@ impl Ruleset {
     pub fn parse(text: &str) -> Self {
         let mut hosts = BTreeSet::new();
         let mut title_patterns = Vec::new();
+        let mut glob_patterns = Vec::new();
         let mut process_patterns = Vec::new();
         let mut phone_patterns = Vec::new();
         let mut composite_rules = Vec::new();
@@ -167,6 +202,21 @@ impl Ruleset {
             if let Some(rest) = line.strip_prefix("host:") {
                 if let Some(h) = normalize_host(rest.trim()) {
                     hosts.insert(h);
+                }
+            } else if let Some(rest) = line.strip_prefix("glob:") {
+                // Full-string glob pattern. `*` matches any run of chars
+                // (including none); `?` matches exactly one char. Normalized
+                // at parse time with the same pipeline as `title:` — but `*`
+                // and `?` are non-alphanumeric separators and are preserved
+                // verbatim by `fold_leet_in_words`, so they remain as
+                // metacharacters after normalization.
+                let raw_pat = rest.trim();
+                let key = crate::confusables::normalize_for_match(raw_pat);
+                if !key.is_empty() {
+                    glob_patterns.push(GlobPattern {
+                        key,
+                        display: raw_pat.to_ascii_lowercase(),
+                    });
                 }
             } else if let Some(rest) = line.strip_prefix("title:") {
                 // Normalize the pattern the SAME way titles are
@@ -236,6 +286,7 @@ impl Ruleset {
         Self {
             hosts,
             title_patterns,
+            glob_patterns,
             process_patterns,
             phone_patterns,
             composite_rules,
@@ -255,6 +306,10 @@ impl Ruleset {
     /// Number of title-substring patterns loaded.
     pub fn title_count(&self) -> usize {
         self.title_patterns.len()
+    }
+    /// Number of title glob patterns loaded (`glob:` rules).
+    pub fn glob_count(&self) -> usize {
+        self.glob_patterns.len()
     }
     /// Number of process-name patterns loaded.
     pub fn process_count(&self) -> usize {
@@ -322,6 +377,39 @@ impl Ruleset {
             .iter()
             .find(|p| t.contains(&p.key))
             .map(|p| p.display.clone())
+    }
+
+    /// Does `title` match any **glob title pattern**?  Returns the display
+    /// form of the first matching pattern.
+    ///
+    /// The title is normalized through the same pipeline as [`match_title`]
+    /// before matching.  Unlike `match_title`, which does a substring
+    /// (contains) search, glob matching is **full-string**: the entire
+    /// normalized title must match the pattern.  Use `*` at the edges for
+    /// contains / prefix / suffix semantics.
+    ///
+    /// `*` matches any sequence of characters (including the empty sequence).
+    /// `?` matches any single character.  Both are matched against normalized
+    /// code points; the pattern is also normalized at parse time, so
+    /// evasion via homoglyphs, zero-width characters, and leetspeak is
+    /// thwarted symmetrically.
+    ///
+    /// [`match_title`]: Ruleset::match_title
+    #[must_use]
+    pub fn match_title_glob(&self, title: &str) -> Option<String> {
+        if self.glob_patterns.is_empty() {
+            return None;
+        }
+        let t: Vec<char> = crate::confusables::normalize_for_match(title)
+            .chars()
+            .collect();
+        for pat in &self.glob_patterns {
+            let p: Vec<char> = pat.key.chars().collect();
+            if glob_match(&p, &t) {
+                return Some(pat.display.clone());
+            }
+        }
+        None
     }
 
     /// Does `title` contain a **known scam phone number**? Returns the
@@ -411,6 +499,49 @@ fn normalize_phone_digits(digits: &str) -> String {
         return digits[2..].to_string();
     }
     digits.to_string()
+}
+
+/// Full-string glob matcher.  `*` matches any sequence of chars (including
+/// none); `?` matches exactly one char.  Both `pattern` and `text` are slices
+/// of pre-normalized `char` values.
+///
+/// Algorithm: single-pass with backtrack pointers (`star_pi`, `star_ti`).
+/// O(m × n) worst-case (a long `*`-chain against a long text) but both are
+/// bounded by window-title lengths in practice (≤ 500 chars), so stack depth
+/// and runtime are negligible.
+fn glob_match(pattern: &[char], text: &[char]) -> bool {
+    let (mut pi, mut ti) = (0usize, 0usize);
+    // Position of the last `*` in pattern and the text index when we committed to it.
+    let mut star_pi = usize::MAX;
+    let mut star_ti = usize::MAX;
+    loop {
+        if ti < text.len() {
+            if pi < pattern.len() && pattern[pi] == '*' {
+                star_pi = pi;
+                star_ti = ti;
+                pi += 1;
+                continue;
+            }
+            if pi < pattern.len() && (pattern[pi] == '?' || pattern[pi] == text[ti]) {
+                pi += 1;
+                ti += 1;
+                continue;
+            }
+            // Mismatch: backtrack to the last `*` and try matching one more char.
+            if star_pi != usize::MAX {
+                star_ti += 1;
+                ti = star_ti;
+                pi = star_pi + 1;
+                continue;
+            }
+            return false;
+        }
+        // ti == text.len(): consume trailing `*`s then check exhaustion.
+        while pi < pattern.len() && pattern[pi] == '*' {
+            pi += 1;
+        }
+        return pi == pattern.len();
+    }
 }
 
 fn strip_comment(line: &str) -> &str {
@@ -773,5 +904,98 @@ mod tests {
         // The national format must also still work.
         assert!(rs.match_phone("0120-111-222").is_some());
         assert!(rs.match_phone("0120 111 222").is_some());
+    }
+
+    // ── F6: glob title patterns ──────────────────────────────────────
+
+    #[test]
+    fn glob_count_reflects_parsed_rules() {
+        let rs = Ruleset::from_lines(&[
+            "glob: *infected*",
+            "glob: WARNING: ?",
+            "title: ordinary substring",
+        ]);
+        assert_eq!(rs.glob_count(), 2);
+        assert_eq!(rs.title_count(), 1);
+    }
+
+    #[test]
+    fn glob_exact_match() {
+        let rs = Ruleset::from_lines(&["glob: your computer is infected"]);
+        assert_eq!(
+            rs.match_title_glob("your computer is infected"),
+            Some("your computer is infected".to_string())
+        );
+        // Must NOT match a title that only contains the phrase (not full-string).
+        assert!(rs
+            .match_title_glob("WARNING: your computer is infected!")
+            .is_none());
+    }
+
+    #[test]
+    fn glob_star_both_ends_behaves_like_contains() {
+        // `glob: *phrase*` is equivalent to `title: phrase`.
+        let rs = Ruleset::from_lines(&["glob: *your computer is infected*"]);
+        assert!(rs
+            .match_title_glob("⚠ YOUR COMPUTER IS INFECTED ⚠")
+            .is_some());
+        assert!(rs.match_title_glob("your computer is infected").is_some());
+        assert!(rs.match_title_glob("call support now").is_none());
+    }
+
+    #[test]
+    fn glob_question_mark_matches_any_single_char() {
+        let rs = Ruleset::from_lines(&["glob: ?irus found"]);
+        assert!(rs.match_title_glob("virus found").is_some());
+        assert!(rs.match_title_glob("xirus found").is_some());
+        // Zero chars for `?` → no match.
+        assert!(rs.match_title_glob("irus found").is_none());
+        // Two chars for `?` → no match.
+        assert!(rs.match_title_glob("xvirus found").is_none());
+    }
+
+    #[test]
+    fn glob_star_middle_skips_arbitrary_content() {
+        let rs = Ruleset::from_lines(&["glob: your*infected"]);
+        assert!(rs.match_title_glob("your computer is infected").is_some());
+        assert!(rs.match_title_glob("your phone is infected").is_some());
+        assert!(rs.match_title_glob("your infected").is_some()); // * = zero chars
+        assert!(rs.match_title_glob("your computer").is_none());
+    }
+
+    #[test]
+    fn glob_empty_pattern_drops_silently() {
+        let rs = Ruleset::from_lines(&["glob:   "]);
+        assert_eq!(rs.glob_count(), 0);
+    }
+
+    #[test]
+    fn glob_pattern_normalized_symmetrically() {
+        // Pattern with leet: `c0mputer` → normalized to `computer`.
+        // Title with zero-width + uppercase: matches.
+        let rs = Ruleset::from_lines(&["glob: *c0mputer*infected*"]);
+        assert!(rs
+            .match_title_glob("your\u{200B}COMPUTER is infected!")
+            .is_some());
+        // Pattern with Cyrillic confusable in the display text: folds to
+        // the same skeleton as the ASCII equivalent.
+        let rs2 = Ruleset::from_lines(&["glob: *раypаl*"]);
+        assert!(rs2.match_title_glob("verify your paypal account").is_some());
+    }
+
+    #[test]
+    fn glob_match_returns_display_form() {
+        let rs = Ruleset::from_lines(&["glob: *YOUR COMPUTER IS INFECTED*"]);
+        // The display is stored as lowercase.
+        assert_eq!(
+            rs.match_title_glob("your computer is infected"),
+            Some("*your computer is infected*".to_string())
+        );
+    }
+
+    #[test]
+    fn glob_empty_ruleset_matches_nothing() {
+        let rs = Ruleset::default();
+        assert!(rs.match_title_glob("any title at all").is_none());
     }
 }

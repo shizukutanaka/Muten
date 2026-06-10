@@ -394,6 +394,7 @@ fn cmd_rules(file: &std::path::Path) -> Result<ExitCode, String> {
     println!("blocklist: {}", file.display());
     println!("  hosts:       {}", rs.host_count());
     println!("  titles:      {}", rs.title_count());
+    println!("  globs:       {}", rs.glob_count());
     println!("  phones:      {}", rs.phone_count());
     println!("  processes:   {}", rs.process_count());
     println!("  composites:  {}", rs.composite_count());

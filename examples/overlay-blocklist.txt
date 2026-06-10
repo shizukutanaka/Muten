@@ -7,6 +7,7 @@
 # Format:
 #   host: <domain>     block any URL on this host or a subdomain of it
 #   title: <substring> contribute W_TITLE_HIT to the suspicion score
+#   glob: <pattern>    full-string wildcard match (* = any chars, ? = one char)
 #   <bare line>        treated as a host rule
 #   # comment
 #
@@ -37,6 +38,14 @@ title: windows defender alert
 title: windows security alert
 title: microsoft warning alert
 title: virus alert from microsoft
+
+# GLOB PATTERNS — full-string wildcard match (* = any chars, ? = one char).
+# Useful when the scam phrase appears at a predictable position (prefix,
+# suffix) rather than anywhere in the title, reducing FP risk vs substring.
+glob: * has been locked by *          # "Your PC has been locked by Microsoft"
+glob: * has been blocked by *         # "Your computer has been blocked by Windows"
+glob: WARNING: * infected *           # "WARNING: Your device infected with..."
+glob: * security alert * call *       # phone-number lure with "security alert"
 
 # Brand-impersonation support-number lures (FTC: scammers impersonate
 # well-known companies and push a phone number).
