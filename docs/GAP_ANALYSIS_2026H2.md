@@ -6,7 +6,7 @@
 > walks the **actual code surface** module by module, enumerates concrete
 > improvement points found by direct audit, and tracks their status.
 >
-> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 306 tests.
+> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 309 tests.
 > Status: ✅ done · 🔧 fixed-this-pass · 🔻 planned · 🆕 newly-found · ⛔ out-of-scope (I3)
 > Invariants (every item respects): offline · pure functions over window
 > metadata · no ML/CV · `#![forbid(unsafe_code)]` · explainable additive
@@ -144,7 +144,7 @@ with priority (★–★★★).
 |---|----|-------------|--------|
 | L1 | ★★★ | `sweep`/`run` with injected clock + stop flag; per-outcome audit events | ✅ baseline |
 | L2 | ★★ | Allow is not audited (quiet log) | ✅ baseline |
-| L3 | ★ | Dynamic sweep-interval shortening on detection | 🔻 C1-10 |
+| L3 | ★ | Dynamic sweep-interval shortening on detection | ✅ v0.6.0 — `SweepOutcome {dismissed, detections}`, `RunConfig::alert_interval_ms`; 3 tests |
 | L4 | ★ | Prometheus textfile metrics (offline pull) | ✅ v0.6.0 |
 
 ## M. CLI (`bin/cli.rs`)

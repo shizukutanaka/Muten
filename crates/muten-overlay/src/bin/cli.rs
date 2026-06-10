@@ -600,6 +600,7 @@ fn cmd_monitor(
     let cfg = RunConfig {
         interval_ms: 0, // no real sleep in the CLI demo
         max_sweeps: Some(sweeps),
+        ..RunConfig::default()
     };
     let no_proc = |_: &str| None;
 

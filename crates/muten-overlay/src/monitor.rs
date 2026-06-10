@@ -120,8 +120,9 @@ impl Monitor {
 
     /// Run a single sweep at logical time `now_ms`. Enumerates,
     /// classifies, dismisses Block windows, folds in scareware
-    /// detection, and emits audit events. Returns the number of
-    /// windows dismissed this sweep.
+    /// detection, and emits audit events. Returns a [`SweepOutcome`]
+    /// with the dismissed-window count and the detection count
+    /// (Block + Suspicious events that fired).
     ///
     /// `process_of` maps a window id to the owning process name, if
     /// the controller/host can attribute one (used for the rogue-AV
@@ -132,7 +133,7 @@ impl Monitor {
         sink: &dyn AuditSink,
         now_ms: u64,
         process_of: F,
-    ) -> u32
+    ) -> SweepOutcome
     where
         F: Fn(&str) -> Option<String>,
     {
@@ -145,11 +146,12 @@ impl Monitor {
                     window_id: String::new(),
                     detail: serde_json::json!({ "error": e.to_string() }),
                 });
-                return 0;
+                return SweepOutcome::default();
             }
         };
 
-        let mut dismissed_count = 0;
+        let mut dismissed_count = 0u32;
+        let mut detection_count = 0u32;
         for ew in &windows {
             let verdict = classify(&ew.window, &self.rules);
 
@@ -198,6 +200,7 @@ impl Monitor {
 
             match verdict.decision {
                 Decision::Block => {
+                    detection_count += 1;
                     let dismissed = controller.dismiss(&ew.id).unwrap_or(false);
                     if dismissed {
                         dismissed_count += 1;
@@ -216,6 +219,7 @@ impl Monitor {
                     });
                 }
                 Decision::Suspicious => {
+                    detection_count += 1;
                     sink.emit(&AuditEvent {
                         timestamp_ms: now_ms,
                         kind: "overlay_suspicious",
@@ -233,7 +237,10 @@ impl Monitor {
 
         // Keep tracker memory bounded over long uptimes.
         self.tracker.prune(now_ms);
-        dismissed_count
+        SweepOutcome {
+            dismissed: dismissed_count,
+            detections: detection_count,
+        }
     }
 
     /// Run periodic sweeps until `cfg.max_sweeps` is reached (or
@@ -271,17 +278,43 @@ impl Monitor {
                 }
             }
             let now = clock_ms();
-            total_dismissed += u64::from(self.sweep(controller, sink, now, process_of));
+            let outcome = self.sweep(controller, sink, now, process_of);
+            total_dismissed += u64::from(outcome.dismissed);
             sweeps += 1;
             // Skip the sleep on the final bounded iteration so tests
             // (and clean shutdowns) don't wait needlessly.
             let last = cfg.max_sweeps.map(|m| sweeps >= m).unwrap_or(false);
-            if !last && cfg.interval_ms > 0 {
-                std::thread::sleep(std::time::Duration::from_millis(cfg.interval_ms));
+            if !last {
+                // Adaptive interval: shorten sleep after a detection sweep so
+                // the monitor reacts faster when malware is actively re-spawning.
+                let sleep_ms = if outcome.detections > 0 {
+                    cfg.alert_interval_ms.unwrap_or(cfg.interval_ms)
+                } else {
+                    cfg.interval_ms
+                };
+                if sleep_ms > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
+                }
             }
         }
         total_dismissed
     }
+}
+
+/// Per-sweep outcome: dismissed-window count + detection count.
+///
+/// Returned by [`Monitor::sweep`] so callers can tell whether any
+/// Block or Suspicious verdict fired — useful for adaptive sleep logic
+/// and for wiring sweep results into dashboards without re-parsing the
+/// audit log.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SweepOutcome {
+    /// Number of windows the controller successfully dismissed this sweep.
+    pub dismissed: u32,
+    /// Number of Block + Suspicious verdicts that fired this sweep
+    /// (includes windows the controller failed to dismiss).  Useful
+    /// for determining whether to shorten the next sleep interval.
+    pub detections: u32,
 }
 
 /// Knobs for [`Monitor::run`]. Bundled into a struct so the loop call
@@ -290,6 +323,11 @@ impl Monitor {
 pub struct RunConfig {
     /// Gap between sweeps in milliseconds. 0 = no sleep (tests).
     pub interval_ms: u64,
+    /// Shortened sleep interval when the previous sweep had ≥1 detection
+    /// (Block or Suspicious). `None` disables adaptive shortening.
+    /// Typical value: `interval_ms / 5` or a fixed 200 ms.  The normal
+    /// `interval_ms` resumes once a clean (zero-detection) sweep completes.
+    pub alert_interval_ms: Option<u64>,
     /// Stop after this many sweeps; `None` = run until `should_stop`.
     pub max_sweeps: Option<u64>,
 }
@@ -299,6 +337,7 @@ impl Default for RunConfig {
         // 1-second sweeps, unbounded — sensible production default.
         Self {
             interval_ms: 1_000,
+            alert_interval_ms: None,
             max_sweeps: None,
         }
     }
@@ -348,8 +387,9 @@ mod tests {
         }]);
         let sink = MemorySink::new();
         let mut mon = Monitor::new(rules);
-        let n = mon.sweep(&ctrl, &sink, 1_000, no_proc);
-        assert_eq!(n, 1);
+        let outcome = mon.sweep(&ctrl, &sink, 1_000, no_proc);
+        assert_eq!(outcome.dismissed, 1);
+        assert_eq!(outcome.detections, 1);
         assert_eq!(sink.count_of("overlay_blocked"), 1);
         assert_eq!(ctrl.dismissed(), vec!["scam".to_string()]);
     }
@@ -362,8 +402,9 @@ mod tests {
         }]);
         let sink = MemorySink::new();
         let mut mon = Monitor::new(Ruleset::default());
-        let n = mon.sweep(&ctrl, &sink, 1_000, no_proc);
-        assert_eq!(n, 0);
+        let outcome = mon.sweep(&ctrl, &sink, 1_000, no_proc);
+        assert_eq!(outcome.dismissed, 0);
+        assert_eq!(outcome.detections, 0);
         assert!(
             sink.events().is_empty(),
             "benign windows must not be audited"
@@ -508,8 +549,9 @@ mod tests {
         }
         let sink = MemorySink::new();
         let mut mon = Monitor::new(Ruleset::default());
-        let n = mon.sweep(&Failing, &sink, 1_000, no_proc);
-        assert_eq!(n, 0);
+        let outcome = mon.sweep(&Failing, &sink, 1_000, no_proc);
+        assert_eq!(outcome.dismissed, 0);
+        assert_eq!(outcome.detections, 0);
         assert_eq!(sink.count_of("overlay_sweep_error"), 1);
     }
 
@@ -530,8 +572,9 @@ mod tests {
         }]);
         let sink = MemorySink::new();
         let mut mon = Monitor::new(Ruleset::default());
-        let n = mon.sweep(&ctrl, &sink, 1_000, no_proc);
-        assert_eq!(n, 0);
+        let outcome = mon.sweep(&ctrl, &sink, 1_000, no_proc);
+        assert_eq!(outcome.dismissed, 0);
+        assert_eq!(outcome.detections, 1); // suspicious is a detection
         assert_eq!(sink.count_of("overlay_suspicious"), 1);
         assert!(ctrl.dismissed().is_empty());
     }
@@ -558,6 +601,7 @@ mod tests {
             &RunConfig {
                 interval_ms: 0,
                 max_sweeps: Some(3),
+                ..Default::default()
             },
             clock,
             no_proc,
@@ -583,6 +627,7 @@ mod tests {
             &RunConfig {
                 interval_ms: 0,
                 max_sweeps: None,
+                ..Default::default()
             },
             || 0,
             no_proc,
@@ -616,6 +661,7 @@ mod tests {
             &RunConfig {
                 interval_ms: 0,
                 max_sweeps: Some(2),
+                ..Default::default()
             },
             clock,
             no_proc,
@@ -625,5 +671,76 @@ mod tests {
         let (count, head) = verify_chain(&text).unwrap();
         assert!(count >= 2, "expected >=2 chained events, got {count}");
         assert_eq!(head, sink.head());
+    }
+
+    // ── L3: SweepOutcome + adaptive interval ──────────────────────
+
+    #[test]
+    fn sweep_outcome_detections_counts_block_and_suspicious() {
+        // One Block window + one Suspicious window → detections == 2.
+        let ctrl = NullController::with_windows(vec![
+            EnumeratedWindow {
+                id: "block".into(),
+                window: scam(), // fully triggers block
+            },
+            EnumeratedWindow {
+                id: "sus".into(),
+                window: OverlayWindow {
+                    title: "offer".into(),
+                    has_close_button: false,     // +25
+                    origin: Origin::Unsolicited, // +25 = 50 → suspicious
+                    ..Default::default()
+                },
+            },
+        ]);
+        let sink = MemorySink::new();
+        let rules = Ruleset::from_lines(&["host: win-prize-now.example"]);
+        let mut mon = Monitor::new(rules);
+        let outcome = mon.sweep(&ctrl, &sink, 1_000, no_proc);
+        assert_eq!(
+            outcome.detections, 2,
+            "one block + one suspicious = 2 detections"
+        );
+        assert_eq!(outcome.dismissed, 1, "only the block window is dismissed");
+    }
+
+    #[test]
+    fn sweep_outcome_zero_detections_for_benign_sweep() {
+        let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            id: "ok".into(),
+            window: benign(),
+        }]);
+        let sink = MemorySink::new();
+        let mut mon = Monitor::new(Ruleset::default());
+        let outcome = mon.sweep(&ctrl, &sink, 1_000, no_proc);
+        assert_eq!(outcome, SweepOutcome::default());
+    }
+
+    #[test]
+    fn run_with_alert_interval_field_accepted() {
+        // Verify that RunConfig with alert_interval_ms set builds and
+        // runs without panic. The actual sleep is 0 in tests so we
+        // can't observe the shortened interval, but we validate the
+        // config is accepted and the run terminates normally.
+        let rules = Ruleset::from_lines(&["host: win-prize-now.example"]);
+        let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            id: "scam".into(),
+            window: scam(),
+        }]);
+        let sink = MemorySink::new();
+        let mut mon = Monitor::new(rules);
+        let total = mon.run(
+            &ctrl,
+            &sink,
+            &RunConfig {
+                interval_ms: 0,
+                alert_interval_ms: Some(0), // also 0 in test
+                max_sweeps: Some(2),
+            },
+            || 1_000,
+            no_proc,
+            || false,
+        );
+        assert_eq!(total, 2);
     }
 }

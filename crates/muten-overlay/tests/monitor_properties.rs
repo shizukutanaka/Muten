@@ -65,11 +65,11 @@ proptest! {
         let ctrl = NullController::with_windows(windows);
         let sink = MemorySink::new();
         let mut mon = Monitor::new(Ruleset::default());
-        let dismissed = mon.sweep(&ctrl, &sink, 1_000, |_| None);
-        prop_assert!(dismissed <= n);
+        let outcome = mon.sweep(&ctrl, &sink, 1_000, |_| None);
+        prop_assert!(outcome.dismissed <= n);
         // The controller recorded exactly `dismissed`-or-fewer ids
         // (NullController always returns Ok(true), so equal here).
-        prop_assert_eq!(ctrl.dismissed().len() as u32, dismissed);
+        prop_assert_eq!(ctrl.dismissed().len() as u32, outcome.dismissed);
     }
 
     /// Every dismissed window's id appears in the controller's dismiss

@@ -107,6 +107,14 @@ MSRV 1.75, 286 tests.
   inserted or re-ordered between the snapshots. 8 new tests including exhaustive
   coverage of all prefix sizes 1..=25 with tamper checks. (J4b.)
 
+- **Adaptive sweep interval** (`SweepOutcome`, `RunConfig::alert_interval_ms`; L3).
+  `Monitor::sweep()` now returns `SweepOutcome { dismissed: u32, detections: u32 }`
+  instead of bare `u32`.  `detections` counts Block + Suspicious verdicts per sweep.
+  `RunConfig` gains an optional `alert_interval_ms` field: when set and the previous
+  sweep had ≥1 detection, `run()` sleeps for `alert_interval_ms` instead of the
+  normal `interval_ms`, so the monitor reacts faster when malware is actively
+  re-spawning overlays.  The default (`alert_interval_ms = None`) restores the
+  previous behaviour unchanged.  3 new tests; monitor properties updated.  (L3.)
 - **`cli` feature flag** (N4). A new `[features] cli` gates the binary and its
   `clap` dependency. `default = ["cli"]` keeps existing `cargo build` /
   `cargo install` behavior unchanged. Library-only consumers (embedding
