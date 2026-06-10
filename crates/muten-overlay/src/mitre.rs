@@ -51,9 +51,11 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         // Urgency-coercion, forced-retention, and cloud-lure delivery are
         // social-engineering hooks that steer victims toward the attacker's
         // call or site: T1566 Phishing.
-        "urgency_countdown" | "cloud_storage_abuse" | "blocklist_host" | "forced_retention_cue" => {
-            &["T1566"]
-        }
+        "urgency_countdown"
+        | "cloud_storage_abuse"
+        | "blocklist_host"
+        | "forced_retention_cue"
+        | "credential_harvest_cue" => &["T1566"],
         _ => &[],
     }
 }

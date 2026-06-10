@@ -277,6 +277,23 @@ MSRV 1.75, 286 tests.
   The `alert_shaped` guard prevents legitimate webapps (whose closable windows
   happen to contain a brand name in a path) from firing. Weight `W_URL_PATH_LURE
   = 20`; Category: `InterfaceInterference`. 6 unit tests; 387 tests total. (E12.)
+- **Credential-harvest cue signal** (`credential_harvest_cue`; E14).
+  `has_credential_harvest_cue(s)` fires on two complementary phishing patterns
+  in the normalized window title: (1) *account-alarm language* — account
+  suspended/locked/disabled/blocked/compromised, unusual sign-in/login, suspicious
+  sign-in/login/activity; (2) *credential-entry instructions* — "verify your
+  account", "confirm your password/identity", "re-enter your password", "enter
+  your credentials", "update your payment". These are the canonical language
+  patterns used in phishing overlays that mimic bank/social/email account alerts
+  to steal usernames, passwords, and payment details. Each pattern uses AND-pair
+  matching (two keyword tokens must both appear in the normalized title) rather
+  than adjacent substrings, handling natural English phrasing like "your account
+  has been suspended". The `alert_shaped` guard prevents legitimate account-
+  management UIs (closable/user-initiated) from firing. Weight `W_CREDENTIAL_HARVEST
+  = 20` (additive; combined with other social-engineering signals reaches Suspicious).
+  Category: `InterfaceInterference`. MITRE: T1566 (phishing lure). Homoglyph/leet
+  variants are defeated via `normalize_for_match`. 3 confusables unit tests +
+  3 lib unit tests; 403 tests total. (E14.)
 
 ### Changed (breaking)
 - **`Verdict.signals: Vec<String>`** (was `Vec<&'static str>`). Required to

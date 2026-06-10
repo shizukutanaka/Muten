@@ -110,7 +110,8 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         | "remote_access_lure"
         | "urgency_countdown"
         | "typosquat_brand"
-        | "url_path_lure" => Some(InterfaceInterference),
+        | "url_path_lure"
+        | "credential_harvest_cue" => Some(InterfaceInterference),
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }

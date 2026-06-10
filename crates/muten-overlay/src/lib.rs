@@ -253,6 +253,9 @@ fn signal_phrase(signal: &str) -> &str {
         }
         "url_path_lure" => "has a URL path combining a known brand name with a scam lure word",
         "forced_retention_cue" => "instructs the user not to close or leave the window",
+        "credential_harvest_cue" => {
+            "alarms the user about account compromise or demands credential re-entry"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -338,6 +341,7 @@ const W_URGENCY_COUNTDOWN: i32 = 15; // countdown timer + urgency keyword (scam 
 const W_CLOUD_STORAGE_ABUSE: i32 = 20; // alert-shaped overlay served from known blob-storage infra (TSS delivery vector)
 const W_URL_PATH_LURE: i32 = 20; // alert-shaped overlay with brand+lure combosquat pattern in the URL path
 const W_FORCED_RETENTION: i32 = 20; // "do not close" / "do not turn off" instruction in title (high-specificity scam tell)
+const W_CREDENTIAL_HARVEST: i32 = 20; // "account suspended / verify account / confirm password" credential-phish cue
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -380,6 +384,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "cloud_storage_abuse" => Some(W_CLOUD_STORAGE_ABUSE),
         "url_path_lure" => Some(W_URL_PATH_LURE),
         "forced_retention_cue" => Some(W_FORCED_RETENTION),
+        "credential_harvest_cue" => Some(W_CREDENTIAL_HARVEST),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -907,6 +912,18 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && confusables::has_forced_retention(&normalized_title) {
         score += rules.weight_of("forced_retention_cue", W_FORCED_RETENTION);
         signals.push("forced_retention_cue".into());
+    }
+
+    // Credential-harvest phishing cue (E14). Account-takeover overlays trick
+    // the victim into re-entering credentials in an alert-shaped popup rather
+    // than on the real login page. Canonical patterns: "account suspended",
+    // "verify your account", "confirm your password", "unusual sign-in activity".
+    // Legitimate security notifications arrive in the browser's own security
+    // UI, not as an alert-shaped overlay — the alert_shaped guard eliminates
+    // FPs from normal login forms and security-awareness articles.
+    if alert_shaped && confusables::has_credential_harvest_cue(&normalized_title) {
+        score += rules.weight_of("credential_harvest_cue", W_CREDENTIAL_HARVEST);
+        signals.push("credential_harvest_cue".into());
     }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
@@ -3671,6 +3688,61 @@ mod tests {
         assert_eq!(
             category_of("forced_retention_cue"),
             Some(DarkPatternCategory::Obstruction)
+        );
+    }
+
+    // ── E14: Credential-harvest phishing cue ─────────────────────────
+
+    #[test]
+    fn credential_harvest_fires_on_alert_shaped_account_alarm() {
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "Your account has been suspended — verify now".into(),
+            coverage_percent: 96,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            age_ms: 0,
+            origin: Origin::Unsolicited,
+            url: None,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "credential_harvest_cue"),
+            "expected credential_harvest_cue; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_CREDENTIAL_HARVEST);
+    }
+
+    #[test]
+    fn credential_harvest_does_not_fire_without_alert_shape() {
+        // A closable security article window must not fire.
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "How to protect your account from suspicious login activity".into(),
+            coverage_percent: 40,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            age_ms: 0,
+            origin: Origin::UserInitiated,
+            url: None,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "credential_harvest_cue"),
+            "credential_harvest_cue must not fire for non-alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn credential_harvest_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("credential_harvest_cue"),
+            Some(DarkPatternCategory::InterfaceInterference)
         );
     }
 }

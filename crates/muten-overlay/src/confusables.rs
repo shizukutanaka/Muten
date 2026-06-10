@@ -672,6 +672,44 @@ pub fn has_forced_retention(s: &str) -> bool {
         || s.contains("this window must remain open")
 }
 
+/// Detect credential-harvest phishing cues in a normalized window title.
+///
+/// Account-takeover overlays prompt the victim to re-enter their credentials
+/// in an alert-shaped popup rather than on the real login page. The phrases
+/// below are the canonical credential-phishing instruction/alarm patterns:
+/// "verify your account", "confirm your password", "account suspended",
+/// "unusual sign-in activity", etc. These are high-specificity phrases —
+/// legitimate security notifications appear in the browser's own UI, not in
+/// an alert-shaped overlay with no close button.
+///
+/// Caller must pass a string already processed through [`normalize_for_match`]
+/// so that homoglyph variants are folded first.
+#[must_use]
+pub fn has_credential_harvest_cue(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    // Account status alarms (word-pair checks tolerate natural English
+    // phrasing: "account has been suspended", "account is locked", etc.).
+    let account_alarm = (has("account") && has("suspended"))
+        || (has("account") && has("locked"))
+        || (has("account") && has("disabled"))
+        || (has("account") && has("blocked"))
+        || (has("account") && has("compromised"))
+        || (has("unusual") && has("sign"))
+        || (has("suspicious") && has("sign"))
+        || (has("unusual") && has("login"))
+        || (has("suspicious") && has("login"))
+        || (has("suspicious") && has("activity"));
+    // Credential entry instructions.
+    let cred_instruction = (has("verify") && has("account"))
+        || (has("confirm") && has("password"))
+        || (has("confirm") && has("identity"))
+        || (has("verify") && has("identity"))
+        || (has("re-enter") && has("password"))
+        || (has("enter") && has("credentials"))
+        || (has("update") && has("payment"));
+    account_alarm || cred_instruction
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1134,5 +1172,61 @@ mod tests {
         // Cyrillic 'с' (U+0441) in "close" → fold to 'c' → "close".
         let norm = normalize_for_match("do not сlose this window");
         assert!(has_forced_retention(&norm));
+    }
+
+    // ── has_credential_harvest_cue ────────────────────────────────────
+
+    #[test]
+    fn credential_harvest_fires_on_account_alarms() {
+        assert!(has_credential_harvest_cue(
+            "your account has been suspended"
+        ));
+        assert!(has_credential_harvest_cue("account locked please verify"));
+        assert!(has_credential_harvest_cue(
+            "unusual sign-in activity detected"
+        ));
+        assert!(has_credential_harvest_cue(
+            "suspicious login from new device"
+        ));
+        assert!(has_credential_harvest_cue(
+            "account compromised contact support"
+        ));
+        assert!(has_credential_harvest_cue(
+            "suspicious activity on your account"
+        ));
+    }
+
+    #[test]
+    fn credential_harvest_fires_on_cred_instructions() {
+        assert!(has_credential_harvest_cue(
+            "verify your account to continue"
+        ));
+        assert!(has_credential_harvest_cue(
+            "confirm your password to unlock"
+        ));
+        assert!(has_credential_harvest_cue(
+            "confirm your identity before proceeding"
+        ));
+        assert!(has_credential_harvest_cue("please re-enter your password"));
+        assert!(has_credential_harvest_cue(
+            "enter credentials to restore access"
+        ));
+        assert!(has_credential_harvest_cue(
+            "update your payment information"
+        ));
+    }
+
+    #[test]
+    fn credential_harvest_does_not_fire_on_benign_text() {
+        // A security blog article title about phishing should not fire.
+        assert!(!has_credential_harvest_cue("how phishing attacks work"));
+        // A legitimate login error (no account alarm, no instruction).
+        assert!(!has_credential_harvest_cue(
+            "incorrect password please try again"
+        ));
+        // "verify" alone without "account" or "identity" does not fire.
+        assert!(!has_credential_harvest_cue("verify your email address"));
+        // "account" alone without an alarm pairing does not fire.
+        assert!(!has_credential_harvest_cue("account settings"));
     }
 }
