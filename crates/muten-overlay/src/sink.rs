@@ -470,6 +470,123 @@ pub fn verify_chain(text: &str) -> Result<(u64, String), ChainError> {
     Ok((count, prev))
 }
 
+// ── J5: HMAC-SHA256 signed checkpoints ───────────────────────────────────────
+//
+// A device key (pre-shared HMAC secret) signs the current chain head + event
+// count. The signed checkpoint can be published alongside the Merkle root so
+// that any verifier holding the key can confirm the log was produced by an
+// authorized device and has not been shortened or extended since the checkpoint
+// was taken.
+//
+// Using HMAC (rather than a raw SHA-256) provides key-binding: an attacker who
+// can read the log but not the key cannot forge a valid signature for a
+// different head or count.
+//
+// RFC 2104 HMAC-SHA256, implemented over the sha2 crate already in scope.
+// No new dependencies.
+
+/// HMAC-SHA256 per RFC 2104.  `key` is zero-padded (or hashed) to the SHA-256
+/// block size (64 bytes).  Returns the 32-byte MAC.
+#[must_use]
+pub fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
+    const BLOCK: usize = 64; // SHA-256 block size in bytes
+    let mut k = [0u8; BLOCK];
+    if key.len() > BLOCK {
+        // Key longer than block size: compress first.
+        let h = Sha256::digest(key);
+        k[..32].copy_from_slice(&h);
+    } else {
+        k[..key.len()].copy_from_slice(key);
+    }
+    // Inner padding: K ⊕ 0x36…
+    let mut ipad = k;
+    ipad.iter_mut().for_each(|b| *b ^= 0x36);
+    // Outer padding: K ⊕ 0x5C…
+    let mut opad = k;
+    opad.iter_mut().for_each(|b| *b ^= 0x5c);
+    // Inner hash: H(ipad || data)
+    let mut inner = Sha256::new();
+    inner.update(ipad);
+    inner.update(data);
+    let inner_hash = inner.finalize();
+    // Outer hash: H(opad || inner_hash)
+    let mut outer = Sha256::new();
+    outer.update(opad);
+    outer.update(inner_hash);
+    outer.finalize().into()
+}
+
+/// A tamper-evident signed checkpoint over the current chain head.
+///
+/// The `sig` field is `hex(HMAC-SHA256(key, head_bytes || 0x00 || count_be64))`,
+/// binding both the chain head hash and the event count into a single
+/// device-authenticated blob. Any verifier holding the HMAC key can confirm
+/// that:
+/// 1. The log was produced by an authorized device (key binding).
+/// 2. The log has not been extended or truncated since the checkpoint was
+///    taken (head + count binding).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CheckpointSig {
+    /// The chain head (hex SHA-256) at checkpoint time.
+    pub head: String,
+    /// Number of events in the log at checkpoint time.
+    pub count: u64,
+    /// Hex-encoded HMAC-SHA256 over `head_bytes || 0x00 || count_be64`.
+    pub sig: String,
+}
+
+/// Sign the current chain state with a device key.
+///
+/// Verifies the chain first (returns [`ChainError`] if broken), then
+/// produces a [`CheckpointSig`] over `(head, count)` using HMAC-SHA256.
+///
+/// # Example
+/// ```no_run
+/// # use muten_overlay::sink::{sign_checkpoint, verify_checkpoint_sig};
+/// let key = b"fleet-secret-42";
+/// let sig = sign_checkpoint(log_text, key).unwrap();
+/// assert!(verify_checkpoint_sig(&sig, key));
+/// ```
+pub fn sign_checkpoint(log_text: &str, key: &[u8]) -> Result<CheckpointSig, ChainError> {
+    let (count, head) = verify_chain(log_text)?;
+    let mac = checkpoint_mac(&head, count, key);
+    Ok(CheckpointSig {
+        head,
+        count,
+        sig: hex::encode(mac),
+    })
+}
+
+/// Verify a [`CheckpointSig`] against a key without re-reading the log.
+///
+/// Returns `true` iff the MAC is valid.  Does not re-verify the chain
+/// itself — call [`verify_chain`] first if the log may have been modified.
+#[must_use]
+pub fn verify_checkpoint_sig(checkpoint: &CheckpointSig, key: &[u8]) -> bool {
+    let expected = checkpoint_mac(&checkpoint.head, checkpoint.count, key);
+    // Constant-time comparison to resist timing attacks.
+    let expected_hex = hex::encode(expected);
+    let len = expected_hex.len();
+    if checkpoint.sig.len() != len {
+        return false;
+    }
+    checkpoint
+        .sig
+        .bytes()
+        .zip(expected_hex.bytes())
+        .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+        == 0
+}
+
+/// Internal: compute HMAC-SHA256(key, head || 0x00 || count_be).
+fn checkpoint_mac(head: &str, count: u64, key: &[u8]) -> [u8; 32] {
+    let mut msg = Vec::with_capacity(head.len() + 1 + 8);
+    msg.extend_from_slice(head.as_bytes());
+    msg.push(0x00); // separator
+    msg.extend_from_slice(&count.to_be_bytes());
+    hmac_sha256(key, &msg)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -807,5 +924,99 @@ mod tests {
         let text = std::fs::read_to_string(&p).unwrap();
         let tampered = text.replacen("\"x\":\"w1\"", "\"x\":\"evil\"", 1);
         assert!(signal_firing_stats(&tampered).is_err());
+    }
+
+    // ── J5: HMAC-SHA256 signed checkpoints ───────────────────────────
+
+    #[test]
+    fn hmac_sha256_rfc2104_test_vector() {
+        // RFC 4231 Test Case 1:
+        // Key  = 0x0b (repeated 20 times)
+        // Data = "Hi There"
+        // HMAC = b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7
+        let key = [0x0bu8; 20];
+        let data = b"Hi There";
+        let mac = hmac_sha256(&key, data);
+        let hex = hex::encode(mac);
+        assert_eq!(
+            hex,
+            "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"
+        );
+    }
+
+    #[test]
+    fn sign_checkpoint_roundtrip() {
+        // Build a small log and verify sign → verify succeeds.
+        let dir = TempDir::new().unwrap();
+        let p = dir.path().join("audit.log");
+        let sink = ChainedFileSink::open(&p).unwrap();
+        sink.emit(&ev("overlay_blocked", "w1"));
+        sink.emit(&ev("overlay_suspicious", "w2"));
+        let text = std::fs::read_to_string(&p).unwrap();
+        let key = b"fleet-device-secret";
+        let sig = sign_checkpoint(&text, key).unwrap();
+        assert_eq!(sig.count, 2);
+        assert!(verify_checkpoint_sig(&sig, key));
+    }
+
+    #[test]
+    fn sign_checkpoint_empty_log() {
+        // An empty (valid) log has count 0 and head == GENESIS.
+        let key = b"device-key";
+        let sig = sign_checkpoint("", key).unwrap();
+        assert_eq!(sig.count, 0);
+        assert_eq!(sig.head, GENESIS);
+        assert!(verify_checkpoint_sig(&sig, key));
+    }
+
+    #[test]
+    fn verify_checkpoint_fails_with_wrong_key() {
+        let dir = TempDir::new().unwrap();
+        let p = dir.path().join("audit.log");
+        let sink = ChainedFileSink::open(&p).unwrap();
+        sink.emit(&ev("overlay_blocked", "w1"));
+        let text = std::fs::read_to_string(&p).unwrap();
+        let sig = sign_checkpoint(&text, b"correct-key").unwrap();
+        assert!(!verify_checkpoint_sig(&sig, b"wrong-key"));
+    }
+
+    #[test]
+    fn verify_checkpoint_fails_with_tampered_head() {
+        // Manually corrupt the `head` field; sig must fail.
+        let dir = TempDir::new().unwrap();
+        let p = dir.path().join("audit.log");
+        let sink = ChainedFileSink::open(&p).unwrap();
+        sink.emit(&ev("overlay_blocked", "w1"));
+        let text = std::fs::read_to_string(&p).unwrap();
+        let mut sig = sign_checkpoint(&text, b"key").unwrap();
+        // Replace the first char of the head with a '0' or 'f' to corrupt it.
+        let first = sig.head.chars().next().unwrap();
+        sig.head = format!("{}{}", if first == '0' { 'f' } else { '0' }, &sig.head[1..]);
+        assert!(!verify_checkpoint_sig(&sig, b"key"));
+    }
+
+    #[test]
+    fn verify_checkpoint_fails_on_broken_chain() {
+        // A tampered (broken) log must fail sign_checkpoint before signing.
+        let dir = TempDir::new().unwrap();
+        let p = dir.path().join("audit.log");
+        let sink = ChainedFileSink::open(&p).unwrap();
+        sink.emit(&ev("overlay_blocked", "w1"));
+        let text = std::fs::read_to_string(&p).unwrap();
+        let tampered = text.replacen("\"x\":\"w1\"", "\"x\":\"evil\"", 1);
+        assert!(sign_checkpoint(&tampered, b"key").is_err());
+    }
+
+    #[test]
+    fn checkpoint_sig_serializes_to_json() {
+        // CheckpointSig must be JSON-serializable for SIEM/MDM transport.
+        let sig = CheckpointSig {
+            head: "abc123".into(),
+            count: 42,
+            sig: "deadbeef".into(),
+        };
+        let json = serde_json::to_string(&sig).unwrap();
+        let rt: CheckpointSig = serde_json::from_str(&json).unwrap();
+        assert_eq!(sig, rt);
     }
 }

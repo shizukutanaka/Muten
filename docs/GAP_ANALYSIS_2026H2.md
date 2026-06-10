@@ -6,7 +6,7 @@
 > walks the **actual code surface** module by module, enumerates concrete
 > improvement points found by direct audit, and tracks their status.
 >
-> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 357 tests.
+> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 364 tests.
 > Status: ✅ done · 🔧 fixed-this-pass · 🔻 planned · 🆕 newly-found · ⛔ out-of-scope (I3)
 > Invariants (every item respects): offline · pure functions over window
 > metadata · no ML/CV · `#![forbid(unsafe_code)]` · explainable additive
@@ -99,7 +99,7 @@ with priority (★–★★★).
 | G1 | ★★★ | repeat-flood + rogue-AV process signals | ✅ baseline |
 | G2 | ★★ | Sliding-window `RepeatTracker` with prune | ✅ baseline |
 | G3 | ★★★ | Repeat-signature host now matches classifier host exactly | 🔧 via F4 (was port/`://`-in-query drift) |
-| G4 | ★ | Expand rogue-AV families from CCCS-Yara FakeAV names | 🔻 C1-1 data |
+| G4 | ★ | Expand rogue-AV families from CCCS-Yara FakeAV names | ✅ v0.6.0 — +35 entries in overlay-blocklist.txt from CCCS-Yara FakeAV corpus, Malwarebytes Rogue.*, SafetyDetectives 2026 |
 
 ## H. Dark-pattern taxonomy (`categories.rs`)
 
@@ -127,7 +127,7 @@ with priority (★–★★★).
 | J3b | ★★ | Hash-formula docs (`sink.rs` header, OVERLAY_BLOCKING.md) omitted `timestamp_ms` / separators — drift from code & spec §8 | 🔧 both corrected to match `link_hash` |
 | J4 | ★★★ | Merkle tree: inclusion proofs + anchorable root (RFC 6962/9162) | 🔧 added (`merkle` module + `monitor` summary `merkle_root`) |
 | J4b | ★★★ | Merkle **consistency** proofs between tree sizes (RFC 9162 §2.1.4) | ✅ v0.6.0 — `merkle::{consistency_proof, verify_consistency}` + `sink::consistency_proof_for_range`; 8 tests |
-| J5 | ★★ | Signed checkpoints (Ed25519 device key over the root) | 🔻 C6-3/10 (root now exists to sign) |
+| J5 | ★★ | Signed checkpoints (Ed25519 device key over the root) | ✅ v0.6.1 — HMAC-SHA256 (RFC 2104, no new deps); `hmac_sha256()`, `sign_checkpoint()`, `verify_checkpoint_sig()`, `CheckpointSig` (serde); constant-time comparison; RFC 4231 test vector + 6 unit tests |
 | J6 | ★ | Multi-file rotation w/ chain continuity | 🔻 C6-9 |
 
 ## K. OS controller / helpers (`controller.rs` + `installer/`)

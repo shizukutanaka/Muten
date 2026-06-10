@@ -156,6 +156,17 @@ MSRV 1.75, 286 tests.
   the most alerts, and compare `blocks / total` ratios to spot signals that mostly contribute
   to the review queue vs confirmed dismissals — giving direct, field-data-driven evidence for
   weight and threshold tuning. 3 new tests. (B7, B8.)
+- **HMAC-SHA256 signed checkpoints** (`sign_checkpoint`, `verify_checkpoint_sig`; J5).
+  `hmac_sha256(key, data) -> [u8; 32]` implements RFC 2104 HMAC over the `sha2` crate
+  already in scope — no new dependencies. `sign_checkpoint(log_text, key)` verifies the
+  chain first (returns `ChainError` on tampered input), then produces a `CheckpointSig {
+  head, count, sig }` where `sig = hex(HMAC-SHA256(key, head_bytes || 0x00 || count_be64))`.
+  `verify_checkpoint_sig(checkpoint, key)` recomputes and compares in constant time
+  (byte-fold XOR, no short-circuit) to resist timing side-channels. `CheckpointSig`
+  derives `Serialize/Deserialize` for JSON transport to SIEM/MDM. Use case: a fleet
+  management server holds the HMAC key and can confirm a device's audit log hasn't been
+  truncated or extended since a published checkpoint, even without storing the entire log.
+  RFC 4231 test vector + 6 unit tests; total 364. (J5.)
 - **Keyboard-adjacent typosquatting** (`typosquat_brand` signal; D10).
   `levenshtein_distance(a, b)` implements the standard 2-row DP Levenshtein
   distance with an early-exit when lengths differ by more than 1. `typosquat_brand(host)`
