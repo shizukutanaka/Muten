@@ -259,6 +259,9 @@ fn signal_phrase(signal: &str) -> &str {
         "fake_scanner_cue" => "displays fake antivirus scan progress or threat-count language",
         "subscription_lure" => "displays a fake subscription or license expiry urging renewal",
         "authority_lure" => "impersonates a law-enforcement agency to demand payment or call",
+        "screen_share_lure" => {
+            "instructs the user to share their screen or grant desktop access to a fake support agent"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -348,6 +351,7 @@ const W_CREDENTIAL_HARVEST: i32 = 20; // "account suspended / verify account / c
 const W_FAKE_SCANNER: i32 = 20; // fake-AV scanner progress: "scanning for threats", "N threats found", "repairing system"
 const W_SUBSCRIPTION_LURE: i32 = 15; // "subscription expired renew now" — softer scareware, lower weight (often has close button)
 const W_AUTHORITY_LURE: i32 = 25; // FBI/police/interpol/cybercrime impersonation — high-specificity ransomware-bluff tell
+const W_SCREEN_SHARE: i32 = 20; // instructs victim to share screen/desktop with a "support agent"
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -394,6 +398,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "fake_scanner_cue" => Some(W_FAKE_SCANNER),
         "subscription_lure" => Some(W_SUBSCRIPTION_LURE),
         "authority_lure" => Some(W_AUTHORITY_LURE),
+        "screen_share_lure" => Some(W_SCREEN_SHARE),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -429,6 +434,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "fake_scanner_cue"
             | "subscription_lure"
             | "authority_lure"
+            | "screen_share_lure"
             | "remote_access_lure"
     )
 }
@@ -976,6 +982,18 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && confusables::has_authority_lure(&normalized_title) {
         score += rules.weight_of("authority_lure", W_AUTHORITY_LURE);
         signals.push("authority_lure".into());
+    }
+
+    // Screen-share lure (FTC / IC3 2024 TSS pattern). Attackers walk the
+    // victim into sharing their screen "so we can diagnose the problem" —
+    // no named tool required, just social instruction. Three patterns:
+    // share_screen ("share your screen/desktop"), remote_enable ("allow
+    // remote viewing/access"), grant_support ("grant access to agent").
+    // Scoped to alert_shaped only — a legitimate Zoom "share screen" prompt
+    // is user-initiated and closable (alert_shaped = false).
+    if alert_shaped && confusables::has_screen_share_lure(&normalized_title) {
+        score += rules.weight_of("screen_share_lure", W_SCREEN_SHARE);
+        signals.push("screen_share_lure".into());
     }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
@@ -3962,6 +3980,61 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("authority_lure"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E18: screen_share_lure ────────────────────────────────────────────
+
+    #[test]
+    fn screen_share_lure_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "share your screen with our support agent to continue".into(),
+            url: None,
+            coverage_percent: 0,
+            topmost: false,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 500,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "screen_share_lure"),
+            "expected screen_share_lure; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_SCREEN_SHARE);
+    }
+
+    #[test]
+    fn screen_share_lure_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        // Legitimate Zoom/Teams share-screen prompt — user-opened, closable.
+        let w = OverlayWindow {
+            title: "share your screen with our support agent to continue".into(),
+            url: None,
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 500,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "screen_share_lure"),
+            "screen_share_lure must not fire for user-initiated closable window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn screen_share_lure_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("screen_share_lure"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }

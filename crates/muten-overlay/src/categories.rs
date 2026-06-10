@@ -114,7 +114,8 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         | "credential_harvest_cue"
         | "fake_scanner_cue"
         | "subscription_lure"
-        | "authority_lure" => Some(InterfaceInterference),
+        | "authority_lure"
+        | "screen_share_lure" => Some(InterfaceInterference),
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }

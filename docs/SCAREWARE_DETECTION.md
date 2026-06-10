@@ -21,7 +21,7 @@ Malwarebytes, PolicyBazaar corporate guide):
   rootkit / ransomware; AI localizes the alerts to specific corporate
   software to raise believability.
 
-## Two detection signals
+## Two scareware module signals
 
 | Signal | What it catches |
 |---|---|
@@ -30,6 +30,24 @@ Malwarebytes, PolicyBazaar corporate guide):
 
 Either signal yields `Scareware`; both together raise confidence and
 both appear in the audit log.
+
+## Overlay classifier signals for fake-AV content
+
+The `classify()` path in `lib.rs` adds complementary heuristic signals
+that fire on the *window title text* of a rogue-AV overlay, even before
+a flood is established or a process name is recognized:
+
+| Signal | Weight | What it catches |
+|---|---:|---|
+| `fake_scanner_cue` | +20 | `alert_shaped` AND title contains fake scan-progress language: "scanning for threats/viruses/malware", "N threats detected/found", "removing malware", "system repair in progress", "critical system error detected" |
+| `phone_number` | +35 | `alert_shaped` AND title contains a 7–15-digit phone number (the canonical scareware lure after the fake scan) |
+| `subscription_lure` | +15 | `alert_shaped` AND title contains subscription/license + expired + action (renew/call) — softer scareware that may retain a close button |
+
+These signals integrate with the additive score (Block ≥ 100, Suspicious ≥ 50)
+so a fake-scanner window that isn't yet a flood still surfaces in the audit log
+as Suspicious from the first appearance. The `rogue_av_process` signal from
+the scareware module and `fake_scanner_cue` from classify() are independent;
+either path catches a scareware outbreak early.
 
 ## Scope — detect & audit only (CLAUDE.md I9, least privilege)
 

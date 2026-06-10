@@ -681,4 +681,29 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_authority_lure(&s));
         }
     }
+
+    // ── E18: screen_share_lure ────────────────────────────────────────────
+
+    /// has_screen_share_lure never panics on arbitrary Unicode input.
+    #[test]
+    fn has_screen_share_lure_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_screen_share_lure(&s);
+    }
+
+    /// Plain alphanumeric-only strings (no screen-share keywords) must not fire.
+    #[test]
+    fn plain_ascii_never_fires_screen_share_lure(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let share_screen = (has("share") || has("sharing"))
+            && (has("screen") || has("desktop") || has("display"));
+        let remote_enable = (has("allow") || has("enable"))
+            && has("remote")
+            && (has("view") || has("access") || has("control") || has("fix"));
+        let grant_support = has("grant")
+            && has("access")
+            && (has("support") || has("agent") || has("technician"));
+        if !(share_screen || remote_enable || grant_support) {
+            prop_assert!(!muten_overlay::confusables::has_screen_share_lure(&s));
+        }
+    }
 }

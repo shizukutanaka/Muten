@@ -46,7 +46,7 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         | "mixed_number_systems"
         | "excessive_combining_marks" => &["T1036"],
         "clickfix_instruction" => &["T1204"],
-        "remote_access_lure" => &["T1219"],
+        "remote_access_lure" | "screen_share_lure" => &["T1219"],
         "blocks_input" | "input_trap" => &["T1056"],
         // Urgency-coercion, forced-retention, cloud-lure delivery, and
         // fake-scanner overlays are social-engineering hooks that steer
@@ -117,6 +117,7 @@ mod tests {
         assert_eq!(techniques_of("whole_script_confusable"), &["T1036"]);
         assert_eq!(techniques_of("clickfix_instruction"), &["T1204"]);
         assert_eq!(techniques_of("remote_access_lure"), &["T1219"]);
+        assert_eq!(techniques_of("screen_share_lure"), &["T1219"]);
         assert_eq!(techniques_of("blocks_input"), &["T1056"]);
         assert_eq!(techniques_of("input_trap"), &["T1056"]);
         assert_eq!(techniques_of("forced_retention_cue"), &["T1566"]);

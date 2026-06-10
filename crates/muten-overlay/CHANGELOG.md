@@ -303,6 +303,21 @@ MSRV 1.75, 286 tests.
   FP firewall (user-initiated / closable windows MUST Allow), and leet/homoglyph
   evasion resistance. These serve as regression guards: any signal removal or
   weight change that drops a known scam below Suspicious will be caught.
+- **Screen-share / remote-viewing instruction lure** (`screen_share_lure`; E18).
+  `has_screen_share_lure(s)` fires when the normalized window title contains any
+  of three social-engineering patterns used by TSS attackers to gain remote
+  visibility: (1) *share_screen* — ("share" or "sharing") + ("screen", "desktop",
+  or "display"); (2) *remote_enable* — ("allow" or "enable") + "remote" +
+  ("view", "access", "control", or "fix"); (3) *grant_support* — "grant" +
+  "access" + ("support", "agent", or "technician"). Unlike `remote_access_lure`
+  (which requires a named tool such as AnyDesk/TeamViewer), this signal catches
+  the broader social-instruction pattern that doesn't name a specific tool.
+  Scoped to `alert_shaped` — legitimate Zoom/Teams "share screen" prompts are
+  user-initiated and closable, so the guard prevents FPs. Weight `W_SCREEN_SHARE
+  = 20`. Category: `InterfaceInterference`. MITRE: T1219 (Remote Access Software).
+  Grounded in FTC 2025 remote-access scam advisories and IC3 2024 TSS pattern
+  analysis. 9 positive + 5 negative confusables unit tests + 3 lib unit tests +
+  2 property tests + 1 MITRE taxonomy test; 459 tests total. (E18.)
 - **Law-enforcement / authority impersonation signal** (`authority_lure`; E17).
   `has_authority_lure(s)` fires when the normalized window title contains both
   an *agency token* (fbi, cia, interpol, cybercrime, homeland security, department

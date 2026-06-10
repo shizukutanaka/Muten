@@ -255,7 +255,10 @@ fn authority_lure_with_phone_reaches_block() {
 fn full_tss_composite_reaches_block() {
     // Full-screen, no close, modal, unsolicited, new, phone number.
     // Geometry alone (30+15+25+20+25+10 = 125) reaches Block.
-    let v = classify(&alert_window("Your PC is infected call 1-800-555-0100"), &Ruleset::default());
+    let v = classify(
+        &alert_window("Your PC is infected call 1-800-555-0100"),
+        &Ruleset::default(),
+    );
     assert_eq!(v.decision, Decision::Block, "score={}", v.score);
     assert!(v.score >= BLOCK_THRESHOLD);
 }
@@ -344,7 +347,8 @@ fn homoglyph_phone_number_still_fires() {
         &Ruleset::default(),
     );
     assert!(
-        v.signals.iter().any(|s| s == "phone_number") || v.signals.iter().any(|s| s == "mixed_script"),
+        v.signals.iter().any(|s| s == "phone_number")
+            || v.signals.iter().any(|s| s == "mixed_script"),
         "homoglyph title must fire phone_number or mixed_script; got {:?}",
         v.signals
     );

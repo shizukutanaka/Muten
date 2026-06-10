@@ -821,6 +821,36 @@ pub fn has_authority_lure(s: &str) -> bool {
     agency && coercion
 }
 
+/// Detect screen-share / remote-viewing instruction lures in a normalized
+/// window title.
+///
+/// A TSS variant that doesn't name a specific remote-access tool (already
+/// caught by `remote_access_lure`) but instead instructs the victim to
+/// share their screen with a "support agent": "share your screen with our
+/// support team", "allow remote viewing to fix your computer", "enable
+/// screen sharing now".  The `alert_shaped` guard in `classify()` keeps
+/// legitimate WebRTC / Zoom screen-share prompts (user-initiated and
+/// closable) from firing.
+///
+/// Pattern: a *share* token AND a *target* token (screen/desktop/display).
+/// Combined with the agent/support vocabulary if present.
+#[must_use]
+pub fn has_screen_share_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    // "share" or "sharing" paired with "screen", "desktop", or "display".
+    let share_screen =
+        (has("share") || has("sharing")) && (has("screen") || has("desktop") || has("display"));
+    // "allow" or "enable" paired with "remote" (catch "allow remote viewing",
+    // "enable remote access to fix").
+    let remote_enable = (has("allow") || has("enable"))
+        && has("remote")
+        && (has("view") || has("access") || has("control") || has("fix"));
+    // "grant" + "access" + "support" (catch "grant access to our support team").
+    let grant_support =
+        has("grant") && has("access") && (has("support") || has("agent") || has("technician"));
+    share_screen || remote_enable || grant_support
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1487,5 +1517,55 @@ mod tests {
         // Cyrillic 'і' in "warning" → 'i' after normalize_for_match.
         let norm = normalize_for_match("fbі warnіng your computer is locked");
         assert!(has_authority_lure(&norm));
+    }
+
+    // ── has_screen_share_lure ─────────────────────────────────────────────
+
+    #[test]
+    fn screen_share_lure_fires_on_scam_instructions() {
+        // "Share your screen" variants.
+        assert!(has_screen_share_lure(
+            "share your screen with our support team"
+        ));
+        assert!(has_screen_share_lure(
+            "screen sharing required to fix your computer"
+        ));
+        assert!(has_screen_share_lure(
+            "share your desktop with a microsoft technician"
+        ));
+        assert!(has_screen_share_lure(
+            "please share your display with support"
+        ));
+        // "Allow/enable remote" variants.
+        assert!(has_screen_share_lure(
+            "allow remote viewing to diagnose your pc"
+        ));
+        assert!(has_screen_share_lure(
+            "enable remote access to fix the issue"
+        ));
+        assert!(has_screen_share_lure(
+            "allow remote control of your computer"
+        ));
+        // "Grant access" variants.
+        assert!(has_screen_share_lure(
+            "grant access to our support agent to continue"
+        ));
+        assert!(has_screen_share_lure(
+            "grant access to technician to repair your pc"
+        ));
+    }
+
+    #[test]
+    fn screen_share_lure_does_not_fire_on_benign_titles() {
+        // "Share" without "screen/desktop/display".
+        assert!(!has_screen_share_lure("share this document with your team"));
+        // "Screen" without "share/sharing".
+        assert!(!has_screen_share_lure("screen brightness settings"));
+        // Legitimate screenshare UI label (would be user-initiated and closable anyway).
+        assert!(!has_screen_share_lure("zoom meeting in progress"));
+        // "Remote" without "allow/enable" + the target words.
+        assert!(!has_screen_share_lure("remote desktop connection"));
+        // "Grant" without "access".
+        assert!(!has_screen_share_lure("grant permission requested"));
     }
 }
