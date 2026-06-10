@@ -165,7 +165,7 @@ with priority (★–★★★).
 |---|----|-------------|--------|
 | N1 | ★★ | cargo-deny + cargo-audit + gitleaks + MSRV build + clippy -D | ✅ baseline |
 | N2 | ★★ | `deny(missing_docs)` doc gate | ✅ v0.5.0 |
-| N3 | ★★★ | cargo-semver-checks (API-break gate) | 🔻 C3-3 (CI only — needs workflow push permission) |
+| N3 | ★★★ | cargo-semver-checks (API-break gate) | ✅ v0.6.1 — `.github/workflows/ci.yml`: fmt/clippy/test(3 OS)/MSRV(1.75)/semver-checks; `.github/workflows/supply-chain.yml`: cargo-audit/cargo-deny/gitleaks on push+PR+weekly schedule |
 | N4 | ★★★ | feature flags (cli/monitor/sink optional) + cargo-hack combos | ✅ v0.6.0 — `cli` feature gates binary + clap; `[[test]] cli_contract required-features=["cli"]`; `no-default-features` builds library-only |
 | N5 | ★★★ | `no_std` pure-core split (`muten-core`) | 🔻 C3-5 |
 | N6 | ★★ | cargo-fuzz on parsers (blocklist/window JSON) | 🔻 C3-6 |

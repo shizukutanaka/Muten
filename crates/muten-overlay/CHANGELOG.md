@@ -156,6 +156,14 @@ MSRV 1.75, 286 tests.
   the most alerts, and compare `blocks / total` ratios to spot signals that mostly contribute
   to the review queue vs confirmed dismissals — giving direct, field-data-driven evidence for
   weight and threshold tuning. 3 new tests. (B7, B8.)
+- **GitHub Actions CI workflows** (N3). `.github/workflows/ci.yml` runs on push/PR
+  to `main` and `claude/**` branches: `cargo fmt --check`, `cargo clippy -D warnings`,
+  `cargo test --all-targets` on Ubuntu/Windows/macOS, `cargo test --no-default-features --lib`
+  (library-only path), MSRV build on Rust 1.75.0, and `cargo semver-checks` (advisory, not
+  gating, until a baseline is published). `.github/workflows/supply-chain.yml` runs
+  `cargo-audit`, `cargo-deny`, and `gitleaks` on push+PR+weekly schedule to catch
+  newly-published advisories between releases. Matches the CI described in the README
+  Status section. (N3.)
 - **HMAC-SHA256 signed checkpoints** (`sign_checkpoint`, `verify_checkpoint_sig`; J5).
   `hmac_sha256(key, data) -> [u8; 32]` implements RFC 2104 HMAC over the `sha2` crate
   already in scope — no new dependencies. `sign_checkpoint(log_text, key)` verifies the
