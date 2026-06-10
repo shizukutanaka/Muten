@@ -474,3 +474,78 @@ fn legitimate_extension_install_does_not_fire_download_trap() {
         v.signals
     );
 }
+
+#[test]
+fn crypto_drain_plus_phone_reaches_block() {
+    // crypto_drain_lure + phone_number: two independent signals both fire →
+    // combined score should exceed Block threshold.
+    // Grounding: FBI IC3 2025 — crypto scam overlays often include a
+    // "call support" phone number alongside the wallet alarm.
+    let v = classify(
+        &alert_window("your wallet has been compromised call 1-800-555-0100 to secure your funds"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "crypto_drain_lure"),
+        "expected crypto_drain_lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "phone_number"),
+        "expected phone_number; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= BLOCK_THRESHOLD,
+        "crypto_drain_lure + phone_number must reach Block; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn prize_lure_plus_phone_reaches_block() {
+    // prize_lure + phone_number: classic sweepstakes scam with call-in lure.
+    let v = classify(
+        &alert_window("congratulations you have won a prize call 1-800-555-0100 to claim now"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "prize_lure"),
+        "expected prize_lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "phone_number"),
+        "expected phone_number; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= BLOCK_THRESHOLD,
+        "prize_lure + phone_number must reach Block; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn authority_lure_plus_crypto_drain_amplifies_score() {
+    // Ransomware-bluff variant: LEA impersonation + wallet drain in one overlay.
+    let v = classify(
+        &alert_window("cybercrime unit warning your wallet has been flagged for illegal activity"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "authority_lure"),
+        "expected authority_lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "crypto_drain_lure"),
+        "expected crypto_drain_lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= BLOCK_THRESHOLD,
+        "authority_lure + crypto_drain_lure must reach Block; score = {}",
+        v.score
+    );
+}

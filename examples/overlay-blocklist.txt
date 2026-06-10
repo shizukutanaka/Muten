@@ -245,6 +245,26 @@ title: 不正なアクセスが検出されました
 title: お使いのwindowsがブロックされました
 title: ライセンスの有効期限が切れました
 
+# ─────────── 日本語 追加 — 当選詐欺 / 仮想通貨詐欺 / 偽インストール ──────────
+# Prize/lottery (当選詐欺): IPA 2025 注意喚起, 消費者庁 2025.
+title: 当選しました
+title: 賞品を受け取る
+title: あなたが選ばれました
+title: 今すぐ受け取ってください
+title: プレゼントが当たりました
+# Crypto/wallet drain (仮想通貨詐欺): IPA 2025, 警察庁.
+title: ウォレットが不正アクセス
+title: 仮想通貨を検証してください
+title: シードフレーズを入力してください
+title: ウォレットを接続してください
+title: 不審な取引が検出されました
+# Fake download/install (偽インストール): 消費者庁 2025.
+title: 閲覧するにはインストールが必要
+title: このページを表示するにはプラグインが必要
+title: コーデックをインストールしてください
+title: 続行するにはダウンロードが必要
+title: ブラウザの更新が必要
+
 # ─────────────────────────────────────────────────────────────────
 # HOST / INFRASTRUCTURE PATTERNS
 # Abused trusted hosting that repeatedly serves TSS/ClickFix pages.
