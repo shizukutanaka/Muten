@@ -96,7 +96,16 @@ reflects active overrides.
 | `bidi_override` | +30 | raw title or host contains an LRO/RLO BiDi directional override (Trojan Source) |
 | `brand_impersonation` | +40 | a host label's UTS#39 skeleton equals a built-in known brand but is not the literal brand |
 | `combosquat_brand` | +30 | a host label joins a known brand and a scam-lure word as hyphen-delimited tokens |
-| `clickfix_instruction` | +20 | `alert_shaped` AND normalized title contains ClickFix/fake-CAPTCHA instruction tokens |
+| `typosquat_brand` | +25 | host label skeleton is edit-distance 1 from a known brand (deletion/substitution/transposition; mutually exclusive with `brand_impersonation`) |
+| `clickfix_instruction` | +20 | `alert_shaped` AND normalized title contains ClickFix/GlitchFix/fake-CAPTCHA instruction tokens |
+| `urgency_countdown` | +15 | `alert_shaped` AND title contains `M:SS`/`MM:SS` + urgency keyword |
+| `cloud_storage_abuse` | +20 | `alert_shaped` AND URL host is a blob-storage tenant subdomain (`*.blob.core.windows.net`, `*.s3.amazonaws.com`, `*.storage.googleapis.com`, …) |
+| `url_path_lure` | +20 | `alert_shaped` AND URL path contains a known-brand token within 2 positions of a known lure token |
+| `forced_retention_cue` | +20 | `alert_shaped` AND normalized title contains "do not close / do not turn off / keep this window open / stay on this page" |
+| `credential_harvest_cue` | +20 | `alert_shaped` AND normalized title contains account-alarm or credential-entry language |
+| `fake_scanner_cue` | +20 | `alert_shaped` AND normalized title contains fake rogue-AV scan-progress language |
+| `subscription_lure` | +15 | `alert_shaped` AND normalized title contains subject (subscription/license) + expiry (expired) + action (renew/call) |
+| `authority_lure` | +25 | `alert_shaped` AND normalized title contains an LEA-agency token + coercion token (warning/locked/illegal/fine) |
 | `remote_access_lure` | +20 | normalized title names a remote-access tool AND independent fake-alert evidence already fired |
 | `input_trap` | +5 | `fullscreen ∧ topmost ∧ blocks_input` (bounded composite) |
 | `sudden_fullscreen_takeover` | +5 | `unsolicited ∧ fullscreen ∧ topmost ∧ 0<age_ms<1000` (bounded composite) |
