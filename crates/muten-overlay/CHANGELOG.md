@@ -156,6 +156,14 @@ MSRV 1.75, 286 tests.
   the most alerts, and compare `blocks / total` ratios to spot signals that mostly contribute
   to the review queue vs confirmed dismissals — giving direct, field-data-driven evidence for
   weight and threshold tuning. 3 new tests. (B7, B8.)
+- **cargo-fuzz targets** (`fuzz/` sub-crate; N6). A new `crates/muten-overlay/fuzz/`
+  sub-crate (its own `Cargo.toml`, `libfuzzer-sys` dep isolated there) provides four
+  coverage-guided fuzz targets runnable with `cargo +nightly fuzz run <target>`:
+  `fuzz_ruleset_parse` (never-panic + idempotence of `Ruleset::parse`),
+  `fuzz_classify` (threshold-consistency + explain() well-formedness + score_breakdown
+  coverage), `fuzz_verify_chain` (never-panic + sign/verify roundtrip over arbitrary
+  log text), `fuzz_window_json` (serde_json never-panic + classify() survives all valid
+  deserialized windows). Zero new dependencies in the main crate. (N6.)
 - **GitHub Actions CI workflows** (N3). `.github/workflows/ci.yml` runs on push/PR
   to `main` and `claude/**` branches: `cargo fmt --check`, `cargo clippy -D warnings`,
   `cargo test --all-targets` on Ubuntu/Windows/macOS, `cargo test --no-default-features --lib`

@@ -168,7 +168,7 @@ with priority (★–★★★).
 | N3 | ★★★ | cargo-semver-checks (API-break gate) | ✅ v0.6.1 — `.github/workflows/ci.yml`: fmt/clippy/test(3 OS)/MSRV(1.75)/semver-checks; `.github/workflows/supply-chain.yml`: cargo-audit/cargo-deny/gitleaks on push+PR+weekly schedule |
 | N4 | ★★★ | feature flags (cli/monitor/sink optional) + cargo-hack combos | ✅ v0.6.0 — `cli` feature gates binary + clap; `[[test]] cli_contract required-features=["cli"]`; `no-default-features` builds library-only |
 | N5 | ★★★ | `no_std` pure-core split (`muten-core`) | 🔻 C3-5 |
-| N6 | ★★ | cargo-fuzz on parsers (blocklist/window JSON) | 🔻 C3-6 |
+| N6 | ★★ | cargo-fuzz on parsers (blocklist/window JSON) | ✅ v0.6.1 — `fuzz/` sub-crate (no main-crate deps); 4 targets: `fuzz_ruleset_parse`, `fuzz_classify`, `fuzz_verify_chain`, `fuzz_window_json`; invariants: never-panic, threshold-consistency, sign/verify roundtrip |
 | N7 | ★ | cargo-mutants effectiveness; cargo-public-api snapshot | 🔻 C3-7/8 |
 
 ---
