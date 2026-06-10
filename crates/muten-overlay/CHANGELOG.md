@@ -255,6 +255,18 @@ MSRV 1.75, 286 tests.
   payment — drawn from the dnstwist corpus and IC3 2025 combosquat examples.
   5 new unit tests (norton/mcafee combosquat, JP brand impersonation,
   venmo/zelle combosquat, real-brand FP sanity). 381 tests total. (D11.)
+- **Forced-retention "do not close" signal** (`forced_retention_cue`; E13).
+  `has_forced_retention(s)` fires when the normalized window title contains
+  "do not close", "do not turn off", "do not exit", "do not shut down",
+  "do not restart", "keep this window open", "stay on this page", or
+  "this window must remain open". Tech-support scammers use these phrases to
+  prevent victims from escaping while the fake "support agent" acts. Legitimate
+  software almost never puts a retention instruction in a *window title* (only
+  in dialog bodies, which are user-initiated and closable — handled by the
+  `alert_shaped` guard). Homoglyph/leet variants (`dо not сlose`) are defeated
+  via `normalize_for_match`. Weight `W_FORCED_RETENTION = 20`. Category:
+  `Obstruction`. MITRE: T1566. 3 lib unit tests + 3 confusables unit tests;
+  393 tests total. (E13.)
 - **URL-path brand+lure lure signal** (`url_path_lure`; E12). `url_path(url)`
   extracts the path component (after host, before `?`/`#`); `has_path_lure(url)`
   normalizes it via the full `strip_invisibles → fold_confusables → fold_leet →

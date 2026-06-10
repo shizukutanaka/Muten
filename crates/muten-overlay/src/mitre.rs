@@ -48,10 +48,12 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         "clickfix_instruction" => &["T1204"],
         "remote_access_lure" => &["T1219"],
         "blocks_input" | "input_trap" => &["T1056"],
-        // Urgency-coercion and cloud-lure delivery are social-engineering
-        // hooks that steer victims toward the attacker's call or site:
-        // T1566 Phishing (the threat-facing technique observed).
-        "urgency_countdown" | "cloud_storage_abuse" | "blocklist_host" => &["T1566"],
+        // Urgency-coercion, forced-retention, and cloud-lure delivery are
+        // social-engineering hooks that steer victims toward the attacker's
+        // call or site: T1566 Phishing.
+        "urgency_countdown" | "cloud_storage_abuse" | "blocklist_host" | "forced_retention_cue" => {
+            &["T1566"]
+        }
         _ => &[],
     }
 }

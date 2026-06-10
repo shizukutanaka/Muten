@@ -252,6 +252,7 @@ fn signal_phrase(signal: &str) -> &str {
             "is served from cloud blob-storage infrastructure used to host scam overlays"
         }
         "url_path_lure" => "has a URL path combining a known brand name with a scam lure word",
+        "forced_retention_cue" => "instructs the user not to close or leave the window",
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -336,6 +337,7 @@ const W_CLICKFIX: i32 = 20; // ClickFix/fake-CAPTCHA keyboard-instruction patter
 const W_URGENCY_COUNTDOWN: i32 = 15; // countdown timer + urgency keyword (scam coercion, alert_shaped guard)
 const W_CLOUD_STORAGE_ABUSE: i32 = 20; // alert-shaped overlay served from known blob-storage infra (TSS delivery vector)
 const W_URL_PATH_LURE: i32 = 20; // alert-shaped overlay with brand+lure combosquat pattern in the URL path
+const W_FORCED_RETENTION: i32 = 20; // "do not close" / "do not turn off" instruction in title (high-specificity scam tell)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -377,6 +379,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "urgency_countdown" => Some(W_URGENCY_COUNTDOWN),
         "cloud_storage_abuse" => Some(W_CLOUD_STORAGE_ABUSE),
         "url_path_lure" => Some(W_URL_PATH_LURE),
+        "forced_retention_cue" => Some(W_FORCED_RETENTION),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -891,6 +894,19 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && confusables::has_urgency_countdown(&normalized_title) {
         score += rules.weight_of("urgency_countdown", W_URGENCY_COUNTDOWN);
         signals.push("urgency_countdown".into());
+    }
+
+    // Forced-retention instruction (E13). Scam overlays tell the victim
+    // "DO NOT CLOSE THIS WINDOW" to prevent escape while the fake "Microsoft
+    // support agent" installs malware or gathers credentials. Legitimate
+    // software almost never places such an instruction in a *window title*;
+    // installer progress bars may show it in the dialog body, but those are
+    // user-initiated and closable, so alert_shaped never fires. Evaluated on
+    // the already-normalized title so homoglyph variants (Cyrillic 'с' in
+    // "close", leet '0' in "cl0se") are folded first.
+    if alert_shaped && confusables::has_forced_retention(&normalized_title) {
+        score += rules.weight_of("forced_retention_cue", W_FORCED_RETENTION);
+        signals.push("forced_retention_cue".into());
     }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
@@ -3600,6 +3616,61 @@ mod tests {
         assert_eq!(
             category_of("url_path_lure"),
             Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E13: Forced-retention "do not close" instruction ─────────────
+
+    #[test]
+    fn forced_retention_fires_on_alert_shaped_window() {
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "DO NOT CLOSE THIS WINDOW — Microsoft is helping you".into(),
+            coverage_percent: 96,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            age_ms: 0,
+            origin: Origin::Unsolicited,
+            url: None,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "forced_retention_cue"),
+            "expected forced_retention_cue; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_FORCED_RETENTION);
+    }
+
+    #[test]
+    fn forced_retention_does_not_fire_without_alert_shape() {
+        // A user-initiated, closable installer: alert_shaped = false → no fire.
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "Installing… do not close this window".into(),
+            coverage_percent: 50,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            age_ms: 0,
+            origin: Origin::UserInitiated,
+            url: None,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "forced_retention_cue"),
+            "forced_retention_cue must not fire for closable installer; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn forced_retention_category_is_obstruction() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("forced_retention_cue"),
+            Some(DarkPatternCategory::Obstruction)
         );
     }
 }

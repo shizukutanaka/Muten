@@ -569,9 +569,12 @@ pub fn has_clickfix_instruction(s: &str) -> bool {
     let glitchfix = (s.contains("browser") && s.contains("stopped"))
         || (s.contains("browser") && s.contains("abnormally"))
         || (s.contains("font") && (s.contains("required") || s.contains("missing")))
-        || (s.contains("update") && s.contains("browser")
-            && (s.contains("continue") || s.contains("required")
-                || s.contains("click") || s.contains("press")))
+        || (s.contains("update")
+            && s.contains("browser")
+            && (s.contains("continue")
+                || s.contains("required")
+                || s.contains("click")
+                || s.contains("press")))
         || s.contains("system font");
 
     shortcut || run_cmd || captcha_frame || glitchfix
@@ -639,6 +642,34 @@ pub fn has_urgency_countdown(s: &str) -> bool {
         return true;
     }
     false
+}
+
+/// Detect "do not close / turn off / exit / restart" retention instructions in a
+/// normalized window title.
+///
+/// Tech-support scam overlays routinely instruct victims **not** to close the
+/// window while the attacker is "helping" — this prevents escape and coerces
+/// compliance. Legitimate software almost never puts a "do not close" instruction
+/// in a *window title* (it may appear in a dialog body, but titles are labels,
+/// not instructions). When found in an `alert_shaped` window (caller's guard in
+/// `classify()`), this is a very strong scam indicator.
+///
+/// The caller passes a string already processed through [`normalize_for_match`]
+/// so that homoglyph / leet variants (`dо not ⅽlоse`, `d0 n0t cl0se`) are folded
+/// before the substring check.
+#[must_use]
+pub fn has_forced_retention(s: &str) -> bool {
+    s.contains("do not close")
+        || s.contains("dont close")
+        || s.contains("do not exit")
+        || s.contains("do not turn off")
+        || s.contains("do not shut down")
+        || s.contains("do not restart")
+        || s.contains("do not click away")
+        || s.contains("keep this window open")
+        || s.contains("leave this page open")
+        || s.contains("stay on this page")
+        || s.contains("this window must remain open")
 }
 
 #[cfg(test)]
@@ -1063,5 +1094,45 @@ mod tests {
         // "3xp1r3s" → "expires" after normalize_for_match.
         let norm = normalize_for_match("3xp1r3s in 4:59 call 1-800");
         assert!(has_urgency_countdown(&norm));
+    }
+
+    // ── has_forced_retention ──────────────────────────────────────────
+
+    #[test]
+    fn forced_retention_fires_on_scam_instructions() {
+        assert!(has_forced_retention("do not close this window"));
+        assert!(has_forced_retention(
+            "warning do not turn off your computer"
+        ));
+        assert!(has_forced_retention(
+            "dont close this window support is checking"
+        ));
+        assert!(has_forced_retention("do not exit this page"));
+        assert!(has_forced_retention("do not shut down your pc"));
+        assert!(has_forced_retention(
+            "keep this window open while we help you"
+        ));
+        assert!(has_forced_retention(
+            "stay on this page microsoft is helping"
+        ));
+        assert!(has_forced_retention("this window must remain open"));
+    }
+
+    #[test]
+    fn forced_retention_does_not_fire_on_benign_text() {
+        // Normal window titles must not fire.
+        assert!(!has_forced_retention("install complete"));
+        assert!(!has_forced_retention("update available"));
+        assert!(!has_forced_retention("download in progress please wait"));
+        assert!(!has_forced_retention("close after reading"));
+        // "close" alone is not a retention cue.
+        assert!(!has_forced_retention("close this ticket"));
+    }
+
+    #[test]
+    fn forced_retention_handles_homoglyphs_via_normalize() {
+        // Cyrillic 'с' (U+0441) in "close" → fold to 'c' → "close".
+        let norm = normalize_for_match("do not сlose this window");
+        assert!(has_forced_retention(&norm));
     }
 }

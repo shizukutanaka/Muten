@@ -74,8 +74,9 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         // composite, and ClickFix/fake-CAPTCHA instruction lures all
         // force the user to take a specific (attacker-chosen) action.
         "blocks_input" | "input_trap" | "clickfix_instruction" => Some(ForcedAction),
-        // No/fake close button impedes leaving the task.
-        "no_close_button" => Some(Obstruction),
+        // No/fake close button impedes leaving the task; a "do not close"
+        // retention instruction achieves the same effect via social pressure.
+        "no_close_button" | "forced_retention_cue" => Some(Obstruction),
         // Mixed-script, whole-script, BiDi-override, and enclosed-letter
         // homoglyphs all disguise the true text — the textbook "sneaking"
         // strategy (information disguised). mixed_script/whole_script_confusable
