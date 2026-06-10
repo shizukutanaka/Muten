@@ -303,6 +303,21 @@ MSRV 1.75, 286 tests.
   FP firewall (user-initiated / closable windows MUST Allow), and leet/homoglyph
   evasion resistance. These serve as regression guards: any signal removal or
   weight change that drops a known scam below Suspicious will be caught.
+- **Fake download / fake-update overlay gate** (`download_trap_lure`; E21).
+  `has_download_trap_lure(s)` fires on two AND-pair patterns: (1)
+  *install_demand* — a download/install/update verb + a required/needed/
+  to-continue cue; (2) *fake_plugin_gate* — a plugin/extension/codec/flash/
+  player/software/component/addon noun + an install verb or required cue.
+  Catches the "install codec to view", "flash player update required", "browser
+  extension required for this page", "download required to continue" overlay
+  family used by drive-by-download malware. Distinguished from `clickfix_instruction`
+  (which targets Win+R/clipboard) by requiring no keyboard shortcut. Weight
+  `W_DOWNLOAD_TRAP = 20`. Category: `InterfaceInterference`. MITRE: T1566.
+  Microsoft Edge security team (2025) and FBI IC3 2024 malware-delivery
+  coverage. alert_shaped guard prevents legitimate browser extension install
+  prompts from firing. 3 confusables unit test groups + 3 lib unit tests + 2
+  property tests + 2 scoring scenarios + 1 MITRE taxonomy test; 492 tests
+  total. (E21.)
 - **Fake prize / lottery / gift-card overlay lure** (`prize_lure`; E20).
   `has_prize_lure(s)` fires when the normalized window title contains both a
   *prize word* ("won", "winner", "prize", "jackpot", "lottery", "reward",

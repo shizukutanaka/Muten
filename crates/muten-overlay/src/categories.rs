@@ -115,6 +115,7 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         | "fake_scanner_cue"
         | "subscription_lure"
         | "authority_lure"
+        | "download_trap_lure"
         | "prize_lure"
         | "crypto_drain_lure"
         | "screen_share_lure" => Some(InterfaceInterference),

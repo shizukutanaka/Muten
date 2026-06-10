@@ -939,6 +939,47 @@ pub fn has_prize_lure(s: &str) -> bool {
     prize_word && claim_action
 }
 
+/// Detect fake download / fake-update overlay lures (E21).
+///
+/// Covers the "install X to continue" malware-delivery pattern distinct from
+/// ClickFix (which targets the clipboard/Win+R path). Two AND-pair patterns:
+/// - **install_demand**: a download/install/update verb + a required/needed cue.
+/// - **fake_plugin_gate**: a plugin/extension/codec/player noun + an install cue,
+///   with an optional "to continue viewing / to access / to play" framing.
+///
+/// The `alert_shaped` guard in `classify()` prevents legitimate browser
+/// extension install prompts (user-initiated, closable) from firing.
+#[must_use]
+pub fn has_download_trap_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // install_demand: download/install/update + required/needed/necessary
+    let action_verb = has("download") || has("install") || has("update");
+    let required_cue = has("required")
+        || has("needed")
+        || has("necessary")
+        || has("to continue")
+        || has("to access")
+        || has("to view")
+        || has("to play");
+    let install_demand = action_verb && required_cue;
+
+    // fake_plugin_gate: plugin/extension/codec/player noun + (install verb OR required cue)
+    // Catches both "install codec to view" and "browser extension required for this page".
+    let plugin_noun = has("plugin")
+        || has("extension")
+        || has("codec")
+        || has("flash")
+        || has("player")
+        || has("software")
+        || has("component")
+        || has("add-on")
+        || has("addon");
+    let fake_plugin_gate = plugin_noun && (action_verb || required_cue);
+
+    install_demand || fake_plugin_gate
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1776,5 +1817,53 @@ mod tests {
         assert!(!has_prize_lure("you scored a personal record today"));
         // Generic e-commerce loyalty point notification (no alarm)
         assert!(!has_prize_lure("you have earned 500 reward points"));
+    }
+
+    // ── has_download_trap_lure ────────────────────────────────────────────
+
+    #[test]
+    fn download_trap_lure_fires_on_install_demand() {
+        // install/update + required/to continue
+        assert!(has_download_trap_lure(
+            "download required to continue viewing"
+        ));
+        assert!(has_download_trap_lure(
+            "update required to access this page"
+        ));
+        assert!(has_download_trap_lure(
+            "install required to view this content"
+        ));
+        assert!(has_download_trap_lure("software update needed to continue"));
+        assert!(has_download_trap_lure(
+            "update necessary to play this video"
+        ));
+    }
+
+    #[test]
+    fn download_trap_lure_fires_on_fake_plugin_gate() {
+        // plugin/extension/codec + install/download
+        assert!(has_download_trap_lure("install plugin to continue"));
+        assert!(has_download_trap_lure("flash player update required"));
+        assert!(has_download_trap_lure("download codec to play this video"));
+        assert!(has_download_trap_lure(
+            "browser extension required for this page"
+        ));
+        assert!(has_download_trap_lure("add-on installation required"));
+    }
+
+    #[test]
+    fn download_trap_lure_does_not_fire_on_benign() {
+        // Download link without required framing
+        assert!(!has_download_trap_lure("download the free ebook now"));
+        // Legitimate app update notification — no required/to-continue
+        assert!(!has_download_trap_lure(
+            "a new version of the app is available"
+        ));
+        // Generic OS update (no plugin noun, no required cue in same string)
+        assert!(!has_download_trap_lure(
+            "windows update completed successfully"
+        ));
+        // ClickFix-style keyboard shortcut — no download/install verb
+        assert!(!has_download_trap_lure("press windows and r to verify"));
     }
 }

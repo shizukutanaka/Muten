@@ -443,3 +443,34 @@ fn legitimate_loyalty_notification_does_not_fire_prize_lure() {
         v.signals
     );
 }
+
+#[test]
+fn download_trap_reaches_suspicious() {
+    // Fake plugin gate in an alert-shaped window.
+    // Groundings: Microsoft Edge security team (2025 fake-update malware);
+    // FBI IC3 2024 malware-delivery overlays.
+    let v = classify(
+        &alert_window("flash player update required to view this content"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "download_trap_lure"),
+        "expected download_trap_lure; got {:?}",
+        v.signals
+    );
+    assert!(v.score >= SUSPICIOUS_THRESHOLD);
+}
+
+#[test]
+fn legitimate_extension_install_does_not_fire_download_trap() {
+    // FP guard: user-opened, closable browser extension install prompt.
+    let v = classify(
+        &closable_window("install extension to enable developer tools"),
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "download_trap_lure"),
+        "download_trap_lure must not fire for user-initiated closable prompt; got {:?}",
+        v.signals
+    );
+}

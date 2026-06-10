@@ -730,6 +730,31 @@ proptest! {
         }
     }
 
+    // ── E21: download_trap_lure ───────────────────────────────────────────
+
+    /// has_download_trap_lure never panics on arbitrary Unicode input.
+    #[test]
+    fn has_download_trap_lure_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_download_trap_lure(&s);
+    }
+
+    /// Strings lacking install_demand AND fake_plugin_gate conditions must not fire.
+    #[test]
+    fn plain_ascii_never_fires_download_trap_lure(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let action_verb = has("download") || has("install") || has("update");
+        let required_cue = has("required") || has("needed") || has("necessary")
+            || has("to continue") || has("to access") || has("to view") || has("to play");
+        let plugin_noun = has("plugin") || has("extension") || has("codec")
+            || has("flash") || has("player") || has("software") || has("component")
+            || has("add-on") || has("addon");
+        let fires = (action_verb && required_cue)
+            || (plugin_noun && (action_verb || required_cue));
+        if !fires {
+            prop_assert!(!muten_overlay::confusables::has_download_trap_lure(&s));
+        }
+    }
+
     // ── E19: crypto_drain_lure ────────────────────────────────────────────
 
     /// has_crypto_drain_lure never panics on arbitrary Unicode input.
