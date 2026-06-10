@@ -485,4 +485,80 @@ proptest! {
             Decision::Allow => prop_assert!(v.score < SUSPICIOUS_THRESHOLD),
         }
     }
+
+    // ── E10: cloud_storage_abuse / E12: url_path_lure / E13: forced_retention ─
+
+    /// has_forced_retention never panics on arbitrary Unicode input.
+    #[test]
+    fn has_forced_retention_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_forced_retention(&s);
+    }
+
+    /// A string with none of the retention trigger phrases must not fire.
+    #[test]
+    fn plain_ascii_never_fires_forced_retention(s in "[a-z0-9 .,!?]{1,60}") {
+        const TRIGGERS: &[&str] = &[
+            "do not close", "dont close", "do not exit", "do not turn off",
+            "do not shut down", "do not restart", "do not click away",
+            "keep this window open", "leave this page open",
+            "stay on this page", "this window must remain open",
+        ];
+        let has_trigger = TRIGGERS.iter().any(|t| s.contains(t));
+        if !has_trigger {
+            prop_assert!(!muten_overlay::confusables::has_forced_retention(&s));
+        }
+    }
+
+    /// classify never panics when given a blob-storage URL with arbitrary title.
+    #[test]
+    fn classify_never_panics_with_blob_storage_url(
+        tenant in "[a-z]{3,12}",
+        title in ".*",
+    ) {
+        let url = format!("https://{tenant}.blob.core.windows.net/container/page.html");
+        let w = OverlayWindow {
+            title,
+            url: Some(url),
+            coverage_percent: 0,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::Unknown,
+            age_ms: 0,
+        };
+        let v = classify(&w, &Ruleset::default());
+        match v.decision {
+            Decision::Block => prop_assert!(v.score >= BLOCK_THRESHOLD),
+            Decision::Suspicious => prop_assert!(
+                v.score >= SUSPICIOUS_THRESHOLD && v.score < BLOCK_THRESHOLD
+            ),
+            Decision::Allow => prop_assert!(v.score < SUSPICIOUS_THRESHOLD),
+        }
+    }
+
+    /// classify never panics with arbitrary URL path (url_path_lure path).
+    #[test]
+    fn classify_never_panics_with_arbitrary_url_path(
+        path in "[a-z0-9/-]{1,40}",
+    ) {
+        let url = format!("https://evil.example.com/{path}");
+        let w = OverlayWindow {
+            title: "test".into(),
+            url: Some(url),
+            coverage_percent: 0,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::Unknown,
+            age_ms: 0,
+        };
+        let v = classify(&w, &Ruleset::default());
+        match v.decision {
+            Decision::Block => prop_assert!(v.score >= BLOCK_THRESHOLD),
+            Decision::Suspicious => prop_assert!(
+                v.score >= SUSPICIOUS_THRESHOLD && v.score < BLOCK_THRESHOLD
+            ),
+            Decision::Allow => prop_assert!(v.score < SUSPICIOUS_THRESHOLD),
+        }
+    }
 }
