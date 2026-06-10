@@ -193,22 +193,12 @@ impl Ruleset {
             } else if let Some(rest) = line.strip_prefix("phone:") {
                 // Known scam phone number. Match on digits only, so the
                 // operator can write it with whatever separators they like
-                // (1-800-…, +1 800 …) and it still matches a title that
+                // (1-800-…, +81-0120-…) and it still matches a title that
                 // formats it differently. Require ≥ 7 digits so a stray
                 // short number can't become an over-broad rule.
                 let display = rest.trim().to_ascii_lowercase();
                 let digits: String = display.chars().filter(char::is_ascii_digit).collect();
-                // Normalize an 11-digit NANP number (leading country-code
-                // "1") to its 10-digit national form. That national key is a
-                // substring of the number whether the title writes it with or
-                // without the "1", so `1-800-555-0100` matches both
-                // "1 800 555 0100" and "(800) 555-0100". NANP national numbers
-                // never start with 1, so this can't over-broaden.
-                let key = if digits.len() == 11 && digits.starts_with('1') {
-                    digits[1..].to_string()
-                } else {
-                    digits
-                };
+                let key = normalize_phone_digits(&digits);
                 if key.len() >= 7 {
                     phone_patterns.push(PhonePattern {
                         digits: key,
@@ -354,9 +344,12 @@ impl Ruleset {
         if digits.is_empty() {
             return None;
         }
+        // Also try the normalized form so that a title showing an international
+        // prefix (+81, +44, +61, +1) matches a rule authored in national form.
+        let normalized = normalize_phone_digits(&digits);
         self.phone_patterns
             .iter()
-            .find(|p| digits.contains(&p.digits))
+            .find(|p| digits.contains(&p.digits) || normalized.contains(&p.digits))
             .map(|p| p.display.clone())
     }
 
@@ -377,6 +370,47 @@ impl Ruleset {
             .find(|pat| p.contains(&squash(pat)))
             .cloned()
     }
+}
+
+/// Normalize a digit-only phone string to its national (non-prefixed) form.
+///
+/// Strips known international dialing prefixes so that the same number
+/// can be authored as `+1 800 555 0100`, `0120 000 000`, or `+81 120 000 000`
+/// and still match regardless of how a title formats it (E6):
+///
+/// | Pattern | Action | Rationale |
+/// |---|---|---|
+/// | 11 digits starting `1` | strip leading `1` | NANP country code |
+/// | 12 digits starting `81` | strip `81` (→ 10d) | Japan (+81), then JP rules apply |
+/// | 11 digits starting `44` | strip `44` (→ 9d) | UK (+44) |
+/// | 11 digits starting `61` | strip `61` (→ 9d) | Australia (+61) |
+///
+/// JP note: after stripping `81`, 0120-XXXXXX (toll-free) and 0570-XXXXXX
+/// (charged-rate) numbers have their leading `0` intact, so a blocklist entry
+/// of `0120-111-222` and a title showing `+81-120-111-222` both normalize to
+/// `0120111222` and match correctly.
+fn normalize_phone_digits(digits: &str) -> String {
+    // NANP: 11 digits, leading "1" (not "11" or "12" etc.) → strip CC.
+    // Check NANP first; "1-800-…" (11d, starts '1') must not collide with
+    // any two-digit CC that also starts with '1'.
+    if digits.len() == 11 && digits.starts_with('1') && !digits.starts_with("11") {
+        return digits[1..].to_string();
+    }
+    // Japan: +81 → 11 digits with leading "81" (0120/0570 are 10d national,
+    // +81 drops the leading 0, so +81-120-000-000 = "81120000000", 11 digits).
+    // Prepend "0" to restore the national trunk prefix.
+    if digits.len() == 11 && digits.starts_with("81") {
+        return format!("0{}", &digits[2..]);
+    }
+    // UK: +44 → 11 digits, leading "44" → strip CC (national is 9–10 digits).
+    if digits.len() == 11 && digits.starts_with("44") {
+        return digits[2..].to_string();
+    }
+    // Australia: +61 → 11 digits, leading "61" → strip CC.
+    if digits.len() == 11 && digits.starts_with("61") {
+        return digits[2..].to_string();
+    }
+    digits.to_string()
 }
 
 fn strip_comment(line: &str) -> &str {
@@ -681,5 +715,63 @@ mod tests {
         assert!(rs.match_host("http://[::1]:8080/alert").is_some());
         // An ordinary host with a port is still parsed correctly.
         assert_eq!(host_str("http://evil.example:443/x"), "evil.example");
+    }
+
+    // ── E6: International phone number normalization ─────────────────
+
+    #[test]
+    fn normalize_phone_nanp_strips_leading_1() {
+        // 11-digit NANP (leading 1) → 10-digit national number.
+        assert_eq!(normalize_phone_digits("18005550100"), "8005550100");
+        // 10-digit (no country code) → unchanged.
+        assert_eq!(normalize_phone_digits("8005550100"), "8005550100");
+    }
+
+    #[test]
+    fn normalize_phone_japan_strips_country_code() {
+        // Japan +81: 0120-000-000 national = "0120000000" (10d).
+        // +81 drops the leading 0, so +81-120-000-000 = "81120000000" (11d).
+        // normalize_phone_digits prepends "0" after stripping "81" → "0120000000".
+        assert_eq!(normalize_phone_digits("81120000000"), "0120000000");
+        // 0570 charged-rate number.
+        assert_eq!(normalize_phone_digits("81570000000"), "0570000000");
+    }
+
+    #[test]
+    fn normalize_phone_uk_strips_country_code() {
+        // UK +44: 11 digits starting 44 → strip to 9 (national).
+        assert_eq!(normalize_phone_digits("44800000000"), "800000000");
+    }
+
+    #[test]
+    fn normalize_phone_australia_strips_country_code() {
+        // Australia +61: 11 digits starting 61 → strip to 9.
+        assert_eq!(normalize_phone_digits("61800000000"), "800000000");
+    }
+
+    #[test]
+    fn normalize_phone_unrecognized_is_unchanged() {
+        // A 9-digit number with no recognized prefix → returned as-is.
+        assert_eq!(normalize_phone_digits("123456789"), "123456789");
+        // An 11-digit number NOT starting with 1, 44, or 61 → unchanged.
+        assert_eq!(normalize_phone_digits("55800000000"), "55800000000");
+    }
+
+    #[test]
+    fn phone_rule_matches_jp_international_format_in_title() {
+        // Operator writes the JP toll-free as "0120-111-222" (national);
+        // title shows it as "+81 120 111 222" (international). Should match.
+        let rs = Ruleset::from_lines(&["phone: 0120-111-222"]);
+        // After normalize: rule key = "0120111222", title digits = "81120111222" → strip "81" → "0120111222".
+        // match_phone strips all non-digit and then does substring match in folded digits.
+        // The title "+81 120 111 222" contains "81120111222" as digits; we need the
+        // normalized KEY "0120111222" to be a substring of "81120111222" — it IS.
+        assert!(
+            rs.match_phone("+81 120 111 222").is_some(),
+            "JP international format should match national-format rule"
+        );
+        // The national format must also still work.
+        assert!(rs.match_phone("0120-111-222").is_some());
+        assert!(rs.match_phone("0120 111 222").is_some());
     }
 }

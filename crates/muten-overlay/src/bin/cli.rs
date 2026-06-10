@@ -172,6 +172,12 @@ enum Cmd {
         /// summary when `--audit-log` is set) instead of the text table.
         #[arg(long)]
         json: bool,
+        /// Write Prometheus textfile metrics to this path after all sweeps
+        /// (compatible with node_exporter --collector.textfile). Metrics:
+        /// muten_sweeps_total, muten_dismissals_total, muten_blocks_total,
+        /// muten_suspicious_total, muten_scareware_total.
+        #[arg(long)]
+        metrics: Option<PathBuf>,
     },
 }
 
@@ -218,12 +224,14 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             sweeps,
             audit_log,
             json,
+            metrics,
         } => cmd_monitor(
             &windows,
             rules.as_deref(),
             sweeps,
             audit_log.as_deref(),
             json,
+            metrics.as_deref(),
         ),
     }
 }
@@ -510,12 +518,43 @@ fn cmd_enforce(
     })
 }
 
+/// Write a Prometheus textfile (node_exporter --collector.textfile format).
+/// Gauges/counters for the completed monitor run; compatible with Alertmanager.
+fn write_prometheus_metrics(
+    path: &std::path::Path,
+    sweeps: u64,
+    dismissals: u64,
+    blocks: u64,
+    suspicious: u64,
+    scareware: u64,
+) -> Result<(), String> {
+    let content = format!(
+        "# HELP muten_sweeps_total Total overlay-sweep iterations completed.\n\
+         # TYPE muten_sweeps_total counter\n\
+         muten_sweeps_total {sweeps}\n\
+         # HELP muten_dismissals_total Total windows dismissed (Block decision).\n\
+         # TYPE muten_dismissals_total counter\n\
+         muten_dismissals_total {dismissals}\n\
+         # HELP muten_blocks_total Total overlay_blocked audit events emitted.\n\
+         # TYPE muten_blocks_total counter\n\
+         muten_blocks_total {blocks}\n\
+         # HELP muten_suspicious_total Total overlay_suspicious audit events emitted.\n\
+         # TYPE muten_suspicious_total counter\n\
+         muten_suspicious_total {suspicious}\n\
+         # HELP muten_scareware_total Total scareware_detected audit events emitted.\n\
+         # TYPE muten_scareware_total counter\n\
+         muten_scareware_total {scareware}\n"
+    );
+    std::fs::write(path, content).map_err(|e| format!("writing metrics {}: {e}", path.display()))
+}
+
 fn cmd_monitor(
     windows: &str,
     rules: Option<&std::path::Path>,
     sweeps: u64,
     audit_log: Option<&std::path::Path>,
     json: bool,
+    metrics: Option<&std::path::Path>,
 ) -> Result<ExitCode, String> {
     let enumerated = parse_windows(windows)?;
     let rs = load_rules(rules)?;
@@ -615,7 +654,47 @@ fn cmd_monitor(
                 .unwrap_or_default()
         );
     }
+
+    // Prometheus textfile metrics (L4): count event kinds from the in-memory
+    // sink (already populated) or by re-reading the audit log line-by-line.
+    if let Some(metrics_path) = metrics {
+        let (blocks, suspicious_count, scareware_count) = count_audit_kinds(audit_log)?;
+        write_prometheus_metrics(
+            metrics_path,
+            sweeps,
+            total,
+            blocks,
+            suspicious_count,
+            scareware_count,
+        )?;
+        if !json {
+            eprintln!("metrics: {}", metrics_path.display());
+        }
+    }
     Ok(ExitCode::from(0))
+}
+
+/// Count overlay_blocked / overlay_suspicious / scareware_detected events
+/// from the audit log. When no log path is provided returns (0,0,0).
+fn count_audit_kinds(audit_log: Option<&std::path::Path>) -> Result<(u64, u64, u64), String> {
+    let Some(path) = audit_log else {
+        return Ok((0, 0, 0));
+    };
+    let text = std::fs::read_to_string(path).map_err(|e| format!("reading log: {e}"))?;
+    let (mut blocks, mut suspicious, mut scareware) = (0u64, 0u64, 0u64);
+    for line in text.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let v: serde_json::Value = serde_json::from_str(line).unwrap_or_default();
+        match v["kind"].as_str() {
+            Some("overlay_blocked") => blocks += 1,
+            Some("overlay_suspicious") => suspicious += 1,
+            Some("scareware_detected") => scareware += 1,
+            _ => {}
+        }
+    }
+    Ok((blocks, suspicious, scareware))
 }
 
 #[cfg(test)]

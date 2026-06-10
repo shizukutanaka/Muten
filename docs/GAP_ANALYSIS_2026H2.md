@@ -6,7 +6,7 @@
 > walks the **actual code surface** module by module, enumerates concrete
 > improvement points found by direct audit, and tracks their status.
 >
-> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 280 tests.
+> Target: `muten-overlay` v0.6.0 · audited 2026-06 · 292 tests.
 > Status: ✅ done · 🔧 fixed-this-pass · 🔻 planned · 🆕 newly-found · ⛔ out-of-scope (I3)
 > Invariants (every item respects): offline · pure functions over window
 > metadata · no ML/CV · `#![forbid(unsafe_code)]` · explainable additive
@@ -75,7 +75,7 @@ with priority (★–★★★).
 | E3 | ★★ | `remote_access_lure` (AnyDesk/TeamViewer, context-amplified) | ✅ v0.5.0 |
 | E4 | ★★ | Crypto-recovery / refund re-victimization families (IC3 2024) | 🔧 added to example blocklist + coverage test |
 | E5 | ★★ | Full-width digit phone numbers (JP 0120 フリーダイヤル) | ✅ folded before scan (verified) |
-| E6 | ★ | International phone formats → per-country weight (0120/+44) | 🔻 C2-6 |
+| E6 | ★ | International phone formats → per-country weight (0120/+44) | ✅ v0.6.0 |
 | E7 | ★ | Countdown/timer urgency cue (`\d+:\d{2}` + urgency word) | 🔻 C1-8 — FP-prone (media players); needs strong gating |
 | E8 | ★ | Remote-access tool as `process:` family (not just title) | 🔻 needs collector process attribution |
 
@@ -106,7 +106,7 @@ with priority (★–★★★).
 |---|----|-------------|--------|
 | H1 | ★★ | Gray et al. (2018) 5-strategy mapping on every verdict | ✅ baseline |
 | H2 | ★★ | All v0.5.0 signals mapped (Sneaking/ForcedAction/InterfaceInterference) | ✅ v0.5.0 |
-| H3 | ★ | MITRE ATT&CK technique tags on audit events (T1566/T1656) | 🔻 C1-9 |
+| H3 | ★ | MITRE ATT&CK technique tags on audit events (T1566/T1656) | ✅ v0.6.0 |
 
 ## I. Explainability (`Verdict::explain`)
 
@@ -145,7 +145,7 @@ with priority (★–★★★).
 | L1 | ★★★ | `sweep`/`run` with injected clock + stop flag; per-outcome audit events | ✅ baseline |
 | L2 | ★★ | Allow is not audited (quiet log) | ✅ baseline |
 | L3 | ★ | Dynamic sweep-interval shortening on detection | 🔻 C1-10 |
-| L4 | ★ | Prometheus textfile metrics (offline pull) | 🔻 C6-7 |
+| L4 | ★ | Prometheus textfile metrics (offline pull) | ✅ v0.6.0 |
 
 ## M. CLI (`bin/cli.rs`)
 
