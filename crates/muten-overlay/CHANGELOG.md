@@ -294,6 +294,15 @@ MSRV 1.75, 286 tests.
   Category: `InterfaceInterference`. MITRE: T1566 (phishing lure). Homoglyph/leet
   variants are defeated via `normalize_for_match`. 3 confusables unit tests +
   3 lib unit tests + 2 property tests. (E14.)
+- **End-to-end scoring scenario tests** (`tests/scoring_scenarios.rs`; 20 tests).
+  A new integration test file validates that all major threat families score at
+  or above threshold using only built-in heuristic signals — no operator blocklist.
+  Scenarios cover: classic TSS phone overlays, ClickFix/GlitchFix, Azure Blob
+  cloud_storage_abuse, forced_retention_cue, credential_harvest_cue,
+  fake_scanner_cue, subscription_lure, authority_lure, multi-signal composites,
+  FP firewall (user-initiated / closable windows MUST Allow), and leet/homoglyph
+  evasion resistance. These serve as regression guards: any signal removal or
+  weight change that drops a known scam below Suspicious will be caught.
 - **Law-enforcement / authority impersonation signal** (`authority_lure`; E17).
   `has_authority_lure(s)` fires when the normalized window title contains both
   an *agency token* (fbi, cia, interpol, cybercrime, homeland security, department
