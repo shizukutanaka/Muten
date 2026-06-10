@@ -325,6 +325,25 @@ MSRV 1.75, 286 tests.
   flows) from firing.  5 positive + 4 negative confusables unit tests + 3 lib unit tests
   + 2 property tests + 3 scoring scenarios + 1 blocklist-coverage test; 524 tests
   total. (E22.)
+- **Emoji / symbol mid-word evasion stripping** (`strip_symbols_and_emoji`).
+  Attackers insert decorative symbols or emoji mid-word to defeat substring
+  matching: `"inf⚠️ected"` renders as "infected" to humans but `str::contains
+  ("infected")` fails. A new `strip_symbols_and_emoji(s)` function (C8 evasion
+  robustness, roadmap §7 — *絵文字/記号の正規化*) strips U+2600–U+27BF (Misc
+  Symbols + Dingbats: ⚠️ ☎ ✗) and U+1F000–U+1FFFF (emoji blocks: 🔴 🚨), plus
+  U+FE00–U+FEFF variation selectors, before other folding.  CJK/Kana
+  (U+3000–U+9FFF+) is **not** stripped; Japanese titles pass through unaltered.
+  Integrated as the first step of `normalize_for_match` (now 5 steps instead of 4).
+  6 confusables unit tests + 2 property tests (never-panics, never-lengthens,
+  idempotent; ASCII unchanged). 534 tests total.
+- **MITRE ATT&CK mapping for `sudden_fullscreen_takeover`** added in `mitre.rs`:
+  `"sudden_fullscreen_takeover" => &["T1036"]` (Masquerading — an unsolicited
+  full-screen takeover imitates a legitimate system dialog). Previously unmapped,
+  leaving ATT&CK-correlated threat-hunting queries incomplete.
+- **Regression tests for `sudden_fullscreen_takeover` geometry-only bounds**
+  in `scoring_scenarios.rs`: a geometry-only unsolicited full-screen window stays
+  `Suspicious` (never `Block`) without a content tell; adding a phone number pushes
+  it to `Block`. Guards the observe-first invariant against score-weight regressions.
 - **SPECIFICATION.md and OVERLAY_BLOCKING.md signal-table updates**.
   Added E18-E21 rows (screen_share_lure / crypto_drain_lure / prize_lure /
   download_trap_lure) that were confirmed-implemented but undocumented in the normative

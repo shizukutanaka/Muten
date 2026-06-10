@@ -48,6 +48,9 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         "clickfix_instruction" => &["T1204"],
         "remote_access_lure" | "screen_share_lure" => &["T1219"],
         "blocks_input" | "input_trap" => &["T1056"],
+        // Sudden full-screen takeover matches T1036 Masquerading: an unsolicited
+        // window imitates a legitimate system dialog by seizing the full screen.
+        "sudden_fullscreen_takeover" => &["T1036"],
         // Urgency-coercion, forced-retention, cloud-lure delivery, and
         // fake-scanner overlays are social-engineering hooks that steer
         // victims toward the attacker's call or site: T1566 Phishing.
@@ -133,6 +136,9 @@ mod tests {
         assert_eq!(techniques_of("crypto_drain_lure"), &["T1566"]);
         assert_eq!(techniques_of("prize_lure"), &["T1566"]);
         assert_eq!(techniques_of("download_trap_lure"), &["T1566"]);
+        assert_eq!(techniques_of("qr_code_lure"), &["T1566"]);
+        assert_eq!(techniques_of("ip_alarm_lure"), &["T1566"]);
+        assert_eq!(techniques_of("sudden_fullscreen_takeover"), &["T1036"]);
     }
 
     #[test]

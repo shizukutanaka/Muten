@@ -129,15 +129,20 @@ bounded composite alone — the lock shape caps at 95, the takeover shape at
 
 ## 4. Text normalization (`confusables`)
 
-`normalize_for_match(s)` ≜ `strip_invisibles ∘ fold_confusables ∘
+`normalize_for_match(s)` ≜ `strip_symbols_and_emoji ∘ strip_invisibles ∘ fold_confusables ∘
 fold_leet_in_words ∘ to_ascii_lowercase`, idempotent. Used **symmetrically**
 for both stored `title:` / `glob:` patterns (at parse) and titles (at match),
-so the two sides cannot drift. `strip_invisibles` removes zero-width / BiDi
-controls and MUST NOT lengthen the string. `fold_leet_in_words` folds leet
-digits only inside tokens containing a letter (pure-digit runs — phone
-numbers — survive). The phone-number scan runs on `fold_confusables` only
-(it needs the original digits). `has_confusable_mixed_script` is evaluated
-on the **raw** string (folding erases the evidence) and ignores CJK/Kana.
+so the two sides cannot drift.
+
+- `strip_symbols_and_emoji` removes emoji and decorative symbols (U+2600–U+27BF,
+  U+FE00–U+FEFF, U+1F000–U+1FFFF) that may be inserted mid-word to defeat substring
+  matching (e.g. `"inf⚠️ected"` → `"infected"`). MUST NOT strip CJK/Kana.
+- `strip_invisibles` removes zero-width / BiDi controls and MUST NOT lengthen the string.
+- `fold_leet_in_words` folds leet digits only inside tokens containing a letter
+  (pure-digit runs — phone numbers — survive).
+- The phone-number scan runs on `fold_confusables` only (it needs the original digits).
+- `has_confusable_mixed_script` is evaluated on the **raw** string (folding erases the
+  evidence) and ignores CJK/Kana.
 
 ## 5. Blocklist grammar (`Ruleset::parse`)
 

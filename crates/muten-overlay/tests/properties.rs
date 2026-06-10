@@ -200,6 +200,22 @@ proptest! {
         prop_assert_eq!(once, twice);
     }
 
+    /// strip_symbols_and_emoji never panics, never lengthens, and is idempotent.
+    #[test]
+    fn strip_symbols_shrinks_and_is_idempotent(s in ".*") {
+        let once = muten_overlay::confusables::strip_symbols_and_emoji(&s);
+        prop_assert!(once.chars().count() <= s.chars().count());
+        let twice = muten_overlay::confusables::strip_symbols_and_emoji(&once);
+        prop_assert_eq!(once, twice);
+    }
+
+    /// ASCII-only strings pass through strip_symbols_and_emoji unchanged.
+    #[test]
+    fn strip_symbols_leaves_ascii_unchanged(s in "[ -~]*") {
+        let result = muten_overlay::confusables::strip_symbols_and_emoji(&s);
+        prop_assert_eq!(&result, &s);
+    }
+
     /// Mixed-script detection never panics on arbitrary Unicode.
     #[test]
     fn has_mixed_script_never_panics(s in ".*") {

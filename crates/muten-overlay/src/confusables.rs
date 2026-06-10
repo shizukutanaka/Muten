@@ -209,6 +209,37 @@ pub fn strip_invisibles(s: &str) -> String {
     s.chars().filter(|&c| !is_invisible(c)).collect()
 }
 
+/// True if `c` is an emoji, pictograph, or decorative symbol that has no
+/// role in alphanumeric text but can be inserted mid-word to defeat
+/// substring matching ("inf⚠️ected" → "infected" after stripping).
+///
+/// Ranges stripped:
+/// - U+2600–U+26FF Miscellaneous Symbols (⚠️ ☎ ☠ ⚡ ☢ etc.)
+/// - U+2700–U+27BF Dingbats (✗ ✘ ☞ ✓ ✔ etc.)
+/// - U+FE00–U+FEFF Variation selectors (turn ⚠ into ⚠️)
+/// - U+1F000–U+1FFFF Emoji / pictograph blocks
+///
+/// NOT stripped: U+3000–U+30FF / U+4E00+ (CJK, Kana) — Japanese titles
+/// must pass through unaltered.
+fn is_emoji_or_symbol(c: char) -> bool {
+    matches!(c,
+        '\u{2600}'..='\u{27BF}' | // Misc Symbols + Dingbats
+        '\u{FE00}'..='\u{FEFF}' | // Variation selectors
+        '\u{1F000}'..='\u{1FFFF}' // Emoji / pictograph blocks
+    )
+}
+
+/// Remove emoji and decorative symbol characters from `s`. Never
+/// lengthens the string. Called **before** `strip_invisibles` in
+/// `normalize_for_match` so that mid-word emoji insertions (e.g.
+/// `"inf⚠️ected"`) are collapsed before any other folding.
+///
+/// Japanese text (U+3000–U+30FF, U+4E00+) is unaffected.
+#[must_use]
+pub fn strip_symbols_and_emoji(s: &str) -> String {
+    s.chars().filter(|&c| !is_emoji_or_symbol(c)).collect()
+}
+
 /// True if `s` contains a BiDi **directional override** — `U+202D`
 /// (LRO) or `U+202E` (RLO). These force a reading direction and are the
 /// classic "Trojan Source" / filename-extension spoofing vector
@@ -490,12 +521,15 @@ pub fn fold_leet_in_words(s: &str) -> String {
 }
 
 /// The single normalized form used for **blocklist title matching**:
-/// strip invisibles → fold confusables → fold leetspeak → lowercase.
-/// Idempotent. This is intentionally *not* applied to the
-/// phone-number scan (which needs the original digits).
+/// strip emoji/symbols → strip invisibles → fold confusables → fold
+/// leetspeak → lowercase.  Idempotent.  The emoji step runs first so
+/// mid-word insertions (e.g. `"inf⚠️ected"`) are collapsed before any
+/// other folding.  Not applied to the phone-number scan (which needs
+/// the original digits).
 #[must_use]
 pub fn normalize_for_match(s: &str) -> String {
-    let stripped = strip_invisibles(s);
+    let s = strip_symbols_and_emoji(s);
+    let stripped = strip_invisibles(&s);
     let folded = fold_confusables(&stripped);
     fold_leet_in_words(&folded).to_ascii_lowercase()
 }
@@ -1137,6 +1171,65 @@ mod tests {
     fn strip_invisibles_leaves_plain_text() {
         let s = "your computer is infected";
         assert_eq!(strip_invisibles(s), s);
+    }
+
+    // ── strip_symbols_and_emoji ───────────────────────────────────────────
+
+    #[test]
+    fn strips_warning_emoji_from_title() {
+        // ⚠️ (U+26A0 + variation selector) stripped; word is reunited.
+        assert_eq!(
+            strip_symbols_and_emoji("inf\u{26A0}\u{FE0F}ected"),
+            "infected"
+        );
+        assert_eq!(
+            strip_symbols_and_emoji("⚠️ your computer is infected ⚠️"),
+            " your computer is infected "
+        );
+    }
+
+    #[test]
+    fn strips_dingbat_mid_word() {
+        // ✗ (U+2717, Dingbats) inserted mid-word.
+        assert_eq!(strip_symbols_and_emoji("inf\u{2717}ected"), "infected");
+    }
+
+    #[test]
+    fn strips_emoji_pictographs() {
+        // 🔴 (U+1F534) and 🚨 (U+1F6A8) stripped.
+        assert_eq!(
+            strip_symbols_and_emoji("🚨 warning: your system is at risk 🔴"),
+            " warning: your system is at risk "
+        );
+    }
+
+    #[test]
+    fn strips_symbols_leaves_japanese_intact() {
+        // Japanese kana and CJK pass through unaltered.
+        let jp = "ウイルスに感染しました";
+        assert_eq!(strip_symbols_and_emoji(jp), jp);
+        // Mixed: emoji stripped, Japanese intact.
+        assert_eq!(
+            strip_symbols_and_emoji("⚠️ ウイルスに感染 ⚠️"),
+            " ウイルスに感染 "
+        );
+    }
+
+    #[test]
+    fn strip_symbols_leaves_plain_ascii() {
+        let s = "your computer is infected call 1-800-555-0100";
+        assert_eq!(strip_symbols_and_emoji(s), s);
+    }
+
+    #[test]
+    fn normalize_for_match_collapses_mid_word_emoji() {
+        // ⚠️ inserted between letters: pipeline produces "infected"
+        assert_eq!(normalize_for_match("inf\u{26A0}\u{FE0F}ected"), "infected");
+        // Combination: warning emoji + zero-width + Cyrillic homoglyph + leet
+        assert_eq!(
+            normalize_for_match("⚠️ Y\u{200B}our C\u{043E}mputer is 1nfected ⚠️"),
+            " your computer is infected "
+        );
     }
 
     #[test]

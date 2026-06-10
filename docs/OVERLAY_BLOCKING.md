@@ -94,18 +94,23 @@ still decides a `Block`.
 ### Text normalization (defeating evasion)
 
 Before a title is matched against the blocklist it is run through
-`confusables::normalize_for_match`, which composes four offline,
+`confusables::normalize_for_match`, which composes five offline,
 dependency-free passes:
 
-1. **strip invisibles** — drop zero-width and BiDi-control characters
+1. **strip emoji and symbols** — drop characters in U+2600–U+27BF (Misc
+   Symbols + Dingbats: ⚠️ ☎ ✗ ✘ etc.) and U+1F000–U+1FFFF (emoji
+   blocks: 🔴 🚨 etc.). Attackers insert these mid-word to split a keyword
+   past a naive substring match (`"inf⚠️ected"` → `"infected"` after strip).
+   CJK/Kana (U+3000–U+9FFF+) is **not** stripped; Japanese titles are intact.
+2. **strip invisibles** — drop zero-width and BiDi-control characters
    (`U+200B…200D`, `U+FEFF`, soft hyphen, `U+202A…202E`, …) that split a
    word past a naive substring match.
-2. **fold confusables** — Cyrillic/Greek/full-width look-alikes → ASCII
+3. **fold confusables** — Cyrillic/Greek/full-width look-alikes → ASCII
    skeleton (e.g. Cyrillic `і` → `i`).
-3. **fold leetspeak in words** — `0→o 1→i 3→e 4→a 5→s 7→t`, but only
+4. **fold leetspeak in words** — `0→o 1→i 3→e 4→a 5→s 7→t`, but only
    inside tokens that already contain a letter, so phone numbers and
    counts (pure-digit runs) are left intact.
-4. **lowercase**.
+5. **lowercase**.
 
 The `mixed_script` signal is computed on the **raw** title and host
 *before* folding (folding erases the evidence). It deliberately ignores

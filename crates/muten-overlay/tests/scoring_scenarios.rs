@@ -682,3 +682,68 @@ fn ip_alarm_lure_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── Geometry-only bounded-composite regression guards ─────────────────────
+
+#[test]
+fn sudden_fullscreen_takeover_alone_stays_suspicious_not_block() {
+    // An unsolicited, brand-new, full-screen, always-on-top window with NO
+    // content/provenance tell (no title, no URL, no phone number) must NOT
+    // reach Block — the geometry shape is bounded to preserve observe-first.
+    let v = classify(
+        &muten_overlay::OverlayWindow {
+            title: "".into(),
+            url: None,
+            coverage_percent: 99,
+            topmost: true,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 50, // very_new: appeared 50 ms ago
+        },
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "sudden_fullscreen_takeover"),
+        "expected sudden_fullscreen_takeover; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score < BLOCK_THRESHOLD,
+        "geometry-only sudden_fullscreen_takeover must stay below Block; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn sudden_fullscreen_takeover_plus_phone_reaches_block() {
+    // The same shape WITH a phone number — a content tell — pushes past Block.
+    let v = classify(
+        &muten_overlay::OverlayWindow {
+            title: "call 1-800-555-0100 for support".into(),
+            url: None,
+            coverage_percent: 99,
+            topmost: true,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 50,
+        },
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "sudden_fullscreen_takeover"),
+        "expected sudden_fullscreen_takeover; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "phone_number"),
+        "expected phone_number; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= BLOCK_THRESHOLD,
+        "sudden_fullscreen_takeover + phone_number must reach Block; score = {}",
+        v.score
+    );
+}
