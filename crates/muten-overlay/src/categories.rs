@@ -122,7 +122,8 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         | "qr_code_lure"
         | "ip_alarm_lure"
         | "package_fee_lure"
-        | "sextortion_lure" => Some(InterfaceInterference),
+        | "sextortion_lure"
+        | "gift_card_demand" => Some(InterfaceInterference),
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }

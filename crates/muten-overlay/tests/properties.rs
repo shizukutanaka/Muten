@@ -893,4 +893,33 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_sextortion_lure(&s));
         }
     }
+
+    // ── E26: gift_card_demand ─────────────────────────────────────────────
+
+    /// has_gift_card_demand never panics on arbitrary Unicode input.
+    #[test]
+    fn has_gift_card_demand_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_gift_card_demand(&s);
+    }
+
+    /// Strings lacking gift_card_noun AND payment_instruction simultaneously must not fire.
+    #[test]
+    fn plain_ascii_never_fires_gift_card_demand(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let gift_card_noun = has("gift card") || has("itunes card")
+            || has("google play card") || has("steam gift card")
+            || has("amazon gift card") || has("apple gift card")
+            || has("ebay gift card") || has("vanilla card")
+            || has("prepaid card") || has("gift cards");
+        let payment_instruction = has("send codes") || has("send the codes")
+            || has("read me the codes") || has("read the codes")
+            || has("scratch the card") || has("pay using gift card")
+            || has("pay with gift card") || has("pay in gift card")
+            || has("gift card codes") || has("card codes")
+            || has("purchase gift card") || has("buy gift card")
+            || has("go buy") || has("go to the store") || has("nearest store");
+        if !(gift_card_noun && payment_instruction) {
+            prop_assert!(!muten_overlay::confusables::has_gift_card_demand(&s));
+        }
+    }
 }

@@ -876,3 +876,70 @@ fn sextortion_lure_reaches_block_with_unsolicited_fullscreen() {
         v.score
     );
 }
+
+// ── E26: gift_card_demand ─────────────────────────────────────────────────
+
+#[test]
+fn gift_card_demand_reaches_suspicious() {
+    let v = classify(
+        &alert_window("please purchase gift cards and send codes to unlock your computer"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "gift_card_demand"),
+        "expected gift_card_demand; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= SUSPICIOUS_THRESHOLD,
+        "gift_card_demand must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn legitimate_gift_card_store_does_not_fire_gift_card_demand() {
+    let v = classify(
+        &muten_overlay::OverlayWindow {
+            title: "check your amazon gift card balance".into(),
+            url: None,
+            coverage_percent: 25,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 2_000,
+        },
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "gift_card_demand"),
+        "gift_card_demand must not fire for user-initiated gift-card page; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn gift_card_demand_plus_phone_reaches_block() {
+    let v = classify(
+        &alert_window(
+            "go to the nearest store buy gift cards call 1-800-555-0199 send codes to fix virus",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "gift_card_demand"),
+        "expected gift_card_demand; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "phone_number"),
+        "expected phone_number; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= BLOCK_THRESHOLD,
+        "gift_card_demand + phone must reach Block; score = {}",
+        v.score
+    );
+}

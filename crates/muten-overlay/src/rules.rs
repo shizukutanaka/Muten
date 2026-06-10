@@ -138,6 +138,8 @@ pub enum CompositeCondition {
     HasPackageFeeLure,
     /// The `sextortion_lure` signal fired (E25 — webcam recording extortion overlay).
     HasSextortionLure,
+    /// The `gift_card_demand` signal fired (E26 — gift-card payment demand).
+    HasGiftCardDemand,
 }
 
 impl CompositeCondition {
@@ -166,6 +168,7 @@ impl CompositeCondition {
             "has_ip_alarm_lure" => Some(Self::HasIpAlarmLure),
             "has_package_fee_lure" => Some(Self::HasPackageFeeLure),
             "has_sextortion_lure" => Some(Self::HasSextortionLure),
+            "has_gift_card_demand" => Some(Self::HasGiftCardDemand),
             _ => None,
         }
     }
@@ -1133,8 +1136,9 @@ mod tests {
             "composite: share_check 30 has_screen_share_lure has_phone_number",
             "composite: qr_phone 45 has_qr_code_lure has_phone_number",
             "composite: ip_alarm_phone 45 has_ip_alarm_lure has_phone_number",
+            "composite: gift_card_phone 50 has_gift_card_demand has_phone_number",
         ]);
-        assert_eq!(rs.composite_count(), 10);
+        assert_eq!(rs.composite_count(), 11);
         let names: Vec<&str> = rs
             .composite_rules()
             .iter()
@@ -1171,5 +1175,14 @@ mod tests {
         assert!(ip_rule
             .conditions
             .contains(&CompositeCondition::HasIpAlarmLure));
+        // E26 condition parses correctly
+        let gc_rule = rs
+            .composite_rules()
+            .iter()
+            .find(|r| r.name == "gift_card_phone")
+            .unwrap();
+        assert!(gc_rule
+            .conditions
+            .contains(&CompositeCondition::HasGiftCardDemand));
     }
 }

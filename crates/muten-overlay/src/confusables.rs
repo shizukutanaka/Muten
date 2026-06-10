@@ -1161,6 +1161,61 @@ pub fn has_sextortion_lure(s: &str) -> bool {
     camera_cue && extortion_word
 }
 
+/// E26 — Gift-card payment demand.
+///
+/// Tech-support and authority-impersonation scams routinely instruct victims
+/// to purchase gift cards and read out (or type in) the redemption codes as
+/// "payment" to unlock their device, pay a "fine", or settle a fabricated
+/// debt.  The FTC reports gift cards as the #1 payment method in tech-support
+/// fraud losses.  No legitimate software ever asks users to purchase or send
+/// gift-card codes through an overlay.
+///
+/// Two groups (AND-pair):
+/// - gift_card_noun: names a specific gift-card product or "gift card" /
+///   "prepaid card" in general.
+/// - payment_instruction: language that directs the victim to purchase, send,
+///   or read out the codes (buy, purchase, send codes, scratch, etc.).
+///
+/// The AND-pair ensures plain gift-card redemption UIs (which have neither
+/// a buy instruction nor a payment send instruction) do not fire.
+/// alert_shaped guard at the call site prevents FPs on legitimate gift-card
+/// store fronts (user-initiated, closable windows).
+#[must_use]
+pub fn has_gift_card_demand(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // gift_card_noun: specific card product names or generic "gift card"
+    let gift_card_noun = has("gift card")
+        || has("itunes card")
+        || has("google play card")
+        || has("steam gift card")
+        || has("amazon gift card")
+        || has("apple gift card")
+        || has("ebay gift card")
+        || has("vanilla card")
+        || has("prepaid card")
+        || has("gift cards");
+
+    // payment_instruction: buy-or-send-codes language unique to the scam
+    let payment_instruction = has("send codes")
+        || has("send the codes")
+        || has("read me the codes")
+        || has("read the codes")
+        || has("scratch the card")
+        || has("pay using gift card")
+        || has("pay with gift card")
+        || has("pay in gift card")
+        || has("gift card codes")
+        || has("card codes")
+        || has("purchase gift card")
+        || has("buy gift card")
+        || has("go buy")
+        || has("go to the store")
+        || has("nearest store");
+
+    gift_card_noun && payment_instruction
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2264,6 +2319,73 @@ mod tests {
         // Generic privacy notice
         assert!(!has_sextortion_lure(
             "we do not record or store your video calls"
+        ));
+    }
+
+    // ── has_gift_card_demand ──────────────────────────────────────────────
+
+    #[test]
+    fn gift_card_demand_fires_on_tech_support_payment() {
+        // Classic "buy iTunes gift cards to pay us" tech-support-scam pattern
+        assert!(has_gift_card_demand(
+            "please buy gift cards from the store and send codes to fix your computer"
+        ));
+        assert!(has_gift_card_demand(
+            "purchase gift cards now to unlock your device"
+        ));
+        assert!(has_gift_card_demand(
+            "go to the store and buy amazon gift card then read me the codes"
+        ));
+        assert!(has_gift_card_demand(
+            "pay using gift cards to remove the virus"
+        ));
+    }
+
+    #[test]
+    fn gift_card_demand_fires_on_send_codes_pattern() {
+        // "send codes" / "card codes" patterns with a specific card product
+        assert!(has_gift_card_demand(
+            "scratch the itunes card and send codes to our agent"
+        ));
+        assert!(has_gift_card_demand(
+            "please send the gift card codes to this number"
+        ));
+        assert!(has_gift_card_demand(
+            "gift card codes required to proceed with your case"
+        ));
+        assert!(has_gift_card_demand("itunes card send the codes to verify"));
+    }
+
+    #[test]
+    fn gift_card_demand_fires_on_store_direction() {
+        // Authority-impersonation variants directing victim to a physical store
+        assert!(has_gift_card_demand(
+            "go to the nearest store and purchase gift cards for the fine"
+        ));
+        assert!(has_gift_card_demand(
+            "go buy google play card and call us back with the numbers"
+        ));
+    }
+
+    #[test]
+    fn gift_card_demand_does_not_fire_on_benign() {
+        // Gift-card redemption UI — no payment_instruction
+        assert!(!has_gift_card_demand(
+            "enter your gift card code below to add balance"
+        ));
+        // Gift-card marketing — no buy/send-codes coercion
+        assert!(!has_gift_card_demand(
+            "send a gift card to a friend for their birthday"
+        ));
+        // Gift card balance check — no instruction to send codes
+        assert!(!has_gift_card_demand("check your amazon gift card balance"));
+        // Crypto news with "card" — no gift_card_noun
+        assert!(!has_gift_card_demand(
+            "buy bitcoin with debit card on our exchange"
+        ));
+        // Generic purchase page — no gift card product
+        assert!(!has_gift_card_demand(
+            "purchase now to unlock premium features"
         ));
     }
 }

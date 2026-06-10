@@ -303,6 +303,20 @@ MSRV 1.75, 286 tests.
   FP firewall (user-initiated / closable windows MUST Allow), and leet/homoglyph
   evasion resistance. These serve as regression guards: any signal removal or
   weight change that drops a known scam below Suspicious will be caught.
+- **Gift-card payment demand** (`gift_card_demand`; E26). `has_gift_card_demand(s)`
+  fires when the normalized title contains a *gift_card_noun* ("gift card/gift cards",
+  "itunes card", "google play card", "steam gift card", "amazon/apple/ebay gift card",
+  "prepaid card", "vanilla card") AND a *payment_instruction* (buy/purchase gift card,
+  send codes/the codes, read the codes/me the codes, scratch the card, pay with/using/in
+  gift card, go to the store, nearest store).  Tech-support and authority-impersonation
+  scams routinely instruct victims to purchase gift cards and read out the codes as
+  "payment" to unlock a device, pay a fabricated fine, or satisfy a fake debt.  No
+  legitimate software ever demands payment in gift cards through an alert-shaped overlay.
+  FTC: gift cards are the #1 payment method in tech-support fraud losses.  Weight
+  `W_GIFT_CARD_DEMAND = 30` (highest content-signal weight, reflecting near-zero FP
+  rate in combination with the alert_shaped guard). Category: `InterfaceInterference`.
+  MITRE: T1566.  7 confusables unit tests + 3 lib unit tests + 2 property tests + 3
+  scoring scenarios; 569 tests total. (E26.)
 - **Sextortion / webcam-recording extortion lure** (`sextortion_lure`; E25).
   `has_sextortion_lure(s)` fires when the normalized title contains a *camera_cue*
   ("your camera" / "your webcam" / "we have recorded" / "have been recording" /
@@ -314,7 +328,7 @@ MSRV 1.75, 286 tests.
   25` (slightly above other content signals — the AND-pair is very high specificity).
   Category: `InterfaceInterference`.  MITRE: T1566.  alert_shaped guard prevents
   legitimate webcam-permission dialogs from firing.  6 confusables unit tests +
-  3 lib unit tests + 2 property tests + 3 scoring scenarios; 556 tests total. (E25.)
+  3 lib unit tests + 2 property tests + 3 scoring scenarios. (E25.)
 - **Package / parcel customs-fee advance-fee lure** (`package_fee_lure`; E24).
   `has_package_fee_lure(s)` fires when the normalized title contains a *package_noun*
   ("your package/parcel/shipment/delivery/order") AND a *fee_demand* ("customs fee/

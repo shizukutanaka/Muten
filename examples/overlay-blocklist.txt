@@ -95,6 +95,23 @@ title: your prize expires soon claim now
 glob: * won a * gift card *              # "You won a $500 Amazon gift card — claim"
 
 # ─────────────────────────────────────────────────────────────────
+# GIFT CARD PAYMENT DEMAND (E26). FTC: gift cards are the #1 payment
+# method in tech-support fraud. No legitimate software ever demands
+# payment in gift cards via an alert-shaped overlay.
+# Supplementary blocklist titles (heuristic already fires via E26
+# has_gift_card_demand; these catch operator-formatted titles).
+# ─────────────────────────────────────────────────────────────────
+title: please buy itunes gift cards and send codes
+title: purchase gift cards to unlock your computer
+title: go buy amazon gift card and call us back
+title: buy gift cards to remove the virus
+title: send gift card codes to clear your account
+title: your device is locked pay with gift cards
+title: buy google play cards and read codes to agent
+glob: * buy * gift card* and * code*     # "buy iTunes gift cards and send codes"
+glob: * purchase gift card* to *         # "purchase gift cards to unlock"
+
+# ─────────────────────────────────────────────────────────────────
 # CRYPTO / REFUND / "RECOVERY" RE-VICTIMIZATION scams. FBI IC3 2024:
 # crypto-investment fraud drove the largest reported losses, and
 # "recovery" operators re-target prior victims promising to claw back

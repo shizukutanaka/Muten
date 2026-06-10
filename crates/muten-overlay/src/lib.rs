@@ -281,6 +281,9 @@ fn signal_phrase(signal: &str) -> &str {
         "sextortion_lure" => {
             "claims to have webcam footage and demands cryptocurrency payment to prevent release"
         }
+        "gift_card_demand" => {
+            "instructs the user to purchase gift cards and send or read out the redemption codes"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -378,6 +381,7 @@ const W_QR_CODE_LURE: i32 = 20; // QR/quishing overlay: qr_noun + verify_action 
 const W_IP_ALARM: i32 = 20; // "your IP address has been hacked/flagged" — tech-support scam staple
 const W_PACKAGE_FEE: i32 = 20; // customs/delivery fee scam: package_noun + fee_demand (FTC 2024 #2)
 const W_SEXTORTION: i32 = 25; // webcam recording + crypto payment demand (FBI IC3 2024 +42% YoY)
+const W_GIFT_CARD_DEMAND: i32 = 30; // gift-card payment demand: card_noun + buy/send-codes (FTC #1 tech-support loss)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -432,6 +436,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "ip_alarm_lure" => Some(W_IP_ALARM),
         "package_fee_lure" => Some(W_PACKAGE_FEE),
         "sextortion_lure" => Some(W_SEXTORTION),
+        "gift_card_demand" => Some(W_GIFT_CARD_DEMAND),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -475,6 +480,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "ip_alarm_lure"
             | "package_fee_lure"
             | "sextortion_lure"
+            | "gift_card_demand"
             | "remote_access_lure"
     )
 }
@@ -1118,6 +1124,20 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         signals.push("sextortion_lure".into());
     }
 
+    // Gift-card payment demand (FTC: gift cards are the #1 payment method
+    // in tech-support fraud losses). Scam overlays instruct victims to
+    // purchase iTunes / Google Play / Amazon gift cards and send or read out
+    // the redemption codes to a fake "support agent" or "fine collector".
+    // No legitimate software ever demands payment in gift cards through an
+    // overlay window. Two groups: gift_card_noun (names a specific card
+    // product or "gift cards" generically) AND payment_instruction
+    // (buy/purchase/send codes/scratch/go to the store/read the codes).
+    // alert_shaped guard: legitimate gift-card redemption UIs are closable.
+    if alert_shaped && confusables::has_gift_card_demand(&normalized_title) {
+        score += rules.weight_of("gift_card_demand", W_GIFT_CARD_DEMAND);
+        signals.push("gift_card_demand".into());
+    }
+
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
     // seize the machine. These tools are legitimate, so their name alone
@@ -1429,6 +1449,7 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasIpAlarmLure => has_sig("ip_alarm_lure"),
         C::HasPackageFeeLure => has_sig("package_fee_lure"),
         C::HasSextortionLure => has_sig("sextortion_lure"),
+        C::HasGiftCardDemand => has_sig("gift_card_demand"),
     }
 }
 
@@ -4602,6 +4623,61 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("ip_alarm_lure"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E26: gift_card_demand ─────────────────────────────────────────────
+
+    #[test]
+    fn gift_card_demand_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "please purchase gift cards and send codes to unlock your computer".into(),
+            url: None,
+            coverage_percent: 0,
+            topmost: false,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 300,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "gift_card_demand"),
+            "expected gift_card_demand; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_GIFT_CARD_DEMAND);
+    }
+
+    #[test]
+    fn gift_card_demand_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        // Legitimate gift-card redemption screen — user-initiated, has close button.
+        let w = OverlayWindow {
+            title: "enter your amazon gift card code to add balance".into(),
+            url: None,
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 3_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "gift_card_demand"),
+            "gift_card_demand must not fire for user-initiated gift-card redemption; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn gift_card_demand_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("gift_card_demand"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }
