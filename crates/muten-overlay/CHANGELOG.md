@@ -244,6 +244,17 @@ MSRV 1.75, 286 tests.
   (the cloud infrastructure disguises the attacker's real origin).
   `signal_phrase()` phrase and `signal_weight()` entry added.
   6 new unit tests; 376 tests total. (E10.)
+- **Expanded `KNOWN_BRANDS` and `BRAND_LURE_WORDS`** (D11). `KNOWN_BRANDS`
+  grows from 19 to 33 entries, adding: payment-fraud targets (venmo, zelle,
+  cashapp, americanexpress), social/messaging platforms (twitter, discord),
+  AV brands most impersonated by TSS (norton, mcafee), signing/document
+  service (docusign), crypto ecosystem (ethereum, kraken), and JP-market
+  carriers (docomo, softbank, rakuten); all used by `brand_impersonation`,
+  `combosquat_brand`, and `typosquat_brand`.  `BRAND_LURE_WORDS` grows from
+  19 to 27 with: remove, transfer, refund, claim, portal, center, protection,
+  payment — drawn from the dnstwist corpus and IC3 2025 combosquat examples.
+  5 new unit tests (norton/mcafee combosquat, JP brand impersonation,
+  venmo/zelle combosquat, real-brand FP sanity). 381 tests total. (D11.)
 
 ### Changed (breaking)
 - **`Verdict.signals: Vec<String>`** (was `Vec<&'static str>`). Required to

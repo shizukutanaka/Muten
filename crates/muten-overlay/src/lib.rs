@@ -411,27 +411,51 @@ fn is_high_fidelity(signal: &str) -> bool {
 /// enough that an accidental skeleton collision with an *unrelated*
 /// legitimate domain is vanishingly unlikely — short or dictionary-word
 /// brands are intentionally omitted to stay false-positive-averse.
+///
+/// Organised by category for readability; each entry is the all-lowercase
+/// ASCII skeleton (what `confusables::skeleton` reduces the brand to).
 const KNOWN_BRANDS: &[&str] = &[
+    // ── Payment / banking ───────────────────────────────────────────
     "paypal",
+    "wellsfargo",
+    "bankofamerica",
+    "americanexpress",
+    "venmo",
+    "cashapp",
+    "zelle",
+    // ── Technology (OS / productivity / cloud) ──────────────────────
     "microsoft",
     "google",
     "apple",
     "amazon",
+    "windows",
+    "outlook",
+    "office365",
+    "onedrive",
+    "icloud",
+    "dropbox",
+    // ── Social / communication ──────────────────────────────────────
     "facebook",
     "instagram",
     "whatsapp",
-    "netflix",
+    "twitter",
+    "discord",
     "linkedin",
-    "outlook",
-    "office365",
-    "windows",
+    "netflix",
+    // ── Security (AV / signing) — primary TSS impersonation targets ─
+    "norton",
+    "mcafee",
+    "docusign",
+    // ── Cryptocurrency / DeFi ───────────────────────────────────────
     "binance",
     "coinbase",
     "metamask",
-    "wellsfargo",
-    "bankofamerica",
-    "dropbox",
-    "icloud",
+    "ethereum",
+    "kraken",
+    // ── JP-market brands (docomo / softbank / rakuten) ──────────────
+    "docomo",
+    "softbank",
+    "rakuten",
 ];
 
 /// If any label of `host` is a homograph/typosquat of a [`KNOWN_BRANDS`]
@@ -546,6 +570,15 @@ const BRAND_LURE_WORDS: &[&str] = &[
     "confirm",
     "wallet",
     "auth",
+    // Extended lure vocabulary from threat-intel (dnstwist corpus + IC3 2025).
+    "remove",     // "norton-remove.net" — fake AV removal tool upsell
+    "transfer",   // "venmo-transfer.com" — P2P payment fraud
+    "refund",     // "amazon-refund.net" — refund re-victimization (IC3 2024)
+    "claim",      // "coinbase-claim.com" — crypto reward scam
+    "portal",     // "paypal-portal.net" — credential phishing
+    "center",     // "microsoft-center.com" — fake support center
+    "protection", // "norton-protection.com" — AV upsell lure
+    "payment",    // "zelle-payment.net" / "paypal-payment.net" — P2P fraud
 ];
 
 /// Detect **combosquatting** (Kintis et al., ACM CCS 2017): a host label
@@ -3242,5 +3275,139 @@ mod tests {
         assert!(!is_cloud_storage_host("amazonaws.com"));
         assert!(!is_cloud_storage_host("example.com"));
         assert!(!is_cloud_storage_host(""));
+    }
+
+    // ── D11: Expanded KNOWN_BRANDS coverage ──────────────────────────
+
+    #[test]
+    fn norton_combosquat_fires() {
+        // norton-alert.com — combosquat AV+lure; Norton is the #1 TSS AV brand.
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "Norton Security Alert".into(),
+            coverage_percent: 80,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            age_ms: 0,
+            origin: Origin::UserInitiated,
+            url: Some("https://norton-alert.com/warning".into()),
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "combosquat_brand"),
+            "combosquat must fire for 'norton-alert.com'; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn mcafee_combosquat_fires() {
+        // mcafee-remove.com — combosquat AV+lure.
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "McAfee Total Protection".into(),
+            coverage_percent: 50,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            age_ms: 0,
+            origin: Origin::UserInitiated,
+            url: Some("https://mcafee-remove.net/scan".into()),
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "combosquat_brand"),
+            "combosquat must fire for 'mcafee-remove.net'; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn jp_brands_detected_via_typosquat() {
+        // "docom0.com" (digit-0 substitution for 'o') → skeleton "docomo" → typosquat.
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "Security warning".into(),
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            age_ms: 0,
+            origin: Origin::Unsolicited,
+            url: Some("https://docom0.co.jp/alert".into()),
+        };
+        let v = classify(&w, &rules);
+        // skeleton("docom0") folds host-confusables: 0→o → "docomo"
+        // That's distance 0 → brand_impersonation, not typosquat.
+        assert!(
+            v.signals.iter().any(|s| s == "brand_impersonation"),
+            "brand_impersonation must fire for 'docom0' (skeleton 'docomo'); got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn venmo_zelle_combosquat_fire() {
+        for (host, brand) in [
+            ("venmo-transfer.com", "venmo"),
+            ("zelle-payment.net", "zelle"),
+        ] {
+            let rules = Ruleset::from_lines(&[]);
+            let w = OverlayWindow {
+                title: "Payment verification required".into(),
+                coverage_percent: 60,
+                topmost: false,
+                has_close_button: true,
+                blocks_input: false,
+                age_ms: 0,
+                origin: Origin::UserInitiated,
+                url: Some(format!("https://{host}/verify")),
+            };
+            let v = classify(&w, &rules);
+            assert!(
+                v.signals.iter().any(|s| s == "combosquat_brand"),
+                "combosquat must fire for '{host}' ({brand}); got {:?}",
+                v.signals
+            );
+        }
+    }
+
+    #[test]
+    fn real_brand_domains_do_not_fire_impersonation() {
+        // Sanity check for new brands: literal brand domain must never fire
+        // brand_impersonation or typosquat_brand.
+        for brand_host in [
+            "norton.com",
+            "mcafee.com",
+            "venmo.com",
+            "zelle.com",
+            "docomo.ne.jp",
+            "softbank.jp",
+            "rakuten.co.jp",
+        ] {
+            let rules = Ruleset::from_lines(&[]);
+            let w = OverlayWindow {
+                title: "Account notice".into(),
+                coverage_percent: 50,
+                topmost: false,
+                has_close_button: true,
+                blocks_input: false,
+                age_ms: 0,
+                origin: Origin::UserInitiated,
+                url: Some(format!("https://{brand_host}/account")),
+            };
+            let v = classify(&w, &rules);
+            assert!(
+                !v.signals.iter().any(|s| s == "brand_impersonation"),
+                "brand_impersonation must NOT fire for '{brand_host}'; got {:?}",
+                v.signals
+            );
+            assert!(
+                !v.signals.iter().any(|s| s == "typosquat_brand"),
+                "typosquat_brand must NOT fire for '{brand_host}'; got {:?}",
+                v.signals
+            );
+        }
     }
 }
