@@ -787,4 +787,47 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_crypto_drain_lure(&s));
         }
     }
+
+    // ── E22: qr_code_lure ─────────────────────────────────────────────────
+
+    /// has_qr_code_lure never panics on arbitrary Unicode input.
+    #[test]
+    fn has_qr_code_lure_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_qr_code_lure(&s);
+    }
+
+    /// Strings that lack qr_noun AND verify_action simultaneously must not fire.
+    #[test]
+    fn plain_ascii_never_fires_qr_code_lure(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let qr_noun = (has("qr") && has("code")) || has("qr-code") || (has("qr") && has("scan"));
+        let verify_action = has("verify") || has("confirm") || has("authenticate")
+            || has("access") || has("scan to") || has("scan now")
+            || has("continue") || has("proceed") || has("validate");
+        if !(qr_noun && verify_action) {
+            prop_assert!(!muten_overlay::confusables::has_qr_code_lure(&s));
+        }
+    }
+
+    // ── E23: ip_alarm_lure ────────────────────────────────────────────────
+
+    /// has_ip_alarm_lure never panics on arbitrary Unicode input.
+    #[test]
+    fn has_ip_alarm_lure_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_ip_alarm_lure(&s);
+    }
+
+    /// Strings lacking ip_subject AND alarm_word simultaneously must not fire.
+    #[test]
+    fn plain_ascii_never_fires_ip_alarm_lure(s in "[a-z .,!?0-9]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let ip_subject = has("ip address") || has("your ip");
+        let alarm_word = has("hack") || has("infect") || has("flag")
+            || has("report") || has("stolen") || has("expos") || has("compromis")
+            || has("block") || has("detect") || has("trac") || has("suspend")
+            || has("breach");
+        if !(ip_subject && alarm_word) {
+            prop_assert!(!muten_overlay::confusables::has_ip_alarm_lure(&s));
+        }
+    }
 }

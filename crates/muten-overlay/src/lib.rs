@@ -269,6 +269,12 @@ fn signal_phrase(signal: &str) -> &str {
         "screen_share_lure" => {
             "instructs the user to share their screen or grant desktop access to a fake support agent"
         }
+        "qr_code_lure" => {
+            "instructs the user to scan a QR code to 'verify' or 'continue' (quishing)"
+        }
+        "ip_alarm_lure" => {
+            "claims the user's IP address has been hacked, flagged, or compromised"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -362,6 +368,8 @@ const W_DOWNLOAD_TRAP: i32 = 20; // fake download/install/update gate: install_d
 const W_PRIZE_LURE: i32 = 20; // fake prize/lottery/gift-card overlay: prize-word + claim/collect action
 const W_CRYPTO_DRAIN: i32 = 25; // wallet-drain overlay: wallet alarm / coerce-connect / seed-phrase harvest
 const W_SCREEN_SHARE: i32 = 20; // instructs victim to share screen/desktop with a "support agent"
+const W_QR_CODE_LURE: i32 = 20; // QR/quishing overlay: qr_noun + verify_action (FBI IC3 2025)
+const W_IP_ALARM: i32 = 20; // "your IP address has been hacked/flagged" — tech-support scam staple
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -412,6 +420,8 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "prize_lure" => Some(W_PRIZE_LURE),
         "crypto_drain_lure" => Some(W_CRYPTO_DRAIN),
         "screen_share_lure" => Some(W_SCREEN_SHARE),
+        "qr_code_lure" => Some(W_QR_CODE_LURE),
+        "ip_alarm_lure" => Some(W_IP_ALARM),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -451,6 +461,8 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "prize_lure"
             | "crypto_drain_lure"
             | "screen_share_lure"
+            | "qr_code_lure"
+            | "ip_alarm_lure"
             | "remote_access_lure"
     )
 }
@@ -1046,6 +1058,30 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         signals.push("screen_share_lure".into());
     }
 
+    // QR code / quishing lure (APWG Q4 2024, FBI IC3 2025). Scam overlays
+    // display a QR code and instruct the user to scan it to "verify identity"
+    // or "continue" — the QR destination bypasses the URL filter the overlay
+    // host may be subject to.  Two groups: qr_noun ("qr code" / "qr-code" /
+    // "scan qr") AND verify_action (verify/confirm/authenticate/access/…).
+    // alert_shaped guard: legitimate QR code displays (e-ticket, payment) are
+    // user-initiated and closable.
+    if alert_shaped && confusables::has_qr_code_lure(&normalized_title) {
+        score += rules.weight_of("qr_code_lure", W_QR_CODE_LURE);
+        signals.push("qr_code_lure".into());
+    }
+
+    // IP address alarm lure (Malwarebytes 2025, Microsoft Security 2024).
+    // Tech-support scam overlays display "Your IP address has been hacked /
+    // flagged / reported to authorities" to panic victims into calling a fake
+    // support line. Two groups: ip_subject ("ip address" / "your ip") AND
+    // alarm_word (hack/infect/flag/report/…).
+    // alert_shaped guard: legitimate IP-info pages show the address without
+    // alarm language, and are user-opened and closable.
+    if alert_shaped && confusables::has_ip_alarm_lure(&normalized_title) {
+        score += rules.weight_of("ip_alarm_lure", W_IP_ALARM);
+        signals.push("ip_alarm_lure".into());
+    }
+
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
     // seize the machine. These tools are legitimate, so their name alone
@@ -1353,6 +1389,8 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasCryptoDrainLure => has_sig("crypto_drain_lure"),
         C::HasPrizeLure => has_sig("prize_lure"),
         C::HasDownloadTrapLure => has_sig("download_trap_lure"),
+        C::HasQrCodeLure => has_sig("qr_code_lure"),
+        C::HasIpAlarmLure => has_sig("ip_alarm_lure"),
     }
 }
 
@@ -4309,6 +4347,116 @@ mod tests {
             v.signals.iter().any(|s| s == "prize_coercive"),
             "composite prize_coercive must fire; got {:?}",
             v.signals
+        );
+    }
+
+    // ── E22: qr_code_lure ─────────────────────────────────────────────────
+
+    #[test]
+    fn qr_code_lure_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "scan the qr code to verify your identity".into(),
+            url: None,
+            coverage_percent: 0,
+            topmost: false,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 300,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "qr_code_lure"),
+            "expected qr_code_lure; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_QR_CODE_LURE);
+    }
+
+    #[test]
+    fn qr_code_lure_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        // Legitimate e-ticket QR display — user-initiated, has close button.
+        let w = OverlayWindow {
+            title: "show your qr code at the gate".into(),
+            url: None,
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "qr_code_lure"),
+            "qr_code_lure must not fire for user-initiated closable QR display; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn qr_code_lure_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("qr_code_lure"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E23: ip_alarm_lure ────────────────────────────────────────────────
+
+    #[test]
+    fn ip_alarm_lure_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "your ip address has been hacked call support now".into(),
+            url: None,
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "ip_alarm_lure"),
+            "expected ip_alarm_lure; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_IP_ALARM);
+    }
+
+    #[test]
+    fn ip_alarm_lure_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        // Legitimate "what is my IP" page — user-initiated, closable.
+        let w = OverlayWindow {
+            title: "your ip address is 203.0.113.45".into(),
+            url: None,
+            coverage_percent: 15,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 3_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "ip_alarm_lure"),
+            "ip_alarm_lure must not fire for user-initiated IP-info page; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn ip_alarm_lure_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("ip_alarm_lure"),
+            Some(DarkPatternCategory::InterfaceInterference)
         );
     }
 }

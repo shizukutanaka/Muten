@@ -549,3 +549,136 @@ fn authority_lure_plus_crypto_drain_amplifies_score() {
         v.score
     );
 }
+
+// ── E22: qr_code_lure ─────────────────────────────────────────────────────
+
+#[test]
+fn qr_code_lure_reaches_suspicious() {
+    let v = classify(
+        &alert_window("scan qr code to verify your identity"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "qr_code_lure"),
+        "expected qr_code_lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= SUSPICIOUS_THRESHOLD,
+        "qr_code_lure must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn legitimate_qr_display_does_not_fire_qr_code_lure() {
+    // E-ticket / boarding-pass QR: user-initiated, closable, low coverage.
+    let v = classify(
+        &muten_overlay::OverlayWindow {
+            title: "show your qr code at the gate".into(),
+            url: None,
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        },
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "qr_code_lure"),
+        "qr_code_lure must not fire on user-initiated QR display; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn qr_code_lure_plus_phone_reaches_block() {
+    // Quishing overlay with phone: "scan QR or call 1-800-555-0100 to verify".
+    let v = classify(
+        &alert_window("scan qr code to verify your account or call 1-800-555-0100"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "qr_code_lure"),
+        "expected qr_code_lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "phone_number"),
+        "expected phone_number; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= BLOCK_THRESHOLD,
+        "qr_code_lure + phone_number must reach Block; score = {}",
+        v.score
+    );
+}
+
+// ── E23: ip_alarm_lure ────────────────────────────────────────────────────
+
+#[test]
+fn ip_alarm_lure_reaches_suspicious() {
+    let v = classify(
+        &alert_window("your ip address has been hacked contact support"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "ip_alarm_lure"),
+        "expected ip_alarm_lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= SUSPICIOUS_THRESHOLD,
+        "ip_alarm_lure must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn ip_info_page_does_not_fire_ip_alarm_lure() {
+    // Legitimate "what is my IP" page: user-initiated, closable, no alarm word.
+    let v = classify(
+        &muten_overlay::OverlayWindow {
+            title: "your ip address is 203.0.113.45".into(),
+            url: None,
+            coverage_percent: 15,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 3_000,
+        },
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "ip_alarm_lure"),
+        "ip_alarm_lure must not fire on user-initiated IP info page; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn ip_alarm_lure_plus_phone_reaches_block() {
+    let v = classify(
+        &alert_window("your ip address has been flagged call 1-800-555-0100 immediately"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "ip_alarm_lure"),
+        "expected ip_alarm_lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "phone_number"),
+        "expected phone_number; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= BLOCK_THRESHOLD,
+        "ip_alarm_lure + phone_number must reach Block; score = {}",
+        v.score
+    );
+}

@@ -130,6 +130,10 @@ pub enum CompositeCondition {
     HasPrizeLure,
     /// The `download_trap_lure` signal fired (E21 — fake download/update gate).
     HasDownloadTrapLure,
+    /// The `qr_code_lure` signal fired (E22 — QR/quishing overlay).
+    HasQrCodeLure,
+    /// The `ip_alarm_lure` signal fired (E23 — IP address alarm / tech-support scam).
+    HasIpAlarmLure,
 }
 
 impl CompositeCondition {
@@ -154,6 +158,8 @@ impl CompositeCondition {
             "has_crypto_drain_lure" => Some(Self::HasCryptoDrainLure),
             "has_prize_lure" => Some(Self::HasPrizeLure),
             "has_download_trap_lure" => Some(Self::HasDownloadTrapLure),
+            "has_qr_code_lure" => Some(Self::HasQrCodeLure),
+            "has_ip_alarm_lure" => Some(Self::HasIpAlarmLure),
             _ => None,
         }
     }
@@ -1119,8 +1125,10 @@ mod tests {
             "composite: cred_harvest 40 has_credential_harvest_cue has_phone_number",
             "composite: sub_check 25 has_subscription_lure has_blocklist_title",
             "composite: share_check 30 has_screen_share_lure has_phone_number",
+            "composite: qr_phone 45 has_qr_code_lure has_phone_number",
+            "composite: ip_alarm_phone 45 has_ip_alarm_lure has_phone_number",
         ]);
-        assert_eq!(rs.composite_count(), 8);
+        assert_eq!(rs.composite_count(), 10);
         let names: Vec<&str> = rs
             .composite_rules()
             .iter()
@@ -1140,5 +1148,22 @@ mod tests {
         assert!(crypto_rule
             .conditions
             .contains(&CompositeCondition::HasPhoneNumber));
+        // E22/E23 conditions parse correctly
+        let qr_rule = rs
+            .composite_rules()
+            .iter()
+            .find(|r| r.name == "qr_phone")
+            .unwrap();
+        assert!(qr_rule
+            .conditions
+            .contains(&CompositeCondition::HasQrCodeLure));
+        let ip_rule = rs
+            .composite_rules()
+            .iter()
+            .find(|r| r.name == "ip_alarm_phone")
+            .unwrap();
+        assert!(ip_rule
+            .conditions
+            .contains(&CompositeCondition::HasIpAlarmLure));
     }
 }

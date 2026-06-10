@@ -192,6 +192,14 @@ title: this device has been locked for security
 title: illegal activity has been detected
 title: illegal content detected
 title: your ip address has been flagged
+title: your ip has been flagged
+title: your ip address has been hacked
+title: ip address detected infected
+title: your ip address has been compromised
+title: your ip address compromised
+title: your ip address blocked
+title: ip address blocked
+title: your ip has been reported to the authorities
 title: federal bureau of investigation
 title: department of justice
 title: your computer has been blocked for legal reasons
@@ -264,6 +272,20 @@ title: このページを表示するにはプラグインが必要
 title: コーデックをインストールしてください
 title: 続行するにはダウンロードが必要
 title: ブラウザの更新が必要
+# QR/quishing lures (QRコード詐欺): APWG 2024, FBI IC3 2025.
+title: scan qr code to verify
+title: scan qr to confirm your account
+title: qr code verification required
+title: scan the qr code to continue
+title: scan qr code to authenticate
+title: qrコードをスキャンして確認
+title: qrコードで認証してください
+glob: *scan*qr*verif*
+glob: *qr*code*confirm*
+# IP alarm / tech-support scam (IPアドレス警告): Malwarebytes 2025.
+title: IPアドレスが不正アクセスを受けました
+title: あなたのIPアドレスがブロックされました
+title: IPアドレスがハッキングされました
 
 # ─────────────────────────────────────────────────────────────────
 # HOST / INFRASTRUCTURE PATTERNS
@@ -318,6 +340,8 @@ host: windows-defender-alert.example
 #   has_crypto_drain_lure     crypto_drain_lure signal (E19)
 #   has_prize_lure            prize_lure signal (E20)
 #   has_download_trap_lure    download_trap_lure signal (E21)
+#   has_qr_code_lure          qr_code_lure signal (E22)
+#   has_ip_alarm_lure         ip_alarm_lure signal (E23)
 #
 # BOUNDED-WEIGHT CONVENTION (FP-aversion):
 #   A composite covering only geometry/origin (no content tell) should
@@ -351,6 +375,12 @@ host: windows-defender-alert.example
 
 # Fake scanner + phone: rogue-AV call-in lure (supplement to scareware module).
 # composite: rogue_av_phone 45 has_fake_scanner_cue has_phone_number
+
+# QR quishing + phone: overlay with both a QR redirect AND a call-in number.
+# composite: qr_phone_block 45 has_qr_code_lure has_phone_number
+
+# IP alarm + phone: "your IP has been hacked — call this number immediately".
+# composite: ip_alarm_phone 45 has_ip_alarm_lure has_phone_number
 
 # ─────────────────────────────────────────────────────────────────
 # KNOWN SCAM PHONE NUMBERS  (phone:)

@@ -282,3 +282,39 @@ fn covers_download_trap_fake_plugin() {
         );
     }
 }
+
+#[test]
+fn covers_qr_code_quishing_scam() {
+    let rs = load_example_blocklist();
+    for title in [
+        "scan qr code to verify",
+        "scan qr to confirm your account",
+        "qr code verification required",
+        "scan the qr code to continue",
+        "scan qr code to authenticate",
+    ] {
+        let v = classify(&alert_with_title(title), &rs);
+        assert!(
+            v.signals.iter().any(|s| s == "blocklist_title"),
+            "QR/quishing phrase not covered: {title:?}"
+        );
+    }
+}
+
+#[test]
+fn covers_ip_alarm_tech_support_scam() {
+    let rs = load_example_blocklist();
+    for title in [
+        "your ip address has been hacked",
+        "ip address detected infected",
+        "your ip has been flagged",
+        "ip address blocked suspicious activity",
+        "your ip address compromised",
+    ] {
+        let v = classify(&alert_with_title(title), &rs);
+        assert!(
+            v.signals.iter().any(|s| s == "blocklist_title"),
+            "IP-alarm tech-support-scam phrase not covered: {title:?}"
+        );
+    }
+}

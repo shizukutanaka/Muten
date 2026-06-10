@@ -303,6 +303,33 @@ MSRV 1.75, 286 tests.
   FP firewall (user-initiated / closable windows MUST Allow), and leet/homoglyph
   evasion resistance. These serve as regression guards: any signal removal or
   weight change that drops a known scam below Suspicious will be caught.
+- **IP address alarm lure** (`ip_alarm_lure`; E23).
+  `has_ip_alarm_lure(s)` fires when the normalized title contains an *ip_subject*
+  ("ip address" or "your ip") AND an *alarm_word* (hack/infect/flag/report/stolen/
+  expos/compromis/block/detect/trac/suspend/breach). Covers the "Your IP address has
+  been hacked / flagged by authorities / reported" tech-support-scam staple; one of
+  the most common TSS overlay templates (Malwarebytes 2025, Microsoft Security 2024).
+  Victims are panicked into calling a fake support number.  Weight `W_IP_ALARM = 20`.
+  Category: `InterfaceInterference`.  MITRE: T1566.  `alert_shaped` guard prevents
+  legitimate IP-info pages ("Your IP address is 203.0.113.45") from firing.  5 positive
+  + 4 negative confusables unit tests + 3 lib unit tests + 2 property tests + 3 scoring
+  scenarios + 1 blocklist-coverage test + 1 MITRE taxonomy test; 524 tests total. (E23.)
+- **QR code / quishing lure** (`qr_code_lure`; E22).
+  `has_qr_code_lure(s)` fires when the normalized title contains a *qr_noun* ("qr code" /
+  "qr-code" / "scan qr") AND a *verify_action* (verify/confirm/authenticate/access/scan to/
+  scan now/continue/proceed/validate).  "Quishing" (QR phishing) is a major 2025-2026
+  growth vector: scam overlays display a QR code directing victims to a malicious site
+  that bypasses URL-filter controls (APWG Q4 2024 Phishing Activity Trends Report,
+  FBI IC3 2025).  Weight `W_QR_CODE_LURE = 20`.  Category: `InterfaceInterference`.
+  MITRE: T1566.  alert_shaped guard prevents legitimate QR displays (e-tickets, payment
+  flows) from firing.  5 positive + 4 negative confusables unit tests + 3 lib unit tests
+  + 2 property tests + 3 scoring scenarios + 1 blocklist-coverage test; 524 tests
+  total. (E22.)
+- **SPECIFICATION.md and OVERLAY_BLOCKING.md signal-table updates**.
+  Added E18-E21 rows (screen_share_lure / crypto_drain_lure / prize_lure /
+  download_trap_lure) that were confirmed-implemented but undocumented in the normative
+  spec (spec-drift found by audit).  Added E22-E23 rows alongside the implementation.
+  Both docs now list all 27 named signals with weights, conditions, and MITRE tags.
 - **Fake download / fake-update overlay gate** (`download_trap_lure`; E21).
   `has_download_trap_lure(s)` fires on two AND-pair patterns: (1)
   *install_demand* — a download/install/update verb + a required/needed/

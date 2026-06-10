@@ -980,6 +980,70 @@ pub fn has_download_trap_lure(s: &str) -> bool {
     install_demand || fake_plugin_gate
 }
 
+/// E22 — QR code / "quishing" lure.
+///
+/// Scam overlays instruct the user to scan a QR code to "verify identity",
+/// "continue", or "access" a resource — QR phishing ("quishing") is a major
+/// 2025-2026 growth vector (APWG Q4 2024, FBI IC3 2025). The overlay pairs
+/// a displayed QR image with urgency language; the title carries the cue.
+///
+/// alert_shaped guard is applied at the call site in `classify()`.  The AND-pair
+/// prevents FPs on legitimate QR displays (ticket kiosks, payment flows).
+#[must_use]
+pub fn has_qr_code_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // qr_noun: explicit "qr code" or "qr" paired with "scan"
+    let qr_noun = has("qr code") || has("qr-code") || (has("qr") && has("scan"));
+
+    // verify_action: cues that follow in a lure overlay title
+    let verify_action = has("verify")
+        || has("confirm")
+        || has("authenticate")
+        || has("access")
+        || has("scan to")
+        || has("scan now")
+        || has("continue")
+        || has("proceed")
+        || has("validate");
+
+    qr_noun && verify_action
+}
+
+/// E23 — IP / network alarm lure.
+///
+/// Scam overlays display "Your IP address has been hacked / flagged /
+/// reported to authorities" to panic victims into calling a fake support
+/// number. This is one of the most common tech-support scam templates
+/// (Microsoft Security, Malwarebytes 2025). The signal is an IP subject
+/// token combined with an alarm word.
+///
+/// alert_shaped guard applied at the call site.  The AND-pair prevents FPs
+/// on legitimate network-status pages ("Your IP address is …").
+#[must_use]
+pub fn has_ip_alarm_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // ip_subject: explicit "ip address" or "your ip" (network-identity framing)
+    let ip_subject = has("ip address") || has("your ip");
+
+    // alarm_word: attack/compromise language paired with the IP subject
+    let alarm_word = has("hack")
+        || has("infect")
+        || has("flag")
+        || has("report")
+        || has("stolen")
+        || has("expos")
+        || has("compromis")
+        || has("block")
+        || has("detect")
+        || has("trac")
+        || has("suspend")
+        || has("breach");
+
+    ip_subject && alarm_word
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1865,5 +1929,73 @@ mod tests {
         ));
         // ClickFix-style keyboard shortcut — no download/install verb
         assert!(!has_download_trap_lure("press windows and r to verify"));
+    }
+
+    // ── has_qr_code_lure ──────────────────────────────────────────────────
+
+    #[test]
+    fn qr_code_lure_fires_on_quishing_overlays() {
+        assert!(has_qr_code_lure("scan qr code to verify your identity"));
+        assert!(has_qr_code_lure("scan the qr code to continue"));
+        assert!(has_qr_code_lure("scan qr to confirm your account"));
+        assert!(has_qr_code_lure("qr code scan now to access your account"));
+        assert!(has_qr_code_lure("qr-code scan to authenticate"));
+    }
+
+    #[test]
+    fn qr_code_lure_fires_on_verify_proceed_variants() {
+        assert!(has_qr_code_lure("scan qr code to proceed"));
+        assert!(has_qr_code_lure("scan qr to validate your identity"));
+        assert!(has_qr_code_lure("use qr code to access your account"));
+    }
+
+    #[test]
+    fn qr_code_lure_does_not_fire_on_benign() {
+        // Legitimate QR display with no verify action
+        assert!(!has_qr_code_lure("qr code for this event"));
+        // Boarding pass / ticket — no verify action
+        assert!(!has_qr_code_lure("show your qr code at the gate"));
+        // Plain text without qr_noun
+        assert!(!has_qr_code_lure("verify your identity to continue"));
+        // Scan without QR reference
+        assert!(!has_qr_code_lure("scan your fingerprint to log in"));
+    }
+
+    // ── has_ip_alarm_lure ─────────────────────────────────────────────────
+
+    #[test]
+    fn ip_alarm_lure_fires_on_tech_support_scam_text() {
+        assert!(has_ip_alarm_lure("your ip address has been hacked"));
+        assert!(has_ip_alarm_lure(
+            "ip address detected infected with malware"
+        ));
+        assert!(has_ip_alarm_lure(
+            "your ip address has been flagged by our security"
+        ));
+        assert!(has_ip_alarm_lure(
+            "your ip has been reported to the authorities"
+        ));
+        assert!(has_ip_alarm_lure("your ip address has been compromised"));
+    }
+
+    #[test]
+    fn ip_alarm_lure_fires_on_breach_and_block_variants() {
+        assert!(has_ip_alarm_lure(
+            "your ip address is blocked due to suspicious activity"
+        ));
+        assert!(has_ip_alarm_lure("your ip has been suspended"));
+        assert!(has_ip_alarm_lure("ip address breach detected"));
+    }
+
+    #[test]
+    fn ip_alarm_lure_does_not_fire_on_benign() {
+        // Network status page — shows IP without alarm
+        assert!(!has_ip_alarm_lure("your ip address is 192.168.1.1"));
+        // Firewall log entry — no "your ip" or "ip address" subject
+        assert!(!has_ip_alarm_lure("connection blocked by firewall"));
+        // Generic security headline without ip subject
+        assert!(!has_ip_alarm_lure("network security tips for 2025"));
+        // Legitimate CAPTCHA page
+        assert!(!has_ip_alarm_lure("verify you are not a robot"));
     }
 }

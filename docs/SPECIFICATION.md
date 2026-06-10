@@ -107,6 +107,12 @@ reflects active overrides.
 | `subscription_lure` | +15 | `alert_shaped` AND normalized title contains subject (subscription/license) + expiry (expired) + action (renew/call) |
 | `authority_lure` | +25 | `alert_shaped` AND normalized title contains an LEA-agency token + coercion token (warning/locked/illegal/fine) |
 | `remote_access_lure` | +20 | normalized title names a remote-access tool AND independent fake-alert evidence already fired |
+| `screen_share_lure` | +20 | `alert_shaped` AND normalized title contains screen-share social-engineering cues (share-screen + remote-enable + grant-support language; FBI IC3 2025). MITRE T1219. |
+| `crypto_drain_lure` | +25 | `alert_shaped` AND normalized title contains wallet-alarm + coercion + seed-harvest language ("your wallet was drained / verify / enter seed phrase"). Covers 2025-2026 crypto-drain overlay surge. MITRE T1566. |
+| `prize_lure` | +20 | `alert_shaped` AND normalized title contains a prize/lottery word (winner/prize/reward/jackpot) AND a claim-action phrase (claim/collect/redeem). Covers lottery-scam overlays common on library and kiosk PCs. MITRE T1566. |
+| `download_trap_lure` | +20 | `alert_shaped` AND normalized title demands a software install (install demand OR fake-plugin gate: plugin noun + action verb or "required"). Covers fake-plugin overlays distributing malware. MITRE T1566. |
+| `qr_code_lure` | +20 | `alert_shaped` AND normalized title contains a QR-noun ("qr code" / "qr-code" / "scan qr") AND verify-action (verify/confirm/access/proceed/…). Detects "quishing" overlays that redirect victims via QR to bypass URL filters (APWG Q4 2024, FBI IC3 2025). MITRE T1566. |
+| `ip_alarm_lure` | +20 | `alert_shaped` AND normalized title contains ip-subject ("ip address" / "your ip") AND alarm-word (hack/infect/flag/report/block/compromis/…). Covers the "Your IP address has been hacked" tech-support-scam staple (Malwarebytes 2025, Microsoft Security 2024). MITRE T1566. |
 | `input_trap` | +5 | `fullscreen ∧ topmost ∧ blocks_input` (bounded composite) |
 | `sudden_fullscreen_takeover` | +5 | `unsolicited ∧ fullscreen ∧ topmost ∧ 0<age_ms<1000` (bounded composite) |
 
