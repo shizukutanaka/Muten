@@ -229,6 +229,21 @@ MSRV 1.75, 286 tests.
   `s.contains("system font")` directly catches the canonical GlitchFix phrase.
   2 new unit tests (glitchfix_patterns_fire, glitchfix_does_not_fire_on_benign_browser_text).
   370 tests total. (E9.)
+- **Cloud blob-storage lure signal** (`cloud_storage_abuse`; E10).
+  `is_cloud_storage_host(host)` returns true when the URL host ends with a
+  well-known blob-storage suffix with a non-empty tenant label:
+  `*.blob.core.windows.net`, `*.web.core.windows.net`, `*.s3.amazonaws.com`,
+  `*.storage.googleapis.com`, `*.firebasestorage.googleapis.com`,
+  `*.r2.cloudflarestorage.com`. These domains look trustworthy but let anyone
+  publish arbitrary content under a tenant-unique subdomain — Azure Blob in
+  particular is named as a primary TSS delivery vector in THREAT_INTEL_2026.
+  The `alert_shaped` guard (fullscreen / no-close + topmost / no-close +
+  blocks_input) prevents legitimate cloud-app browser tabs from firing.
+  Weight `W_CLOUD_STORAGE_ABUSE = 20` (additive; alone pushes to Suspicious
+  when combined with shape signals, not to Block). Category: `Sneaking`
+  (the cloud infrastructure disguises the attacker's real origin).
+  `signal_phrase()` phrase and `signal_weight()` entry added.
+  6 new unit tests; 376 tests total. (E10.)
 
 ### Changed (breaking)
 - **`Verdict.signals: Vec<String>`** (was `Vec<&'static str>`). Required to

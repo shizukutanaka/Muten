@@ -248,6 +248,9 @@ fn signal_phrase(signal: &str) -> &str {
         "urgency_countdown" => {
             "displays a countdown timer alongside an urgent warning to coerce rapid action"
         }
+        "cloud_storage_abuse" => {
+            "is served from cloud blob-storage infrastructure used to host scam overlays"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -330,6 +333,7 @@ const W_COMBOSQUAT: i32 = 30; // host label joins a known brand + a scam lure wo
 const W_TYPOSQUAT_BRAND: i32 = 25; // host label is edit-distance-1 keyboard typosquat of a known brand
 const W_CLICKFIX: i32 = 20; // ClickFix/fake-CAPTCHA keyboard-instruction pattern (alert_shaped guard)
 const W_URGENCY_COUNTDOWN: i32 = 15; // countdown timer + urgency keyword (scam coercion, alert_shaped guard)
+const W_CLOUD_STORAGE_ABUSE: i32 = 20; // alert-shaped overlay served from known blob-storage infra (TSS delivery vector)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -369,6 +373,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "typosquat_brand" => Some(W_TYPOSQUAT_BRAND),
         "clickfix_instruction" => Some(W_CLICKFIX),
         "urgency_countdown" => Some(W_URGENCY_COUNTDOWN),
+        "cloud_storage_abuse" => Some(W_CLOUD_STORAGE_ABUSE),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -629,6 +634,31 @@ const FULLSCREEN_COVERAGE: u8 = 85;
 /// ([`rules::host_str`]) so the three host-parsing sites can't drift.
 fn url_host(url: &str) -> &str {
     crate::rules::host_str(url)
+}
+
+/// Return `true` when `host` is a well-known cloud blob-storage endpoint
+/// used as a TSS / scareware delivery vector.
+///
+/// These domains look trustworthy (microsoft.com, amazonaws.com …) but
+/// let anyone host arbitrary content under a tenant-unique subdomain.
+/// Detection is suffix-based: each pattern anchors on a structural
+/// boundary (always starts with `.`) so a false match on a subdomain
+/// named, e.g., `notblob.core.windows.net.evil.com` is impossible.
+fn is_cloud_storage_host(host: &str) -> bool {
+    const SUFFIXES: &[&str] = &[
+        ".blob.core.windows.net",
+        ".web.core.windows.net",
+        ".s3.amazonaws.com",
+        ".storage.googleapis.com",
+        ".firebasestorage.googleapis.com",
+        ".r2.cloudflarestorage.com",
+    ];
+    let h = host.to_ascii_lowercase();
+    // Each suffix starts with '.', so h.len() > sfx.len() guarantees
+    // at least one non-empty tenant label precedes the well-known suffix.
+    SUFFIXES
+        .iter()
+        .any(|sfx| h.ends_with(sfx) && h.len() > sfx.len())
 }
 
 /// Classify one observed window against a ruleset.
@@ -929,6 +959,24 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     {
         score += rules.weight_of("typosquat_brand", W_TYPOSQUAT_BRAND);
         signals.push("typosquat_brand".into());
+    }
+
+    // Cloud blob-storage lure (THREAT_INTEL_2026 §TSS). Tech-support
+    // scammers host fake-support overlays on Azure Blob Storage, AWS S3,
+    // and GCS because those domains appear trustworthy (microsoft.com,
+    // amazonaws.com …) and per-file URLs are impossible to blocklist in
+    // advance. An alert-shaped window served from blob infrastructure is
+    // a near-zero-FP tell: legitimate software uses its own domain or a
+    // CDN, not a raw blob-storage URL that exposes the tenant account.
+    // The alert_shaped guard prevents a normal cloud-app browser tab
+    // from firing — tabs are closable and not fullscreen/topmost.
+    if alert_shaped {
+        if let Some(host) = w.url.as_deref().map(url_host) {
+            if is_cloud_storage_host(host) {
+                score += rules.weight_of("cloud_storage_abuse", W_CLOUD_STORAGE_ABUSE);
+                signals.push("cloud_storage_abuse".into());
+            }
+        }
     }
 
     // Composite "screen-lock" tell: a window that is full-screen AND
@@ -3077,5 +3125,122 @@ mod tests {
         // Length diff > 1: returns early (sentinel or true distance ≥ 2).
         assert!(levenshtein_distance(b"", b"google") >= 2);
         assert!(levenshtein_distance(b"ggle", b"google") >= 2);
+    }
+
+    // ── E10: Cloud blob-storage lure detection ────────────────────────
+
+    #[test]
+    fn cloud_storage_fires_on_azure_blob_alert_shaped() {
+        // An alert-shaped window served from Azure Blob Storage — the
+        // canonical TSS delivery vector identified in THREAT_INTEL_2026.
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "Warning: your computer is infected".into(),
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            age_ms: 0,
+            origin: Origin::Unsolicited,
+            url: Some("https://scamtenant.blob.core.windows.net/payload/alert.html".into()),
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "cloud_storage_abuse"),
+            "expected cloud_storage_abuse; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_CLOUD_STORAGE_ABUSE);
+    }
+
+    #[test]
+    fn cloud_storage_fires_on_s3_alert_shaped() {
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "Security alert call support".into(),
+            coverage_percent: 98,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            age_ms: 0,
+            origin: Origin::Unsolicited,
+            url: Some("https://bucket-name.s3.amazonaws.com/scam.html".into()),
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "cloud_storage_abuse"),
+            "expected cloud_storage_abuse; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn cloud_storage_does_not_fire_without_alert_shape() {
+        // A closable, non-topmost cloud-hosted window (normal browser tab)
+        // must not fire — the alert_shaped guard is the FP fence.
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "App update available".into(),
+            coverage_percent: 40,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            age_ms: 0,
+            origin: Origin::UserInitiated,
+            url: Some("https://mytenant.blob.core.windows.net/releases/update.html".into()),
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "cloud_storage_abuse"),
+            "cloud_storage_abuse must not fire on non-alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn cloud_storage_does_not_fire_on_own_domain() {
+        // A window served from a normal domain is not affected.
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "Warning virus detected".into(),
+            coverage_percent: 98,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            age_ms: 0,
+            origin: Origin::Unsolicited,
+            url: Some("https://scam.example.com/alert.html".into()),
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "cloud_storage_abuse"),
+            "cloud_storage_abuse must not fire for a non-blob domain; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn cloud_storage_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("cloud_storage_abuse"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    #[test]
+    fn is_cloud_storage_host_unit() {
+        // True cases — known blob-storage hosts with a tenant prefix.
+        assert!(is_cloud_storage_host("tenant.blob.core.windows.net"));
+        assert!(is_cloud_storage_host("a.web.core.windows.net"));
+        assert!(is_cloud_storage_host("my-bucket.s3.amazonaws.com"));
+        assert!(is_cloud_storage_host("proj.storage.googleapis.com"));
+        assert!(is_cloud_storage_host("fb.firebasestorage.googleapis.com"));
+        assert!(is_cloud_storage_host("r2tenant.r2.cloudflarestorage.com"));
+        // False cases — no tenant prefix (raw suffix), own domain, unrelated cloud.
+        assert!(!is_cloud_storage_host("blob.core.windows.net"));
+        assert!(!is_cloud_storage_host("amazonaws.com"));
+        assert!(!is_cloud_storage_host("example.com"));
+        assert!(!is_cloud_storage_host(""));
     }
 }

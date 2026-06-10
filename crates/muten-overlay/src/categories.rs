@@ -87,7 +87,8 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         | "bidi_override"
         | "compat_chars_present"
         | "mixed_number_systems"
-        | "excessive_combining_marks" => Some(Sneaking),
+        | "excessive_combining_marks"
+        | "cloud_storage_abuse" => Some(Sneaking),
         // The rogue-AV flood is the textbook nagging pattern.
         "repeated_flood" => Some(Nagging),
         // Brand/authority impersonation and the call-this-number lure
