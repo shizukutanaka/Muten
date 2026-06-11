@@ -303,6 +303,18 @@ MSRV 1.75, 286 tests.
   FP firewall (user-initiated / closable windows MUST Allow), and leet/homoglyph
   evasion resistance. These serve as regression guards: any signal removal or
   weight change that drops a known scam below Suspicious will be caught.
+- **Japanese credential-harvest & fake-scanner coverage** (`credential_harvest_cue`,
+  `fake_scanner_cue`; 法域別tuning). Both heuristics now recognize Japanese
+  phrasings in addition to English. `credential_harvest_cue` adds JP account
+  alarms (アカウントが停止/凍結/ロック/無効/制限, 不審な/不正な/異常なログイン) and
+  credential instructions (パスワードを確認/再入力, 本人確認, 身元確認, アカウントを
+  確認/再開) — JP credential phishing is a dominant local variant per IPA /
+  国民生活センター advisories. `fake_scanner_cue` adds JP rogue-AV progress
+  framing (スキャン中+脅威, 脅威が見つかりました, ウイルス/マルウェアを検出しました,
+  マルウェアを削除しています, ウイルスを駆除, システムを修復しています). CJK passes
+  through `normalize_for_match` (`to_ascii_lowercase`) untouched. FP guards
+  preserved: benign JP account-settings / login-help / generic-progress titles
+  do not fire. 4 new confusables unit tests + 2 scoring scenarios. 583 tests total.
 - **Japanese forced-retention coverage** (`forced_retention_cue`; 法域別tuning).
   `has_forced_retention(s)` now recognizes Japanese retention-coercion phrasings —
   この画面を閉じないで / 閉じないでください, 電源を切らないで, シャットダウンしないで,

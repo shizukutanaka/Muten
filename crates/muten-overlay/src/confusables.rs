@@ -738,6 +738,12 @@ pub fn has_forced_retention(s: &str) -> bool {
 /// legitimate security notifications appear in the browser's own UI, not in
 /// an alert-shaped overlay with no close button.
 ///
+/// Both English and Japanese phrasings are recognized. JP credential-phishing
+/// overlays ("アカウントが停止されました", "パスワードを確認してください") are a
+/// dominant local variant (IPA / 国民生活センター フィッシング詐欺 advisories).
+/// `normalize_for_match` uses `to_ascii_lowercase()`, so CJK passes through
+/// untouched.
+///
 /// Caller must pass a string already processed through [`normalize_for_match`]
 /// so that homoglyph variants are folded first.
 #[must_use]
@@ -763,7 +769,24 @@ pub fn has_credential_harvest_cue(s: &str) -> bool {
         || (has("re-enter") && has("password"))
         || (has("enter") && has("credentials"))
         || (has("update") && has("payment"));
-    account_alarm || cred_instruction
+
+    // Japanese account-alarm + credential-instruction phrasings.
+    let jp_account_alarm = (has("アカウント") && has("停止")) // account suspended
+        || (has("アカウント") && has("凍結"))                 // account frozen
+        || (has("アカウント") && has("ロック"))               // account locked
+        || (has("アカウント") && has("無効"))                 // account disabled
+        || (has("アカウント") && has("制限"))                 // account restricted
+        || has("不審なログイン")                              // suspicious login
+        || has("不正なログイン")                              // unauthorized login
+        || has("異常なログイン"); // abnormal login
+    let jp_cred_instruction = (has("アカウント") && has("確認")) // verify account
+        || (has("パスワード") && has("確認"))                    // confirm password
+        || (has("パスワード") && has("再入力"))                  // re-enter password
+        || has("本人確認")                                       // identity verification
+        || has("身元確認")                                       // identity check
+        || (has("アカウント") && has("再開")); // reactivate account (phish lure)
+
+    account_alarm || cred_instruction || jp_account_alarm || jp_cred_instruction
 }
 
 /// Detect fake-scanner / threat-count language in a normalized window title.
@@ -777,8 +800,16 @@ pub fn has_credential_harvest_cue(s: &str) -> bool {
 /// evasion; combine with the `alert_shaped` guard in `classify()` to keep
 /// FPs to zero for legitimate security software the user deliberately opened.
 ///
+/// Both English and Japanese phrasings are recognized. JP fake-scanner
+/// progress overlays ("脅威が見つかりました", "システムを修復しています") are a
+/// core サポート詐欺 element. `normalize_for_match` uses `to_ascii_lowercase()`,
+/// so CJK passes through untouched. (Note: static infection claims like
+/// "ウイルスに感染" are already covered as blocklist titles; this heuristic
+/// adds the dynamic scan/threat-count/repair *progress* framing.)
+///
 /// Patterns grounded in Microsoft Edge Scareware Blocker corpus, Malwarebytes
-/// rogue-AV samples, and SafetyDetectives 2026 fake-antivirus guide.
+/// rogue-AV samples, SafetyDetectives 2026 fake-antivirus guide, and IPA
+/// サポート詐欺 advisories.
 #[must_use]
 pub fn has_fake_scanner_cue(s: &str) -> bool {
     let has = |a: &str| s.contains(a);
@@ -798,7 +829,30 @@ pub fn has_fake_scanner_cue(s: &str) -> bool {
     // "system error detected", "critical system error"
     let system_error =
         has("system") && has("error") && (has("detected") || has("critical") || has("found"));
-    scanning_lure || threat_count || removal_action || repair_lure || system_error
+
+    // ── Japanese scan/threat-count/repair progress framing ───────────────
+    // "スキャン中..." paired with a threat noun.
+    let jp_scanning = has("スキャン中")
+        && (has("ウイルス") || has("脅威") || has("マルウェア") || has("スパイウェア"));
+    // "脅威が見つかりました / 脅威を検出 / N個のウイルスが検出".
+    let jp_threat_count = (has("脅威") || has("ウイルス") || has("マルウェア"))
+        && (has("見つかりました") || has("検出しました") || has("検出されました"));
+    // "マルウェアを削除しています / ウイルスを駆除".
+    let jp_removal = (has("削除しています") || has("駆除"))
+        && (has("ウイルス") || has("マルウェア") || has("脅威"));
+    // "システムを修復しています / 修復中".
+    let jp_repair = (has("修復しています") || has("修復中"))
+        && (has("システム") || has("pc") || has("コンピュータ") || has("ファイル"));
+
+    scanning_lure
+        || threat_count
+        || removal_action
+        || repair_lure
+        || system_error
+        || jp_scanning
+        || jp_threat_count
+        || jp_removal
+        || jp_repair
 }
 
 /// Detect subscription/license expiry coercion in a normalized window title.
@@ -1886,6 +1940,34 @@ mod tests {
         assert!(!has_credential_harvest_cue("account settings"));
     }
 
+    #[test]
+    fn credential_harvest_fires_on_japanese_phishing() {
+        // Account alarms.
+        assert!(has_credential_harvest_cue(
+            "あなたのアカウントが停止されました 今すぐ確認してください"
+        ));
+        assert!(has_credential_harvest_cue("アカウントが凍結されました"));
+        assert!(has_credential_harvest_cue("不審なログインを検知しました"));
+        // Credential instructions.
+        assert!(has_credential_harvest_cue("パスワードを確認してください"));
+        assert!(has_credential_harvest_cue(
+            "本人確認のため情報を入力してください"
+        ));
+        assert!(has_credential_harvest_cue(
+            "アカウントを確認して再開してください"
+        ));
+    }
+
+    #[test]
+    fn credential_harvest_does_not_fire_on_benign_japanese() {
+        // Legitimate account-settings label, no alarm/instruction pairing.
+        assert!(!has_credential_harvest_cue("アカウント設定を開く"));
+        // Generic login page header.
+        assert!(!has_credential_harvest_cue("ログインページへようこそ"));
+        // Password-change help article (no alarm, no confirm/re-enter pairing).
+        assert!(!has_credential_harvest_cue("パスワードの変更方法について"));
+    }
+
     // ── has_fake_scanner_cue ─────────────────────────────────────────────
 
     #[test]
@@ -1932,6 +2014,35 @@ mod tests {
         // "v1rus" → "virus", "thr34t" → "threat" after normalize_for_match.
         let norm = normalize_for_match("sc4nning for v1rus3s");
         assert!(has_fake_scanner_cue(&norm));
+    }
+
+    #[test]
+    fn fake_scanner_fires_on_japanese_scareware() {
+        // Scanning progress.
+        assert!(has_fake_scanner_cue("スキャン中 ウイルスを検索しています"));
+        // Threat-count / detection framing.
+        assert!(has_fake_scanner_cue("脅威が見つかりました 今すぐ対処"));
+        assert!(has_fake_scanner_cue("3個のウイルスを検出しました"));
+        assert!(has_fake_scanner_cue("マルウェアが検出されました"));
+        // Removal progress.
+        assert!(has_fake_scanner_cue(
+            "マルウェアを削除しています お待ちください"
+        ));
+        assert!(has_fake_scanner_cue("ウイルスを駆除しています"));
+        // Repair progress.
+        assert!(has_fake_scanner_cue(
+            "システムを修復しています 電源を切らないで"
+        ));
+    }
+
+    #[test]
+    fn fake_scanner_does_not_fire_on_benign_japanese() {
+        // Generic progress with no threat noun.
+        assert!(!has_fake_scanner_cue("更新をインストールしています"));
+        // Legitimate security-software summary (no scan/detect/repair verb).
+        assert!(!has_fake_scanner_cue("ウイルス対策ソフトの設定"));
+        // Download progress.
+        assert!(!has_fake_scanner_cue("ダウンロード中です"));
     }
 
     // ── has_subscription_lure ────────────────────────────────────────────

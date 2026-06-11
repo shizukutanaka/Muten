@@ -102,8 +102,8 @@ reflects active overrides.
 | `cloud_storage_abuse` | +20 | `alert_shaped` AND URL host is a blob-storage tenant subdomain (`*.blob.core.windows.net`, `*.s3.amazonaws.com`, `*.storage.googleapis.com`, …) |
 | `url_path_lure` | +20 | `alert_shaped` AND URL path contains a known-brand token within 2 positions of a known lure token |
 | `forced_retention_cue` | +20 | `alert_shaped` AND normalized title contains a retention instruction. English ("do not close / do not turn off / keep this window open / stay on this page") and Japanese (この画面を閉じないで / 電源を切らないで / 再起動しないで / ウィンドウを閉じないで) — the latter is the most iconic IPA-documented サポート詐欺 phrase. |
-| `credential_harvest_cue` | +20 | `alert_shaped` AND normalized title contains account-alarm or credential-entry language |
-| `fake_scanner_cue` | +20 | `alert_shaped` AND normalized title contains fake rogue-AV scan-progress language |
+| `credential_harvest_cue` | +20 | `alert_shaped` AND normalized title contains account-alarm or credential-entry language. English (account suspended/locked, verify account, confirm password) and Japanese (アカウントが停止/凍結/ロック, 不審なログイン, パスワードを確認, 本人確認). |
+| `fake_scanner_cue` | +20 | `alert_shaped` AND normalized title contains fake rogue-AV scan-progress language. English (scanning for threats, N threats found, removing malware, system repair) and Japanese (スキャン中+脅威, 脅威が見つかりました, ウイルスを検出, マルウェアを削除しています, システムを修復しています). |
 | `subscription_lure` | +15 | `alert_shaped` AND normalized title contains subject (subscription/license) + expiry (expired) + action (renew/call) |
 | `authority_lure` | +25 | `alert_shaped` AND normalized title contains an LEA-agency token + coercion token. Agencies: English (fbi/cia/interpol/europol/hmrc/cybercrime/…) and Japanese (警察庁/警視庁/国税庁/消費者庁/サイバー警察). Coercion: English (warning/locked/illegal/fine/arrested) and Japanese (警告/違反/ロック/罰金/逮捕/不正アクセス/凍結). JP coverage targets IPA-documented 警察なりすまし詐欺 / サポート詐欺. MITRE T1566. |
 | `remote_access_lure` | +20 | normalized title names a remote-access tool AND independent fake-alert evidence already fired |

@@ -174,6 +174,21 @@ fn credential_harvest_with_geometry_reaches_suspicious() {
     assert!(v.score >= SUSPICIOUS_THRESHOLD);
 }
 
+#[test]
+fn japanese_credential_harvest_reaches_suspicious() {
+    // JP phishing overlay: account suspended + verify instruction.
+    let v = classify(
+        &alert_window("アカウントが停止されました 今すぐ本人確認を行ってください"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "credential_harvest_cue"),
+        "JP credential_harvest_cue must fire; got {:?}",
+        v.signals
+    );
+    assert!(v.score >= SUSPICIOUS_THRESHOLD);
+}
+
 // ── Fake-scanner / rogue-AV (E15) ────────────────────────────────────────
 
 #[test]
@@ -213,6 +228,21 @@ fn fake_scanner_plus_phone_reaches_block() {
         v.score,
         v.signals
     );
+}
+
+#[test]
+fn japanese_fake_scanner_reaches_suspicious() {
+    // JP rogue-AV progress overlay: threat detection + repair framing.
+    let v = classify(
+        &alert_window("脅威が見つかりました システムを修復しています 電源を切らないで"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "fake_scanner_cue"),
+        "JP fake_scanner_cue must fire; got {:?}",
+        v.signals
+    );
+    assert!(v.score >= SUSPICIOUS_THRESHOLD);
 }
 
 // ── Subscription lure (E16) ───────────────────────────────────────────────
