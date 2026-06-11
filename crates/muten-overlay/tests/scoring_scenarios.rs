@@ -249,6 +249,37 @@ fn authority_lure_with_phone_reaches_block() {
     );
 }
 
+#[test]
+fn japanese_police_impersonation_reaches_suspicious() {
+    // 警察庁 (NPA) impersonation overlay — IPA-documented サポート詐欺 /
+    // 警察なりすまし詐欺 pattern targeting the JP market.
+    let v = classify(
+        &alert_window("警察庁からの警告 あなたのコンピュータはロックされました"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "authority_lure"),
+        "JP authority_lure must fire; got {:?}",
+        v.signals
+    );
+    assert!(v.score >= SUSPICIOUS_THRESHOLD);
+}
+
+#[test]
+fn legitimate_japanese_police_notice_does_not_fire() {
+    // Legitimate NPA traffic-safety notice, user-opened and closable — the
+    // alert_shaped guard + benign wording must keep authority_lure silent.
+    let v = classify(
+        &closable_window("警察庁 交通安全週間のお知らせ"),
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "authority_lure"),
+        "benign JP police notice must not fire authority_lure; got {:?}",
+        v.signals
+    );
+}
+
 // ── Multi-signal composite scenarios ─────────────────────────────────────
 
 #[test]

@@ -811,27 +811,33 @@ pub fn has_subscription_lure(s: &str) -> bool {
 ///
 /// A class of ransomware-style bluff overlay ("Reveton", "Winlock") and
 /// modern tech-support-scam spinoffs lock the screen and impersonate the
-/// FBI, police, Interpol, or a generic "cybercrime unit" to coerce payment
-/// or a call.  These produce titles like "FBI WARNING: Your computer has
-/// been locked" or "Cybercrime Division Notice — Call Now".  No current
-/// signal catches this because:
+/// FBI, police, Interpol, Japanese NPA, or generic "cybercrime unit" to
+/// coerce payment or a call.  Titles like "FBI WARNING: Your computer has
+/// been locked" or "警察庁サイバー犯罪対策課から警告" (NPA Cybercrime
+/// Department Warning).  No current signal catches this because:
 ///   - `brand_impersonation` checks URL *hosts*, not window titles.
 ///   - `fake_scanner_cue` covers rogue-AV language, not LEA language.
 ///   - `phone_number` fires only if a phone number is visible.
 ///
 /// Pattern: an authority-agency token AND a coercion/action token.
+/// Both English (FBI/CIA/Interpol/Europol/HMRC/AFP/etc.) and Japanese
+/// (警察庁/警視庁/国税庁/消費者庁) agency names are recognized.  Japanese
+/// coercion words (警告/違反/ブロック/罰金/逮捕/不正アクセス) are also checked.
 /// The `alert_shaped` guard in `classify()` prevents browser tabs showing
 /// news headlines ("FBI Warning: New Phishing Attack") from firing, as those
 /// are user-initiated and closable.
 ///
 /// Grounded in Symantec Threat Intelligence Reveton/Winlock analysis, FBI
-/// IC3 2024 warning on law-enforcement impersonation scams, and Europol
-/// Operation Strikeback 2025 ransomware-overlay takedowns.
+/// IC3 2024 warning on law-enforcement impersonation scams, Europol
+/// Operation Strikeback 2025 ransomware-overlay takedowns, and IPA Japan
+/// (情報処理推進機構) reports on "サポート詐欺" (tech-support scam) and
+/// "警察なりすまし詐欺" (police impersonation scam).
 #[must_use]
 pub fn has_authority_lure(s: &str) -> bool {
     let has = |a: &str| s.contains(a);
-    // Law-enforcement agency tokens.
-    let agency = has("fbi")
+
+    // ── English-language agency tokens ────────────────────────────────
+    let agency_en = has("fbi")
         || has("cia")
         || has("interpol")
         || has("cybercrime")
@@ -840,9 +846,30 @@ pub fn has_authority_lure(s: &str) -> bool {
         || has("national security")
         || has("metropolitan police")
         || has("cyber police")
-        || has("law enforcement");
-    // Coercion / action tokens that, combined with an agency, signal a bluff.
-    let coercion = has("warning")
+        || has("law enforcement")
+        || has("europol")
+        || has("hmrc")                  // UK revenue/customs
+        || has("national crime agency") // UK NCA
+        || has("australian federal police")
+        || has("afp")                   // Australian Federal Police
+        || has("bundeskriminalamt")     // German BKA
+        || has("gendarmerie"); // French Gendarmerie
+
+    // ── Japanese-language agency tokens (preserved by normalize_for_match) ─
+    // `normalize_for_match` uses `to_ascii_lowercase()` — CJK is untouched.
+    let agency_jp = has("警察庁")      // National Police Agency
+        || has("警視庁")               // Metropolitan Police Dept (Tokyo)
+        || has("国税庁")               // National Tax Agency
+        || has("消費者庁")             // Consumer Affairs Agency
+        || has("公安委員会")           // Public Safety Commission
+        || has("サイバー警察")         // Cyber Police (general)
+        || has("デジタル警察")         // Digital Police (generic scam term)
+        || has("内閣サイバー")         // Cabinet Cyber Security Center
+        || has("財務省")               // Ministry of Finance
+        || has("総務省"); // Ministry of Internal Affairs
+
+    // ── English coercion / action tokens ─────────────────────────────
+    let coercion_en = has("warning")
         || has("notice")
         || has("locked")
         || has("blocked")
@@ -852,7 +879,21 @@ pub fn has_authority_lure(s: &str) -> bool {
         || has("fine")
         || has("penalty")
         || has("arrested");
-    agency && coercion
+
+    // ── Japanese coercion / action tokens ────────────────────────────
+    let coercion_jp = has("警告")      // warning
+        || has("違反")                 // violation
+        || has("違法")                 // illegal
+        || has("ブロック")             // blocked
+        || has("ロック")               // locked
+        || has("罰金")                 // fine
+        || has("逮捕")                 // arrested
+        || has("摘発")                 // crackdown
+        || has("不正アクセス")         // unauthorized access
+        || has("調査中")               // under investigation
+        || has("凍結"); // frozen (account)
+
+    (agency_en || agency_jp) && (coercion_en || coercion_jp)
 }
 
 /// Detect screen-share / remote-viewing instruction lures in a normalized
@@ -1941,6 +1982,50 @@ mod tests {
         // Cyrillic 'і' in "warning" → 'i' after normalize_for_match.
         let norm = normalize_for_match("fbі warnіng your computer is locked");
         assert!(has_authority_lure(&norm));
+    }
+
+    #[test]
+    fn authority_lure_fires_on_japanese_police_impersonation() {
+        // 警察庁 (National Police Agency) + 警告 (warning) — IPA サポート詐欺
+        assert!(has_authority_lure(
+            "警察庁からの警告 あなたのコンピュータはロックされました"
+        ));
+        // 警視庁 (Tokyo Metropolitan Police) + 違反 (violation)
+        assert!(has_authority_lure(
+            "警視庁 違法コンテンツの違反が検出されました"
+        ));
+        // 国税庁 (National Tax Agency) + 罰金 (fine)
+        assert!(has_authority_lure(
+            "国税庁 未払い税金の罰金を支払ってください"
+        ));
+        // サイバー警察 + 不正アクセス
+        assert!(has_authority_lure(
+            "サイバー警察 不正アクセスを検出 アカウントを凍結しました"
+        ));
+        // 消費者庁 + ブロック
+        assert!(has_authority_lure("消費者庁 違反によりブロックされました"));
+    }
+
+    #[test]
+    fn authority_lure_does_not_fire_on_benign_japanese() {
+        // Agency name in a legitimate news/info context, no coercion word.
+        assert!(!has_authority_lure("警察庁 交通安全週間のお知らせ"));
+        // Coercion word alone, no agency.
+        assert!(!has_authority_lure("バッテリー残量の警告"));
+        // 国税庁 legitimate tax-filing reminder, no fine/penalty coercion.
+        assert!(!has_authority_lure("国税庁 確定申告の受付を開始しました"));
+    }
+
+    #[test]
+    fn authority_lure_fires_on_additional_western_agencies() {
+        // UK HMRC + fine
+        assert!(has_authority_lure("hmrc notice unpaid tax penalty fine"));
+        // Europol + locked
+        assert!(has_authority_lure("europol warning your device is locked"));
+        // Australian Federal Police + violation
+        assert!(has_authority_lure(
+            "australian federal police violation notice"
+        ));
     }
 
     // ── has_screen_share_lure ─────────────────────────────────────────────

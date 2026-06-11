@@ -139,7 +139,7 @@
 4. ★ **dark pattern 重大度スコア**: カテゴリ別の害の重み。[根拠: Mathur et al. 2019] [現状: 有無のみ]
 5. ★★ **GDPR: PII最小化の監査ログ検証**: window titleにPII混入時のマスキング。[根拠: CLAUDE.md I5] [現状: titleそのまま記録]
 6. ★ **同意ダークパターン検出**: cookie banner等(overlayの一種)。[根拠: arXiv:2401.04119] [現状: scam特化]
-7. ★★ **法執行なりすましの法域別tuning**: FBI/警察庁等、地域別ブランド語。[根拠: FBI IC3 2025] [現状: 英語FBI等]
+7. ✓DONE ★★ **法執行なりすましの法域別tuning**: `authority_lure` が日本(警察庁/警視庁/国税庁/消費者庁/サイバー警察)+ 日本語強制語(警告/違反/ロック/罰金/逮捕/不正アクセス/凍結)、英語圏(Europol/HMRC/NCA/AFP/BKA/Gendarmerie)を認識。[根拠: FBI IC3 2025, IPA サポート詐欺/警察なりすまし詐欺] [旧: 英語FBI等]
 8. ★ **証拠保全モード**: インシデント時にwindow情報を法的証拠として保全。[現状: 監査ログのみ]
 9. ★★ **誤検出の異議申立てフロー**: 正規windowをBlockした際の記録と除外。[根拠: Edge false-alarm報告] [現状: なし]
 10. ★ **アクセシビリティ配慮**: 検出UIがWCAG AA。[根拠: CLAUDE.md §7] [現状: CLIのみ]

@@ -303,6 +303,19 @@ MSRV 1.75, 286 tests.
   FP firewall (user-initiated / closable windows MUST Allow), and leet/homoglyph
   evasion resistance. These serve as regression guards: any signal removal or
   weight change that drops a known scam below Suspicious will be caught.
+- **Japanese law-enforcement impersonation coverage** (`authority_lure`; C9-7 / 法域別tuning).
+  `has_authority_lure(s)` now recognizes Japanese agency names (警察庁 NPA, 警視庁 Tokyo
+  Metropolitan Police, 国税庁 National Tax Agency, 消費者庁 Consumer Affairs Agency,
+  サイバー警察, 公安委員会, 財務省, 総務省) and Japanese coercion words (警告/違反/違法/
+  ロック/ブロック/罰金/逮捕/摘発/不正アクセス/調査中/凍結), in addition to the existing
+  English set. Also extends the English agency list (Europol, HMRC, UK NCA, Australian
+  Federal Police, German BKA, French Gendarmerie). `normalize_for_match` uses
+  `to_ascii_lowercase()`, so CJK passes through untouched and the JP tokens match
+  intact. Grounds the JP-market focus in IPA (情報処理推進機構) サポート詐欺 /
+  警察なりすまし詐欺 advisories. 3 new confusables unit tests (JP fires, JP benign FP-guard,
+  additional Western agencies) + 2 scoring scenarios (JP overlay reaches Suspicious,
+  legitimate JP police notice stays silent) + 6 supplementary blocklist titles.
+  Category: `InterfaceInterference`. MITRE: T1566. 574 tests total.
 - **Gift-card payment demand** (`gift_card_demand`; E26). `has_gift_card_demand(s)`
   fires when the normalized title contains a *gift_card_noun* ("gift card/gift cards",
   "itunes card", "google play card", "steam gift card", "amazon/apple/ebay gift card",

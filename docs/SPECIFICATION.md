@@ -105,7 +105,7 @@ reflects active overrides.
 | `credential_harvest_cue` | +20 | `alert_shaped` AND normalized title contains account-alarm or credential-entry language |
 | `fake_scanner_cue` | +20 | `alert_shaped` AND normalized title contains fake rogue-AV scan-progress language |
 | `subscription_lure` | +15 | `alert_shaped` AND normalized title contains subject (subscription/license) + expiry (expired) + action (renew/call) |
-| `authority_lure` | +25 | `alert_shaped` AND normalized title contains an LEA-agency token + coercion token (warning/locked/illegal/fine) |
+| `authority_lure` | +25 | `alert_shaped` AND normalized title contains an LEA-agency token + coercion token. Agencies: English (fbi/cia/interpol/europol/hmrc/cybercrime/…) and Japanese (警察庁/警視庁/国税庁/消費者庁/サイバー警察). Coercion: English (warning/locked/illegal/fine/arrested) and Japanese (警告/違反/ロック/罰金/逮捕/不正アクセス/凍結). JP coverage targets IPA-documented 警察なりすまし詐欺 / サポート詐欺. MITRE T1566. |
 | `remote_access_lure` | +20 | normalized title names a remote-access tool AND independent fake-alert evidence already fired |
 | `screen_share_lure` | +20 | `alert_shaped` AND normalized title contains screen-share social-engineering cues (share-screen + remote-enable + grant-support language; FBI IC3 2025). MITRE T1219. |
 | `crypto_drain_lure` | +25 | `alert_shaped` AND normalized title contains wallet-alarm + coercion + seed-harvest language ("your wallet was drained / verify / enter seed phrase"). Covers 2025-2026 crypto-drain overlay surge. MITRE T1566. |
