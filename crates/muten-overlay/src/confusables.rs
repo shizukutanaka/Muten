@@ -688,12 +688,19 @@ pub fn has_urgency_countdown(s: &str) -> bool {
 /// not instructions). When found in an `alert_shaped` window (caller's guard in
 /// `classify()`), this is a very strong scam indicator.
 ///
+/// Both English and Japanese phrasings are recognized. "この画面を閉じないで
+/// ください" (do not close this screen) is the single most iconic phrase in
+/// Japanese サポート詐欺 overlays and is explicitly called out in IPA
+/// (情報処理推進機構) advisories. `normalize_for_match` uses
+/// `to_ascii_lowercase()`, so the CJK passes through untouched.
+///
 /// The caller passes a string already processed through [`normalize_for_match`]
 /// so that homoglyph / leet variants (`dо not ⅽlоse`, `d0 n0t cl0se`) are folded
 /// before the substring check.
 #[must_use]
 pub fn has_forced_retention(s: &str) -> bool {
-    s.contains("do not close")
+    // English phrasings.
+    let en = s.contains("do not close")
         || s.contains("dont close")
         || s.contains("do not exit")
         || s.contains("do not turn off")
@@ -703,7 +710,22 @@ pub fn has_forced_retention(s: &str) -> bool {
         || s.contains("keep this window open")
         || s.contains("leave this page open")
         || s.contains("stay on this page")
-        || s.contains("this window must remain open")
+        || s.contains("this window must remain open");
+
+    // Japanese phrasings (IPA サポート詐欺 corpus). Substring matching covers
+    // the polite/plain inflections ("閉じないで", "閉じないでください",
+    // "閉じないでね").
+    let jp = s.contains("閉じないで")           // do not close
+        || s.contains("閉じないでください")     // do not close (polite)
+        || s.contains("電源を切らないで")       // do not turn off power
+        || s.contains("シャットダウンしないで") // do not shut down
+        || s.contains("再起動しないで")         // do not restart
+        || s.contains("このページから離れないで") // do not leave this page
+        || s.contains("この画面を閉じ")         // (do not) close this screen
+        || s.contains("ウィンドウを閉じないで") // do not close the window
+        || s.contains("操作を続けないで"); // do not continue operating (lock framing)
+
+    en || jp
 }
 
 /// Detect credential-harvest phishing cues in a normalized window title.
@@ -1778,6 +1800,34 @@ mod tests {
         // Cyrillic 'с' (U+0441) in "close" → fold to 'c' → "close".
         let norm = normalize_for_match("do not сlose this window");
         assert!(has_forced_retention(&norm));
+    }
+
+    #[test]
+    fn forced_retention_fires_on_japanese_scam_instructions() {
+        // The iconic JP サポート詐欺 retention phrase.
+        assert!(has_forced_retention(
+            "この画面を閉じないでください サポートにお電話ください"
+        ));
+        assert!(has_forced_retention("ウィンドウを閉じないでください"));
+        assert!(has_forced_retention(
+            "電源を切らないでください システムを修復しています"
+        ));
+        assert!(has_forced_retention("コンピュータを再起動しないでください"));
+        assert!(has_forced_retention("このページから離れないでください"));
+        // Plain (non-polite) inflection still matches via substring.
+        assert!(has_forced_retention("画面を閉じないで今すぐ電話"));
+    }
+
+    #[test]
+    fn forced_retention_does_not_fire_on_benign_japanese() {
+        // Legitimate "close" instruction is not a retention coercion.
+        assert!(!has_forced_retention("読み終わったら閉じてください"));
+        // Benign restart notice (no negation).
+        assert!(!has_forced_retention(
+            "更新を完了するには再起動してください"
+        ));
+        // Generic window label.
+        assert!(!has_forced_retention("ダウンロードが完了しました"));
     }
 
     // ── has_credential_harvest_cue ────────────────────────────────────

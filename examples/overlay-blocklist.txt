@@ -269,6 +269,11 @@ title: システムが破損しています
 title: 不正なアクセスが検出されました
 title: お使いのwindowsがブロックされました
 title: ライセンスの有効期限が切れました
+# Forced-retention coercion (画面を閉じさせない): the most iconic JP
+# サポート詐欺 element; E13 forced_retention_cue also fires heuristically.
+title: この画面を閉じないでください
+title: 電源を切らないでください
+title: ウィンドウを閉じないでください
 
 # ─────────── 日本語 追加 — 当選詐欺 / 仮想通貨詐欺 / 偽インストール ──────────
 # Prize/lottery (当選詐欺): IPA 2025 注意喚起, 消費者庁 2025.

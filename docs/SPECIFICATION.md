@@ -101,7 +101,7 @@ reflects active overrides.
 | `urgency_countdown` | +15 | `alert_shaped` AND title contains `M:SS`/`MM:SS` + urgency keyword |
 | `cloud_storage_abuse` | +20 | `alert_shaped` AND URL host is a blob-storage tenant subdomain (`*.blob.core.windows.net`, `*.s3.amazonaws.com`, `*.storage.googleapis.com`, …) |
 | `url_path_lure` | +20 | `alert_shaped` AND URL path contains a known-brand token within 2 positions of a known lure token |
-| `forced_retention_cue` | +20 | `alert_shaped` AND normalized title contains "do not close / do not turn off / keep this window open / stay on this page" |
+| `forced_retention_cue` | +20 | `alert_shaped` AND normalized title contains a retention instruction. English ("do not close / do not turn off / keep this window open / stay on this page") and Japanese (この画面を閉じないで / 電源を切らないで / 再起動しないで / ウィンドウを閉じないで) — the latter is the most iconic IPA-documented サポート詐欺 phrase. |
 | `credential_harvest_cue` | +20 | `alert_shaped` AND normalized title contains account-alarm or credential-entry language |
 | `fake_scanner_cue` | +20 | `alert_shaped` AND normalized title contains fake rogue-AV scan-progress language |
 | `subscription_lure` | +15 | `alert_shaped` AND normalized title contains subject (subscription/license) + expiry (expired) + action (renew/call) |

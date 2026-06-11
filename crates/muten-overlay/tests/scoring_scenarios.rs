@@ -143,6 +143,21 @@ fn forced_retention_with_geometry_reaches_suspicious() {
     assert!(v.score >= SUSPICIOUS_THRESHOLD);
 }
 
+#[test]
+fn japanese_forced_retention_reaches_suspicious() {
+    // The iconic JP サポート詐欺 retention overlay phrase.
+    let v = classify(
+        &alert_window("この画面を閉じないでください ウイルスを検出しました"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "forced_retention_cue"),
+        "JP forced_retention_cue must fire; got {:?}",
+        v.signals
+    );
+    assert!(v.score >= SUSPICIOUS_THRESHOLD);
+}
+
 // ── Credential harvest (E14) ──────────────────────────────────────────────
 
 #[test]

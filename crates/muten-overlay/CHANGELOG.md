@@ -303,6 +303,17 @@ MSRV 1.75, 286 tests.
   FP firewall (user-initiated / closable windows MUST Allow), and leet/homoglyph
   evasion resistance. These serve as regression guards: any signal removal or
   weight change that drops a known scam below Suspicious will be caught.
+- **Japanese forced-retention coverage** (`forced_retention_cue`; 法域別tuning).
+  `has_forced_retention(s)` now recognizes Japanese retention-coercion phrasings —
+  この画面を閉じないで / 閉じないでください, 電源を切らないで, シャットダウンしないで,
+  再起動しないで, このページから離れないで, ウィンドウを閉じないで, この画面を閉じ,
+  操作を続けないで — in addition to the existing English set. "この画面を閉じないで
+  ください" (do not close this screen) is the single most iconic phrase in Japanese
+  サポート詐欺 overlays and is explicitly called out in IPA (情報処理推進機構)
+  advisories. CJK passes through `normalize_for_match` (`to_ascii_lowercase`)
+  untouched. FP guard preserved: benign close/restart instructions without negation
+  ("読み終わったら閉じてください") do not fire. 2 new confusables unit tests +
+  1 scoring scenario + 3 supplementary blocklist titles. 577 tests total.
 - **Japanese law-enforcement impersonation coverage** (`authority_lure`; C9-7 / 法域別tuning).
   `has_authority_lure(s)` now recognizes Japanese agency names (警察庁 NPA, 警視庁 Tokyo
   Metropolitan Police, 国税庁 National Tax Agency, 消費者庁 Consumer Affairs Agency,
