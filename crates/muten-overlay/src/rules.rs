@@ -174,6 +174,10 @@ pub enum CompositeCondition {
     HasStreamingBillingScam,
     /// The `traffic_fine_scam` signal fired (E43 — traffic/parking/toll violation + payment urgency).
     HasTrafficFineScam,
+    /// The `pig_butchering_lure` signal fired (E44 — romance/mentor + investment platform cue).
+    HasPigButcheringLure,
+    /// The `loan_fee_scam` signal fired (E45 — pre-approved loan + upfront fee gate).
+    HasLoanFeeScam,
 }
 
 impl CompositeCondition {
@@ -220,6 +224,8 @@ impl CompositeCondition {
             "has_debt_relief_scam" => Some(Self::HasDebtReliefScam),
             "has_streaming_billing_scam" => Some(Self::HasStreamingBillingScam),
             "has_traffic_fine_scam" => Some(Self::HasTrafficFineScam),
+            "has_pig_butchering_lure" => Some(Self::HasPigButcheringLure),
+            "has_loan_fee_scam" => Some(Self::HasLoanFeeScam),
             _ => None,
         }
     }

@@ -1372,4 +1372,58 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_traffic_fine_scam(&s));
         }
     }
+
+    /// has_pig_butchering_lure never panics on arbitrary Unicode.
+    #[test]
+    fn pig_butchering_lure_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_pig_butchering_lure(&s);
+    }
+
+    /// Plain ASCII without both a romance/group cue and an investment platform
+    /// cue never fires has_pig_butchering_lure.
+    #[test]
+    fn plain_ascii_never_fires_pig_butchering_lure(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let romance_cue = has("online friend") || has("met online") || has("chat with me")
+            || has("investment mentor") || has("trading mentor") || has("vip group")
+            || has("exclusive group") || has("exclusive trading group") || has("profit sharing group")
+            || has("join our trading") || has("join my trading") || has("i will teach you")
+            || has("i can help you invest") || has("let me help you");
+        let invest_platform = has("trading platform") || has("investment platform")
+            || has("guaranteed profit") || has("guaranteed return") || has("guaranteed earning")
+            || has("high return investment") || has("exclusive trading") || has("crypto investment")
+            || has("forex trading") || has("trading signal") || has("investment signal")
+            || has("passive income opportunity") || has("financial freedom opportunity")
+            || has("earn while you sleep") || has("double your money") || has("triple your investment");
+        if !(romance_cue && invest_platform) {
+            prop_assert!(!muten_overlay::confusables::has_pig_butchering_lure(&s));
+        }
+    }
+
+    /// has_loan_fee_scam never panics on arbitrary Unicode.
+    #[test]
+    fn loan_fee_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_loan_fee_scam(&s);
+    }
+
+    /// Plain ASCII without both a loan-approval cue and a fee gate never
+    /// fires has_loan_fee_scam.
+    #[test]
+    fn plain_ascii_never_fires_loan_fee_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let loan_approval = has("pre-approved loan") || has("preapproved loan")
+            || has("you qualify for a loan") || has("loan approved") || has("you have been approved")
+            || has("personal loan offer") || has("payday loan") || has("quick loan")
+            || has("instant loan") || has("emergency loan") || has("guaranteed loan")
+            || has("no credit check loan") || has("bad credit loan")
+            || has("guaranteed approval loan");
+        let fee_gate = has("processing fee") || has("insurance fee") || has("activation fee")
+            || has("collateral fee") || has("transfer fee required") || has("release fee")
+            || has("security deposit required") || has("upfront fee") || has("pay a small fee")
+            || has("before we release") || has("before disbursement") || has("to receive your loan")
+            || has("to unlock your funds");
+        if !(loan_approval && fee_gate) {
+            prop_assert!(!muten_overlay::confusables::has_loan_fee_scam(&s));
+        }
+    }
 }

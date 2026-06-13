@@ -85,7 +85,9 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         | "government_grant_scam"
         | "debt_relief_scam"
         | "streaming_billing_scam"
-        | "traffic_fine_scam" => &["T1566"],
+        | "traffic_fine_scam"
+        | "pig_butchering_lure"
+        | "loan_fee_scam" => &["T1566"],
         _ => &[],
     }
 }
@@ -176,6 +178,8 @@ mod tests {
         assert_eq!(techniques_of("debt_relief_scam"), &["T1566"]);
         assert_eq!(techniques_of("streaming_billing_scam"), &["T1566"]);
         assert_eq!(techniques_of("traffic_fine_scam"), &["T1566"]);
+        assert_eq!(techniques_of("pig_butchering_lure"), &["T1566"]);
+        assert_eq!(techniques_of("loan_fee_scam"), &["T1566"]);
     }
 
     #[test]

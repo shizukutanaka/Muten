@@ -699,6 +699,31 @@ MSRV 1.75, 286 tests.
   FasTrak smishing alert.  Weight `W_TRAFFIC_FINE_SCAM = 25`.  Category:
   `InterfaceInterference`.  MITRE: T1566.  10 confusables unit tests + 3 lib unit
   tests + 2 property tests + 4 scoring scenarios; 824 tests total.  (E43.)
+- **Pig-butchering / romance-investment lure** (`pig_butchering_lure`; E44).
+  `has_pig_butchering_lure(s)` fires when the normalized title contains both a
+  *romance/group cue* (VIP group, investment mentor, trading mentor, "join our
+  trading", "i will teach you", ロマンス詐欺, sns型投資, 一緒に稼ごう, etc.) AND an
+  *investment-platform cue* (trading platform, investment platform, guaranteed
+  profit/return, crypto investment, forex trading, passive income opportunity,
+  double your money, 仮想通貨投資, 高利回り投資, etc.). The AND-pair is the defining
+  tell of pig-butchering (sha zhu pan / SNS型投資詐欺) fraud: social engineering
+  via romantic or mentorship framing to lure victims into fake trading platforms.
+  FBI IC3 2024 #1 fraud category by losses ($4.57B, +53% YoY); FTC 2024 social
+  media + romance fraud advisory; IPA/消費者庁 SNS型投資詐欺 advisory 2024.
+  Weight `W_PIG_BUTCHERING_LURE = 30`. Category: Sneaking (romance guise
+  conceals investment fraud). MITRE: T1566. 10 confusables unit tests + 3 lib
+  unit tests + 2 property tests + 4 scoring scenarios; 866 tests total. (E44.)
+- **Advance-fee loan scam** (`loan_fee_scam`; E45). `has_loan_fee_scam(s)`
+  fires when the normalized title contains both a *loan-approval cue*
+  (pre-approved loan, instant loan, guaranteed loan, no credit check loan,
+  審査不要ローン, 即日融資, etc.) AND a *fee gate* (processing fee, activation fee,
+  upfront fee, "before disbursement", "to receive your loan", 前払い手数料,
+  保証金が必要, etc.). A legitimate lender never requires an upfront fee before
+  releasing funds; the fee gate is the scam's defining tell. FTC Consumer
+  Sentinel 2024 advance-fee fraud top-10; BBB ScamTracker 2024; 消費者庁
+  "架空請求・前払い詐欺". Weight `W_LOAN_FEE_SCAM = 30`. Category: Sneaking (fake
+  approval conceals advance-fee extraction). MITRE: T1566. 10 confusables unit
+  tests + 3 lib unit tests + 2 property tests + 4 scoring scenarios. (E45.)
 - **`all_signals()` registry API + `signals` CLI subcommand** (F1). A new
   public function `all_signals() -> Vec<SignalInfo>` returns a machine-readable
   catalog of every built-in detection signal muten ships. Each `SignalInfo`

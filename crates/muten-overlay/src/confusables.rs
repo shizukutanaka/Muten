@@ -2448,6 +2448,125 @@ pub fn has_traffic_fine_scam(s: &str) -> bool {
     violation_type && payment_urgency
 }
 
+/// E44 — Pig-butchering / romance-investment scam (SNS型投資詐欺).
+///
+/// Fires when the normalized title contains BOTH a *romance/social cue*
+/// (friendship/mentor/VIP-group framing used to establish trust) AND an
+/// *investment platform cue* (trading platform, guaranteed profit, crypto
+/// investment, forex, etc.). This AND-pair is near-zero false-positive:
+/// legitimate investment platforms do not combine romantic/friendship framing
+/// with guaranteed-return promises in an alert-shaped overlay.
+///
+/// Source: FBI IC3 2024 investment-fraud losses $4.57B (#1 category, 53% YoY
+/// increase); FTC 2024 "social media and romance" fraud; IPA 消費者庁 2024
+/// "SNS型投資詐欺" advisory (Japan).  T1566 Phishing (social engineering).
+pub fn has_pig_butchering_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let romance_cue = has("online friend")
+        || has("met online")
+        || has("chat with me")
+        || has("special someone")
+        || has("we connected")
+        || has("investment mentor")
+        || has("trading mentor")
+        || has("vip group")
+        || has("exclusive group")
+        || has("exclusive trading group")
+        || has("profit sharing group")
+        || has("join our trading")
+        || has("join my trading")
+        || has("i will teach you")
+        || has("i can help you invest")
+        || has("let me help you")
+        || has("ロマンス詐欺")
+        || has("sns型投資")
+        || has("出会い系投資")
+        || has("投資仲間")
+        || has("一緒に稼ごう")
+        || has("副業グループ")
+        || has("稼げる副業");
+    let invest_platform = has("trading platform")
+        || has("investment platform")
+        || has("guaranteed profit")
+        || has("guaranteed return")
+        || has("guaranteed earning")
+        || has("high return investment")
+        || has("exclusive trading")
+        || has("crypto investment")
+        || has("forex trading")
+        || has("trading signal")
+        || has("investment signal")
+        || has("passive income opportunity")
+        || has("financial freedom opportunity")
+        || has("earn while you sleep")
+        || has("double your money")
+        || has("triple your investment")
+        || has("投資プラットフォーム")
+        || has("仮想通貨投資")
+        || has("fx投資")
+        || has("高利回り投資")
+        || has("確実な利益")
+        || has("不労所得で稼ぐ");
+    romance_cue && invest_platform
+}
+
+/// E45 — Pre-approved loan advance-fee scam.
+///
+/// Fires when the normalized title contains BOTH a *loan-approval cue*
+/// (pre-approved / guaranteed loan / instant loan offer) AND a *fee gate*
+/// (processing fee / insurance deposit / collateral required before
+/// disbursement). This pattern is the defining tell of advance-fee loan
+/// fraud: a legitimate lender never requires an upfront fee before releasing
+/// funds.
+///
+/// Source: FTC Consumer Sentinel 2024 top-10 fraud types (#7 advance-fee
+/// loan fraud); BBB ScamTracker 2024; 消費者庁 "架空請求・前払い詐欺" (JP).
+/// T1566 Phishing (fake financial offer + fee extraction).
+pub fn has_loan_fee_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let loan_approval = has("pre-approved loan")
+        || has("preapproved loan")
+        || has("you qualify for a loan")
+        || has("loan approved")
+        || has("you have been approved")
+        || has("personal loan offer")
+        || has("payday loan")
+        || has("quick loan")
+        || has("instant loan")
+        || has("emergency loan")
+        || has("guaranteed loan")
+        || has("no credit check loan")
+        || has("bad credit loan")
+        || has("guaranteed approval loan")
+        || has("ローン承認")
+        || has("審査不要ローン")
+        || has("即日融資")
+        || has("即日ローン")
+        || has("無審査ローン")
+        || has("ローン審査通過")
+        || has("即融資");
+    let fee_gate = has("processing fee")
+        || has("insurance fee")
+        || has("activation fee")
+        || has("collateral fee")
+        || has("transfer fee required")
+        || has("release fee")
+        || has("security deposit required")
+        || has("upfront fee")
+        || has("pay a small fee")
+        || has("before we release")
+        || has("before disbursement")
+        || has("to receive your loan")
+        || has("to unlock your funds")
+        || has("前払い手数料")
+        || has("保証金が必要")
+        || has("振込手数料")
+        || has("入金確認後に融資")
+        || has("先に手数料")
+        || has("先払いが必要");
+    loan_approval && fee_gate
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4852,6 +4971,192 @@ mod tests {
         // Urgency without violation
         assert!(!has_traffic_fine_scam(
             "すぐにお支払いください。至急ご確認をお願いします。"
+        ));
+    }
+
+    // ── E44: pig_butchering_lure ──────────────────────────────────
+
+    #[test]
+    fn pig_butchering_fires_vip_trading_group() {
+        assert!(has_pig_butchering_lure(
+            "join our vip group — exclusive trading platform guaranteed profit"
+        ));
+    }
+
+    #[test]
+    fn pig_butchering_fires_investment_mentor() {
+        assert!(has_pig_butchering_lure(
+            "investment mentor: i will teach you crypto investment secrets"
+        ));
+    }
+
+    #[test]
+    fn pig_butchering_fires_trading_mentor() {
+        assert!(has_pig_butchering_lure(
+            "trading mentor found you — join my trading platform guaranteed return"
+        ));
+    }
+
+    #[test]
+    fn pig_butchering_fires_jp() {
+        assert!(has_pig_butchering_lure(
+            "sns型投資詐欺: 仮想通貨投資プラットフォームへ招待"
+        ));
+        assert!(has_pig_butchering_lure(
+            "一緒に稼ごう！不労所得で稼ぐ高利回り投資"
+        ));
+    }
+
+    #[test]
+    fn pig_butchering_does_not_fire_invest_only() {
+        // Only investment side — no romance/group cue
+        assert!(!has_pig_butchering_lure(
+            "trading platform: view your portfolio performance"
+        ));
+        assert!(!has_pig_butchering_lure(
+            "crypto investment news and analysis"
+        ));
+    }
+
+    #[test]
+    fn pig_butchering_does_not_fire_romance_only() {
+        // Only romance side — no investment platform cue
+        assert!(!has_pig_butchering_lure(
+            "i met online friends and we connected in our exclusive group"
+        ));
+        assert!(!has_pig_butchering_lure(
+            "join our vip group for language learning"
+        ));
+    }
+
+    #[test]
+    fn pig_butchering_does_not_fire_benign() {
+        // Legitimate investment content without social engineering framing
+        assert!(!has_pig_butchering_lure(
+            "etf trading platform — log in to your account"
+        ));
+        // Legitimate social content without investment lure
+        assert!(!has_pig_butchering_lure(
+            "online friend groups for language exchange — join now"
+        ));
+    }
+
+    #[test]
+    fn pig_butchering_does_not_fire_jp_benign() {
+        // Investment without romance cue
+        assert!(!has_pig_butchering_lure(
+            "fx投資の基礎知識。外国為替市場の仕組みを解説。"
+        ));
+        // Social without investment cue
+        assert!(!has_pig_butchering_lure(
+            "副業グループのメンバー募集。在宅ワーク。"
+        ));
+    }
+
+    #[test]
+    fn pig_butchering_fires_earn_while_sleep() {
+        assert!(has_pig_butchering_lure(
+            "investment mentor: earn while you sleep — trading platform guaranteed return"
+        ));
+    }
+
+    #[test]
+    fn pig_butchering_fires_double_your_money() {
+        assert!(has_pig_butchering_lure(
+            "i can help you invest — double your money on our exclusive trading platform"
+        ));
+    }
+
+    // ── E45: loan_fee_scam ────────────────────────────────────────
+
+    #[test]
+    fn loan_fee_scam_fires_pre_approved() {
+        assert!(has_loan_fee_scam(
+            "pre-approved loan offer — pay processing fee to receive your loan"
+        ));
+    }
+
+    #[test]
+    fn loan_fee_scam_fires_instant_loan() {
+        assert!(has_loan_fee_scam(
+            "instant loan approved — upfront fee required before disbursement"
+        ));
+    }
+
+    #[test]
+    fn loan_fee_scam_fires_no_credit_check() {
+        assert!(has_loan_fee_scam(
+            "no credit check loan — pay a small fee to unlock your funds"
+        ));
+    }
+
+    #[test]
+    fn loan_fee_scam_fires_jp() {
+        assert!(has_loan_fee_scam(
+            "審査不要ローン — 先払いが必要です。即日融資いたします。"
+        ));
+        assert!(has_loan_fee_scam(
+            "即日ローン承認 — 保証金が必要。入金確認後に融資いたします。"
+        ));
+    }
+
+    #[test]
+    fn loan_fee_scam_does_not_fire_approval_only() {
+        // Only loan approval — no fee gate
+        assert!(!has_loan_fee_scam(
+            "pre-approved loan offer — apply now, low rates"
+        ));
+        assert!(!has_loan_fee_scam(
+            "instant loan for bad credit — check your rate today"
+        ));
+    }
+
+    #[test]
+    fn loan_fee_scam_does_not_fire_fee_only() {
+        // Only fee mention — no loan approval cue
+        assert!(!has_loan_fee_scam(
+            "processing fee for service upgrade — $9.99 per month"
+        ));
+        assert!(!has_loan_fee_scam(
+            "activation fee may apply — see terms and conditions"
+        ));
+    }
+
+    #[test]
+    fn loan_fee_scam_does_not_fire_benign() {
+        // Legitimate loan information without fee gate
+        assert!(!has_loan_fee_scam(
+            "personal loan rates compared — find the best deal"
+        ));
+        // Loan forgiveness / relief (different from advance-fee)
+        assert!(!has_loan_fee_scam(
+            "student loan forgiveness application — check eligibility"
+        ));
+    }
+
+    #[test]
+    fn loan_fee_scam_does_not_fire_jp_benign() {
+        // Fee without loan approval
+        assert!(!has_loan_fee_scam(
+            "手数料について：振込手数料は銀行によって異なります。"
+        ));
+        // Loan without fee gate
+        assert!(!has_loan_fee_scam(
+            "即日融資可能な消費者金融を比較。審査が早い業者を紹介。"
+        ));
+    }
+
+    #[test]
+    fn loan_fee_scam_fires_guaranteed_approval() {
+        assert!(has_loan_fee_scam(
+            "guaranteed approval loan — pay activation fee to release your funds"
+        ));
+    }
+
+    #[test]
+    fn loan_fee_scam_fires_transfer_fee() {
+        assert!(has_loan_fee_scam(
+            "emergency loan approved — transfer fee required before we release funds"
         ));
     }
 }

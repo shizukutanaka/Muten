@@ -2590,3 +2590,201 @@ fn traffic_fine_scam_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E44: pig_butchering_lure ──────────────────────────────────────
+
+#[test]
+fn pig_butchering_lure_fires_on_alert_shaped_window() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "join our vip group — exclusive trading platform guaranteed return".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "pig_butchering_lure"),
+        "expected pig_butchering_lure; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn pig_butchering_lure_fp_guard_no_alert_shape() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "join our vip group — exclusive trading platform guaranteed return".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        },
+        &rules,
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "pig_butchering_lure"),
+        "pig_butchering_lure must not fire on user-initiated page; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_pig_butchering_reaches_suspicious() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "sns型投資詐欺: 一緒に稼ごう！不労所得で稼ぐ高利回り投資プラットフォーム".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 50,
+        "JP pig_butchering_lure must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn pig_butchering_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "investment mentor: join my trading platform — guaranteed profit — call 1-800-555-0210".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "pig_butchering_lure"),
+        "expected pig_butchering_lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "pig_butchering_lure + phone must reach Block; score = {}",
+        v.score
+    );
+}
+
+// ── E45: loan_fee_scam ────────────────────────────────────────────
+
+#[test]
+fn loan_fee_scam_fires_on_alert_shaped_window() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "pre-approved loan offer — pay processing fee to receive your loan".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "loan_fee_scam"),
+        "expected loan_fee_scam; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn loan_fee_scam_fp_guard_no_alert_shape() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "pre-approved loan offer — pay processing fee to receive your loan".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        },
+        &rules,
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "loan_fee_scam"),
+        "loan_fee_scam must not fire on user-initiated page; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_loan_fee_scam_reaches_suspicious() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "審査不要ローン — 先払いが必要です。即日融資。保証金が必要".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 50,
+        "JP loan_fee_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn loan_fee_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "instant loan approved — upfront fee required — call 1-800-555-0221 — to receive your loan".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "loan_fee_scam"),
+        "expected loan_fee_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "loan_fee_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}

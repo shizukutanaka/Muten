@@ -335,6 +335,12 @@ fn signal_phrase(signal: &str) -> &str {
         "traffic_fine_scam" => {
             "impersonates a traffic enforcement authority or toll operator (parking enforcement, EZPass, FasTrak) with a fake violation notice demanding immediate payment to avoid license suspension or additional penalties"
         }
+        "pig_butchering_lure" => {
+            "combines romantic or mentorship social engineering (VIP trading group, investment mentor, 'I found you') with a fake investment platform or guaranteed-profit lure to draw the victim into a pig-butchering (sha zhu pan) investment fraud"
+        }
+        "loan_fee_scam" => {
+            "claims the victim has been pre-approved for a personal, payday, or emergency loan, then demands an upfront processing fee, insurance deposit, or collateral payment before releasing funds that do not exist (advance-fee loan fraud)"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -450,6 +456,8 @@ const W_GOVERNMENT_GRANT_SCAM: i32 = 25; // government grant/stimulus impersonat
 const W_DEBT_RELIEF_SCAM: i32 = 25; // debt/credit relief framing + upfront fee / guaranteed-results CTA
 const W_STREAMING_BILLING_SCAM: i32 = 25; // named streaming service + payment-failure/billing-problem (APWG 2025)
 const W_TRAFFIC_FINE_SCAM: i32 = 25; // traffic/parking/toll violation + payment urgency (FTC 2025 top-3 impostor)
+const W_PIG_BUTCHERING_LURE: i32 = 30; // romance/mentor cue + investment platform (IC3 2024 #1 by loss $4.57B)
+const W_LOAN_FEE_SCAM: i32 = 30; // pre-approved loan + upfront-fee gate (FTC advance-fee loan fraud)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -522,6 +530,8 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "debt_relief_scam" => Some(W_DEBT_RELIEF_SCAM),
         "streaming_billing_scam" => Some(W_STREAMING_BILLING_SCAM),
         "traffic_fine_scam" => Some(W_TRAFFIC_FINE_SCAM),
+        "pig_butchering_lure" => Some(W_PIG_BUTCHERING_LURE),
+        "loan_fee_scam" => Some(W_LOAN_FEE_SCAM),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -583,6 +593,8 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "debt_relief_scam"
             | "streaming_billing_scam"
             | "traffic_fine_scam"
+            | "pig_butchering_lure"
+            | "loan_fee_scam"
             | "remote_access_lure"
     )
 }
@@ -687,6 +699,8 @@ pub fn all_signals() -> Vec<SignalInfo> {
         "debt_relief_scam",
         "streaming_billing_scam",
         "traffic_fine_scam",
+        "pig_butchering_lure",
+        "loan_fee_scam",
         "remote_access_lure",
     ];
     NAMES
@@ -1621,6 +1635,14 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         score += rules.weight_of("traffic_fine_scam", W_TRAFFIC_FINE_SCAM);
         signals.push("traffic_fine_scam".into());
     }
+    if alert_shaped && confusables::has_pig_butchering_lure(&normalized_title) {
+        score += rules.weight_of("pig_butchering_lure", W_PIG_BUTCHERING_LURE);
+        signals.push("pig_butchering_lure".into());
+    }
+    if alert_shaped && confusables::has_loan_fee_scam(&normalized_title) {
+        score += rules.weight_of("loan_fee_scam", W_LOAN_FEE_SCAM);
+        signals.push("loan_fee_scam".into());
+    }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
@@ -1951,6 +1973,8 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasDebtReliefScam => has_sig("debt_relief_scam"),
         C::HasStreamingBillingScam => has_sig("streaming_billing_scam"),
         C::HasTrafficFineScam => has_sig("traffic_fine_scam"),
+        C::HasPigButcheringLure => has_sig("pig_butchering_lure"),
+        C::HasLoanFeeScam => has_sig("loan_fee_scam"),
     }
 }
 
@@ -6166,6 +6190,8 @@ mod tests {
             "mixed_script",
             "tax_authority_scam",
             "traffic_fine_scam",
+            "pig_butchering_lure",
+            "loan_fee_scam",
             "user_initiated",
         ] {
             assert!(
@@ -6173,5 +6199,107 @@ mod tests {
                 "all_signals() missing expected signal: {must}"
             );
         }
+    }
+
+    // ── E44: pig_butchering_lure (lib.rs unit tests) ──────────────
+
+    #[test]
+    fn pig_butchering_lure_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "join our vip group — exclusive trading platform guaranteed return".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "pig_butchering_lure"),
+            "pig_butchering_lure must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn pig_butchering_lure_does_not_fire_on_non_alert_shaped() {
+        let w = OverlayWindow {
+            title: "join our vip group — exclusive trading platform guaranteed return".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "pig_butchering_lure"),
+            "pig_butchering_lure must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn pig_butchering_lure_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("pig_butchering_lure"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    // ── E45: loan_fee_scam (lib.rs unit tests) ────────────────────
+
+    #[test]
+    fn loan_fee_scam_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "pre-approved loan offer — pay processing fee to receive your loan".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "loan_fee_scam"),
+            "loan_fee_scam must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn loan_fee_scam_does_not_fire_on_non_alert_shaped() {
+        let w = OverlayWindow {
+            title: "pre-approved loan offer — pay processing fee to receive your loan".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "loan_fee_scam"),
+            "loan_fee_scam must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn loan_fee_scam_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("loan_fee_scam"),
+            Some(DarkPatternCategory::Sneaking)
+        );
     }
 }
