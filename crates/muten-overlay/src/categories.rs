@@ -152,6 +152,9 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         "survey_reward_scam" => Some(InterfaceInterference), // reward bait misdirects attention and action
         "av_brand_renewal_scam" => Some(InterfaceInterference), // AV brand impersonation creates false urgency
         "recovery_scam" => Some(Sneaking), // legitimate-service disguise conceals secondary-victimization fraud
+        "student_loan_scam" => Some(Sneaking), // government-program guise conceals fee extraction
+        "secret_shopper_scam" => Some(Sneaking), // legitimate-job guise conceals money-mule recruitment
+        "mlm_pyramid_recruitment" => Some(Sneaking), // business-opportunity guise disguises pyramid structure
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }

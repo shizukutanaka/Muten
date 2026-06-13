@@ -804,6 +804,42 @@ MSRV 1.75, 286 tests.
   `W_RECOVERY_SCAM = 30`. Category: Sneaking (disguises fraud as legitimate
   service). MITRE: T1566. 10 confusables unit tests + 3 lib unit tests + 2
   property tests + 4 scoring scenarios; 1027 tests total. (E53.)
+- **Student loan forgiveness scam** (`student_loan_scam`; E54).
+  `has_student_loan_scam(s)` fires when the normalized title contains both a
+  *loan-relief cue* (student loan forgiveness, student loan relief, loan
+  cancellation, student debt forgiveness, federal loan forgiveness,
+  学生ローン免除, 奨学金免除, etc.) AND a *fee/urgency demand* (processing fee,
+  enrollment fee, administrative fee, limited time offer, apply now to qualify,
+  one-time fee, 手数料が必要, 今すぐ申請, etc.). A legitimate federal forgiveness
+  program charges no application fee; the fee demand is the defining scam tell.
+  FTC Consumer Sentinel 2024 (student loan scams spiked post-DOE SAVE plan);
+  CFPB student loan fraud advisory 2024. Weight `W_STUDENT_LOAN_SCAM = 25`.
+  Category: Sneaking. MITRE: T1566. 10 confusables unit tests + 3 lib unit
+  tests + 2 property tests + 4 scoring scenarios. (E54.)
+- **Secret / mystery shopper money-mule scam** (`secret_shopper_scam`; E55).
+  `has_secret_shopper_scam(s)` fires when the normalized title contains both a
+  *shopper-job cue* (secret shopper, mystery shopper, secret shopping, paid
+  mystery shopper, 覆面調査員, etc.) AND a *money-movement demand* (deposit a
+  check, cash the check, wire the funds, wire money, purchase gift cards, keep
+  your commission, 小切手を換金, 送金, etc.). Legitimate mystery shopping
+  companies never ask workers to deposit checks and wire money; the check is
+  fake and the victim loses the wired funds. FTC Consumer Sentinel 2024; BBB
+  ScamTracker 2024 "employment" top-3 pattern. Weight `W_SECRET_SHOPPER_SCAM =
+  30`. Category: Sneaking. MITRE: T1566. 10 confusables unit tests + 3 lib
+  unit tests + 2 property tests + 4 scoring scenarios. (E55.)
+- **MLM / pyramid-scheme recruitment** (`mlm_pyramid_recruitment`; E56).
+  `has_mlm_pyramid_recruitment(s)` fires when the normalized title contains both
+  an *MLM-framing cue* (earn per referral, residual income, downline bonus,
+  tier bonus, recruit and earn, unlimited earning potential, multi-level,
+  マルチ商法, ネットワークビジネス, 紹介料を稼ぐ, etc.) AND a *join/invest CTA*
+  (join now, start earning today, invest to start, pay to activate, enroll now,
+  register to earn, 今すぐ参加, 会員登録で収入, etc.). Distinct from
+  `pig_butchering_lure` (romance/trading-platform framing) and `job_scam`
+  (WFH with upfront fee). FTC Business Opportunity Rule complaints 2024; FBI
+  IC3 2024 pyramid scheme sub-category; 消費者庁 マルチ商法 advisory 2024.
+  Weight `W_MLM_PYRAMID_RECRUITMENT = 25`. Category: Sneaking. MITRE: T1566.
+  10 confusables unit tests + 3 lib unit tests + 2 property tests + 4 scoring
+  scenarios; 1084 tests total. (E56.)
 - **`verify` CLI subcommand** (H6). `muten-overlay verify <log> [--json]`
   replays the SHA-256 hash chain of an audit log produced by `monitor`,
   verifies every link's `prev_hash` and `hash` field, and reports the event

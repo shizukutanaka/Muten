@@ -3589,3 +3589,260 @@ fn recovery_scam_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E54: student_loan_scam ────────────────────────────────────────
+
+#[test]
+fn student_loan_scam_fires_on_alert_shaped_window() {
+    let w = OverlayWindow {
+        title: "student loan forgiveness — apply now to qualify — processing fee required".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "student_loan_scam"),
+        "expected student_loan_scam; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn student_loan_scam_fp_guard_no_alert_shape() {
+    let w = OverlayWindow {
+        title: "student loan forgiveness — apply now to qualify — processing fee required".into(),
+        url: None,
+        coverage_percent: 10,
+        topmost: false,
+        has_close_button: true,
+        blocks_input: false,
+        origin: Origin::UserInitiated,
+        age_ms: 5_000,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        !v.signals.iter().any(|s| s == "student_loan_scam"),
+        "student_loan_scam must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn student_loan_scam_reaches_suspicious() {
+    let w = OverlayWindow {
+        title: "student debt relief — limited time offer — act now before the deadline".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.score >= 50,
+        "student_loan_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn student_loan_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "federal loan forgiveness — one-time enrollment fee — call 1-800-555-0195"
+                .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "student_loan_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}
+
+// ── E55: secret_shopper_scam ──────────────────────────────────────
+
+#[test]
+fn secret_shopper_scam_fires_on_alert_shaped_window() {
+    let w = OverlayWindow {
+        title: "secret shopper position — deposit a check — wire the funds to our agent".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "secret_shopper_scam"),
+        "expected secret_shopper_scam; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn secret_shopper_scam_fp_guard_no_alert_shape() {
+    let w = OverlayWindow {
+        title: "secret shopper position — deposit a check — wire the funds to our agent".into(),
+        url: None,
+        coverage_percent: 10,
+        topmost: false,
+        has_close_button: true,
+        blocks_input: false,
+        origin: Origin::UserInitiated,
+        age_ms: 5_000,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        !v.signals.iter().any(|s| s == "secret_shopper_scam"),
+        "secret_shopper_scam must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn secret_shopper_scam_reaches_suspicious() {
+    let w = OverlayWindow {
+        title: "mystery shopper assignment — purchase gift cards — keep your commission".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.score >= 50,
+        "secret_shopper_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn secret_shopper_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "paid mystery shopper — deposit the check — wire money — call 1-800-555-0196"
+                .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "secret_shopper_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}
+
+// ── E56: mlm_pyramid_recruitment ─────────────────────────────────
+
+#[test]
+fn mlm_pyramid_recruitment_fires_on_alert_shaped_window() {
+    let w = OverlayWindow {
+        title: "earn per referral — unlimited earning potential — join now".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "mlm_pyramid_recruitment"),
+        "expected mlm_pyramid_recruitment; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn mlm_pyramid_recruitment_fp_guard_no_alert_shape() {
+    let w = OverlayWindow {
+        title: "earn per referral — unlimited earning potential — join now".into(),
+        url: None,
+        coverage_percent: 10,
+        topmost: false,
+        has_close_button: true,
+        blocks_input: false,
+        origin: Origin::UserInitiated,
+        age_ms: 5_000,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        !v.signals.iter().any(|s| s == "mlm_pyramid_recruitment"),
+        "mlm_pyramid_recruitment must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn mlm_pyramid_recruitment_reaches_suspicious() {
+    let w = OverlayWindow {
+        title: "residual income — earn while you sleep — build your team — enroll now".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.score >= 50,
+        "mlm_pyramid_recruitment must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn mlm_pyramid_recruitment_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "downline bonus — multi-level — pay to activate — call 1-800-555-0197".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "mlm_pyramid_recruitment + phone must reach Block; score = {}",
+        v.score
+    );
+}

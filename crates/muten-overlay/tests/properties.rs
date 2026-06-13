@@ -1616,4 +1616,69 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_recovery_scam(&s));
         }
     }
+
+    /// has_student_loan_scam never panics on arbitrary Unicode.
+    #[test]
+    fn student_loan_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_student_loan_scam(&s);
+    }
+
+    /// Plain ASCII without both a loan-relief cue and a fee/urgency demand
+    /// never fires has_student_loan_scam.
+    #[test]
+    fn plain_ascii_never_fires_student_loan_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let loan_cue = has("student loan forgiveness") || has("student loan relief")
+            || has("student loan cancellation") || has("student debt forgiveness")
+            || has("loan forgiveness program") || has("federal loan forgiveness");
+        let fee_demand = has("processing fee") || has("enrollment fee")
+            || has("administrative fee") || has("limited time offer")
+            || has("apply now to qualify") || has("one-time fee");
+        if !(loan_cue && fee_demand) {
+            prop_assert!(!muten_overlay::confusables::has_student_loan_scam(&s));
+        }
+    }
+
+    /// has_secret_shopper_scam never panics on arbitrary Unicode.
+    #[test]
+    fn secret_shopper_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_secret_shopper_scam(&s);
+    }
+
+    /// Plain ASCII without both a shopper cue and a money-movement demand
+    /// never fires has_secret_shopper_scam.
+    #[test]
+    fn plain_ascii_never_fires_secret_shopper_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let shopper_cue = has("secret shopper") || has("mystery shopper")
+            || has("secret shopping") || has("mystery shopping");
+        let money_movement = has("deposit a check") || has("cash the check")
+            || has("wire the funds") || has("wire money")
+            || has("keep your commission") || has("purchase gift cards");
+        if !(shopper_cue && money_movement) {
+            prop_assert!(!muten_overlay::confusables::has_secret_shopper_scam(&s));
+        }
+    }
+
+    /// has_mlm_pyramid_recruitment never panics on arbitrary Unicode.
+    #[test]
+    fn mlm_pyramid_recruitment_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_mlm_pyramid_recruitment(&s);
+    }
+
+    /// Plain ASCII without both an MLM-framing cue and a join/invest CTA
+    /// never fires has_mlm_pyramid_recruitment.
+    #[test]
+    fn plain_ascii_never_fires_mlm_pyramid_recruitment(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let mlm_cue = has("earn per referral") || has("residual income")
+            || has("downline bonus") || has("multi-level")
+            || has("recruit and earn") || has("unlimited earning potential");
+        let join_cta = has("join now") || has("start earning today")
+            || has("invest to start") || has("pay to activate")
+            || has("enroll now") || has("register to earn");
+        if !(mlm_cue && join_cta) {
+            prop_assert!(!muten_overlay::confusables::has_mlm_pyramid_recruitment(&s));
+        }
+    }
 }

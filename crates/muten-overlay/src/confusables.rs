@@ -6330,3 +6330,406 @@ mod e50_e53_tests {
         ));
     }
 }
+
+// ── E54: student_loan_scam ────────────────────────────────────────────────────
+
+/// Detects fake student loan forgiveness / relief overlay scams.
+///
+/// Fires when the normalized title contains **both** a *loan-relief cue*
+/// (student loan forgiveness, student loan relief, loan cancellation, loan
+/// discharge program, federal loan forgiveness, 学生ローン免除, etc.) **and**
+/// a *fee/urgency demand* (processing fee, enrollment fee, limited time offer,
+/// apply now to qualify, administrative fee, upfront cost, 手数料が必要, etc.).
+///
+/// A legitimate federal student loan forgiveness program charges no enrollment
+/// fee — the Department of Education processes applications at no cost. The
+/// fee demand is the defining scam tell. FTC Consumer Sentinel 2024: student
+/// loan scams spiked after the DOE SAVE plan announcement; BBB ScamTracker
+/// 2024 "debt collection / loan" category top-5; CFPB student loan fraud
+/// advisory 2024.
+#[must_use]
+pub fn has_student_loan_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let loan_relief_cue = has("student loan forgiveness")
+        || has("student loan relief")
+        || has("student loan cancellation")
+        || has("student loan discharge")
+        || has("federal loan forgiveness")
+        || has("student debt forgiveness")
+        || has("student debt relief")
+        || has("loan forgiveness program")
+        || has("biden loan forgiveness")
+        || has("pslf program")
+        || has("income-driven repayment forgiveness")
+        || has("qualify for forgiveness")
+        || has("apply for loan forgiveness")
+        || has("学生ローン免除")
+        || has("奨学金免除")
+        || has("学生ローン救済");
+    let fee_demand = has("processing fee")
+        || has("enrollment fee")
+        || has("administrative fee")
+        || has("upfront cost")
+        || has("limited time offer")
+        || has("apply now to qualify")
+        || has("act now")
+        || has("before the deadline")
+        || has("one-time fee")
+        || has("registration fee")
+        || has("to start the process")
+        || has("手数料が必要")
+        || has("申請手数料")
+        || has("今すぐ申請");
+    loan_relief_cue && fee_demand
+}
+
+// ── E55: secret_shopper_scam ──────────────────────────────────────────────────
+
+/// Detects fake secret shopper / mystery shopper money-mule recruitment.
+///
+/// Fires when the normalized title contains **both** a *shopper-job cue*
+/// (secret shopper, mystery shopper, secret shopping, mystery shopping,
+/// become a secret shopper, 覆面調査, etc.) **and** a *money-movement demand*
+/// (deposit a check, cash the check, wire money, transfer funds, gift card
+/// purchase, money order, 小切手を換金, etc.).
+///
+/// Legitimate mystery shopping companies never ask workers to deposit checks
+/// and wire money — the check is fake and the victim loses the wired funds.
+/// Distinct from `job_scam` (which covers generic WFH jobs with an upfront fee)
+/// — the secret-shopper pattern involves a fake check deposit followed by a
+/// wire/gift-card transfer, not an upfront fee paid by the victim. FTC
+/// Consumer Sentinel 2024; BBB ScamTracker 2024 "employment" top-3 pattern.
+#[must_use]
+pub fn has_secret_shopper_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let shopper_cue = has("secret shopper")
+        || has("mystery shopper")
+        || has("secret shopping")
+        || has("mystery shopping")
+        || has("become a secret shopper")
+        || has("become a mystery shopper")
+        || has("secret shopper position")
+        || has("mystery shopper assignment")
+        || has("paid mystery shopper")
+        || has("shopper evaluation")
+        || has("覆面調査員")
+        || has("覆面調査");
+    let money_movement = has("deposit a check")
+        || has("cash the check")
+        || has("deposit the check")
+        || has("wire the funds")
+        || has("wire money")
+        || has("transfer the money")
+        || has("send the remainder")
+        || has("keep your share")
+        || has("keep your commission")
+        || has("purchase gift cards")
+        || has("buy money orders")
+        || has("small切手を換金")
+        || has("小切手を換金")
+        || has("送金してください");
+    shopper_cue && money_movement
+}
+
+// ── E56: mlm_pyramid_recruitment ─────────────────────────────────────────────
+
+/// Detects MLM / pyramid-scheme recruitment overlays.
+///
+/// Fires when the normalized title contains **both** an *MLM-framing cue*
+/// (earn per referral, earn for each referral, residual income, passive
+/// earnings, downline bonus, tier bonus, join our team and earn, unlimited
+/// earning potential, マルチ商法, ネットワークビジネス, etc.) **and** a
+/// *join/invest CTA* (join now, start earning today, sign up to join, invest
+/// to start, pay to activate, become a member, ご参加ください, 今すぐ参加, etc.).
+///
+/// Distinct from `pig_butchering_lure` (romance/trading-platform framing) and
+/// `job_scam` (WFH with upfront fee). The defining tell of pyramid recruitment
+/// is the referral/downline income structure combined with a join/invest CTA.
+/// FTC Business Opportunity Rule complaints 2024; FBI IC3 2024 investment fraud
+/// (pyramid scheme sub-category); 消費者庁 マルチ商法被害 advisory 2024.
+#[must_use]
+pub fn has_mlm_pyramid_recruitment(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let mlm_framing = has("earn per referral")
+        || has("earn for each referral")
+        || has("residual income")
+        || has("passive earnings")
+        || has("downline bonus")
+        || has("downline commission")
+        || has("tier bonus")
+        || has("join our network")
+        || has("unlimited earning potential")
+        || has("earn while you sleep")
+        || has("build your team")
+        || has("recruit and earn")
+        || has("referral commission")
+        || has("multi-level")
+        || has("マルチ商法")
+        || has("ネットワークビジネス")
+        || has("紹介料を稼ぐ")
+        || has("downline収入");
+    let join_cta = has("join now")
+        || has("start earning today")
+        || has("sign up to join")
+        || has("invest to start")
+        || has("pay to activate")
+        || has("become a member today")
+        || has("enroll now")
+        || has("register to earn")
+        || has("activate your account to start")
+        || has("今すぐ参加")
+        || has("ご参加ください")
+        || has("会員登録で収入");
+    mlm_framing && join_cta
+}
+
+#[cfg(test)]
+mod e54_e56_tests {
+    use super::*;
+
+    // ── E54: student_loan_scam ────────────────────────────────────
+
+    #[test]
+    fn student_loan_scam_fires_forgiveness_fee() {
+        assert!(has_student_loan_scam(
+            "student loan forgiveness program — apply now to qualify — processing fee required"
+        ));
+    }
+
+    #[test]
+    fn student_loan_scam_fires_cancellation_enrollment() {
+        assert!(has_student_loan_scam(
+            "student loan cancellation — limited time offer — one-time enrollment fee"
+        ));
+    }
+
+    #[test]
+    fn student_loan_scam_fires_relief_act_now() {
+        assert!(has_student_loan_scam(
+            "student debt relief — act now before the deadline — administrative fee"
+        ));
+    }
+
+    #[test]
+    fn student_loan_scam_fires_federal_deadline() {
+        assert!(has_student_loan_scam(
+            "federal loan forgiveness — limited time offer — apply now to qualify"
+        ));
+    }
+
+    #[test]
+    fn student_loan_scam_fires_jp() {
+        assert!(has_student_loan_scam(
+            "学生ローン免除プログラム — 手数料が必要です — 今すぐ申請"
+        ));
+    }
+
+    #[test]
+    fn student_loan_scam_does_not_fire_forgiveness_only() {
+        assert!(!has_student_loan_scam(
+            "student loan forgiveness — apply at studentaid.gov — no cost to apply"
+        ));
+        assert!(!has_student_loan_scam(
+            "student loan forgiveness information"
+        ));
+    }
+
+    #[test]
+    fn student_loan_scam_does_not_fire_fee_only() {
+        assert!(!has_student_loan_scam(
+            "processing fee required for this service"
+        ));
+        assert!(!has_student_loan_scam("limited time offer — act now"));
+    }
+
+    #[test]
+    fn student_loan_scam_does_not_fire_benign() {
+        assert!(!has_student_loan_scam(
+            "student loan repayment options — income-driven plans available"
+        ));
+        assert!(!has_student_loan_scam(
+            "scholarship information for students"
+        ));
+    }
+
+    #[test]
+    fn student_loan_scam_does_not_fire_jp_benign() {
+        assert!(!has_student_loan_scam(
+            "学生ローン返済について — 無料相談はこちら"
+        ));
+        assert!(!has_student_loan_scam("奨学金の申請方法についての説明"));
+    }
+
+    #[test]
+    fn student_loan_scam_fires_discharge_program() {
+        assert!(has_student_loan_scam(
+            "student loan discharge program — registration fee — to start the process"
+        ));
+    }
+
+    // ── E55: secret_shopper_scam ──────────────────────────────────
+
+    #[test]
+    fn secret_shopper_scam_fires_check_wire() {
+        assert!(has_secret_shopper_scam(
+            "secret shopper position — deposit a check — wire the funds to our agent"
+        ));
+    }
+
+    #[test]
+    fn secret_shopper_scam_fires_mystery_gift_card() {
+        assert!(has_secret_shopper_scam(
+            "mystery shopper assignment — purchase gift cards — keep your commission"
+        ));
+    }
+
+    #[test]
+    fn secret_shopper_scam_fires_cash_check_remainder() {
+        assert!(has_secret_shopper_scam(
+            "become a mystery shopper — cash the check — send the remainder to our office"
+        ));
+    }
+
+    #[test]
+    fn secret_shopper_scam_fires_deposit_transfer() {
+        assert!(has_secret_shopper_scam(
+            "paid mystery shopper — deposit the check — transfer the money within 24 hours"
+        ));
+    }
+
+    #[test]
+    fn secret_shopper_scam_fires_jp() {
+        assert!(has_secret_shopper_scam(
+            "覆面調査員の募集 — 小切手を換金して送金してください"
+        ));
+    }
+
+    #[test]
+    fn secret_shopper_scam_does_not_fire_shopper_only() {
+        assert!(!has_secret_shopper_scam(
+            "mystery shopper program — evaluate local restaurants — paid weekly"
+        ));
+        assert!(!has_secret_shopper_scam("secret shopper jobs in your area"));
+    }
+
+    #[test]
+    fn secret_shopper_scam_does_not_fire_money_only() {
+        assert!(!has_secret_shopper_scam(
+            "wire money to family abroad — low fees"
+        ));
+        assert!(!has_secret_shopper_scam(
+            "deposit a check via mobile banking"
+        ));
+    }
+
+    #[test]
+    fn secret_shopper_scam_does_not_fire_benign() {
+        assert!(!has_secret_shopper_scam(
+            "job opportunity — flexible hours — apply online"
+        ));
+        assert!(!has_secret_shopper_scam(
+            "work from home — data entry position"
+        ));
+    }
+
+    #[test]
+    fn secret_shopper_scam_does_not_fire_jp_benign() {
+        assert!(!has_secret_shopper_scam(
+            "アルバイト募集 — 覆面調査のお仕事です — 時給1500円"
+        ));
+        assert!(!has_secret_shopper_scam(
+            "銀行振込の手続き方法についてご案内します"
+        ));
+    }
+
+    #[test]
+    fn secret_shopper_scam_fires_shopper_evaluation_wire() {
+        assert!(has_secret_shopper_scam(
+            "shopper evaluation — wire money — keep your share of the check"
+        ));
+    }
+
+    // ── E56: mlm_pyramid_recruitment ─────────────────────────────
+
+    #[test]
+    fn mlm_pyramid_recruitment_fires_referral_join() {
+        assert!(has_mlm_pyramid_recruitment(
+            "earn per referral — unlimited earning potential — join now"
+        ));
+    }
+
+    #[test]
+    fn mlm_pyramid_recruitment_fires_residual_enroll() {
+        assert!(has_mlm_pyramid_recruitment(
+            "residual income — earn while you sleep — enroll now"
+        ));
+    }
+
+    #[test]
+    fn mlm_pyramid_recruitment_fires_downline_join() {
+        assert!(has_mlm_pyramid_recruitment(
+            "downline bonus — build your team — join now and start earning today"
+        ));
+    }
+
+    #[test]
+    fn mlm_pyramid_recruitment_fires_multi_level_pay() {
+        assert!(has_mlm_pyramid_recruitment(
+            "multi-level — recruit and earn — pay to activate your account"
+        ));
+    }
+
+    #[test]
+    fn mlm_pyramid_recruitment_fires_jp() {
+        assert!(has_mlm_pyramid_recruitment(
+            "マルチ商法 — 紹介料を稼ぐ — 今すぐ参加"
+        ));
+    }
+
+    #[test]
+    fn mlm_pyramid_recruitment_does_not_fire_mlm_only() {
+        assert!(!has_mlm_pyramid_recruitment(
+            "earn per referral program — affiliate marketing information"
+        ));
+        assert!(!has_mlm_pyramid_recruitment(
+            "residual income ideas for 2025"
+        ));
+    }
+
+    #[test]
+    fn mlm_pyramid_recruitment_does_not_fire_cta_only() {
+        assert!(!has_mlm_pyramid_recruitment(
+            "join now — limited spots available"
+        ));
+        assert!(!has_mlm_pyramid_recruitment(
+            "start earning today — apply online"
+        ));
+    }
+
+    #[test]
+    fn mlm_pyramid_recruitment_does_not_fire_benign() {
+        assert!(!has_mlm_pyramid_recruitment(
+            "affiliate program — earn commission on referrals — free to join"
+        ));
+        assert!(!has_mlm_pyramid_recruitment(
+            "passive income investing strategies"
+        ));
+    }
+
+    #[test]
+    fn mlm_pyramid_recruitment_does_not_fire_jp_benign() {
+        assert!(!has_mlm_pyramid_recruitment(
+            "アフィリエイトプログラムへのご参加をお待ちしています"
+        ));
+        assert!(!has_mlm_pyramid_recruitment(
+            "今すぐ参加 — ネットショッピングのポイントプログラム"
+        ));
+    }
+
+    #[test]
+    fn mlm_pyramid_recruitment_fires_tier_bonus_enroll() {
+        assert!(has_mlm_pyramid_recruitment(
+            "tier bonus — join our network — register to earn passive earnings today"
+        ));
+    }
+}

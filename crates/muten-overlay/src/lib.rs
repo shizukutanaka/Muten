@@ -368,6 +368,15 @@ fn signal_phrase(signal: &str) -> &str {
         "recovery_scam" => {
             "targets prior fraud victims by claiming to recover their lost funds (crypto recovery, chargeback specialist, scam recovery service) for an upfront fee — a secondary-victimization fraud flagged by FBI IC3 2024"
         }
+        "student_loan_scam" => {
+            "claims to offer student loan forgiveness, relief, or discharge and demands a processing, enrollment, or administrative fee — legitimate federal forgiveness programs charge no fee to apply"
+        }
+        "secret_shopper_scam" => {
+            "recruits victims as secret or mystery shoppers and instructs them to deposit a check, then wire funds or purchase gift cards — the check is fake and the victim loses the transferred amount"
+        }
+        "mlm_pyramid_recruitment" => {
+            "promotes a multi-level or network-marketing income opportunity using referral/downline/tier-bonus framing and demands payment to join, activate, or enroll — the classic tell of pyramid-scheme recruitment"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -494,6 +503,9 @@ const W_WINDOWS_ACTIVATION_SCAM: i32 = 30; // fake Windows/Office product-key po
 const W_SURVEY_REWARD_SCAM: i32 = 25; // survey-invite + gift-card/cash-reward bait (APWG 2024 survey-lure phishing)
 const W_AV_BRAND_RENEWAL_SCAM: i32 = 30; // named AV brand + subscription-expiry alarm (APWG 2024 branded AV pop-up)
 const W_RECOVERY_SCAM: i32 = 30; // "recover your lost funds" + fee/specialist CTA (FBI IC3 2024 secondary-victimization)
+const W_STUDENT_LOAN_SCAM: i32 = 25; // student loan forgiveness + processing fee (FTC 2024 DOE SAVE plan fraud spike)
+const W_SECRET_SHOPPER_SCAM: i32 = 30; // secret/mystery shopper + deposit check/wire funds (money-mule via fake job)
+const W_MLM_PYRAMID_RECRUITMENT: i32 = 25; // referral/downline/residual income + join/invest CTA (FTC 2024 pyramid scheme)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -577,6 +589,9 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "survey_reward_scam" => Some(W_SURVEY_REWARD_SCAM),
         "av_brand_renewal_scam" => Some(W_AV_BRAND_RENEWAL_SCAM),
         "recovery_scam" => Some(W_RECOVERY_SCAM),
+        "student_loan_scam" => Some(W_STUDENT_LOAN_SCAM),
+        "secret_shopper_scam" => Some(W_SECRET_SHOPPER_SCAM),
+        "mlm_pyramid_recruitment" => Some(W_MLM_PYRAMID_RECRUITMENT),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -649,6 +664,9 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "survey_reward_scam"
             | "av_brand_renewal_scam"
             | "recovery_scam"
+            | "student_loan_scam"
+            | "secret_shopper_scam"
+            | "mlm_pyramid_recruitment"
             | "remote_access_lure"
     )
 }
@@ -764,6 +782,9 @@ pub fn all_signals() -> Vec<SignalInfo> {
         "survey_reward_scam",
         "av_brand_renewal_scam",
         "recovery_scam",
+        "student_loan_scam",
+        "secret_shopper_scam",
+        "mlm_pyramid_recruitment",
         "remote_access_lure",
     ];
     NAMES
@@ -1738,6 +1759,18 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         score += rules.weight_of("recovery_scam", W_RECOVERY_SCAM);
         signals.push("recovery_scam".into());
     }
+    if alert_shaped && confusables::has_student_loan_scam(&normalized_title) {
+        score += rules.weight_of("student_loan_scam", W_STUDENT_LOAN_SCAM);
+        signals.push("student_loan_scam".into());
+    }
+    if alert_shaped && confusables::has_secret_shopper_scam(&normalized_title) {
+        score += rules.weight_of("secret_shopper_scam", W_SECRET_SHOPPER_SCAM);
+        signals.push("secret_shopper_scam".into());
+    }
+    if alert_shaped && confusables::has_mlm_pyramid_recruitment(&normalized_title) {
+        score += rules.weight_of("mlm_pyramid_recruitment", W_MLM_PYRAMID_RECRUITMENT);
+        signals.push("mlm_pyramid_recruitment".into());
+    }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
@@ -2098,6 +2131,9 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasSurveyRewardScam => has_sig("survey_reward_scam"),
         C::HasAvBrandRenewalScam => has_sig("av_brand_renewal_scam"),
         C::HasRecoveryScam => has_sig("recovery_scam"),
+        C::HasStudentLoanScam => has_sig("student_loan_scam"),
+        C::HasSecretShopperScam => has_sig("secret_shopper_scam"),
+        C::HasMlmPyramidRecruitment => has_sig("mlm_pyramid_recruitment"),
     }
 }
 
@@ -6931,6 +6967,163 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("recovery_scam"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    // ── E54: student_loan_scam (lib.rs unit tests) ──────────────────
+
+    #[test]
+    fn student_loan_scam_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "student loan forgiveness — apply now to qualify — processing fee required"
+                .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "student_loan_scam"),
+            "student_loan_scam must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn student_loan_scam_does_not_fire_without_alert_shape() {
+        let w = OverlayWindow {
+            title: "student loan forgiveness — apply now to qualify — processing fee required"
+                .into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "student_loan_scam"),
+            "student_loan_scam must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn student_loan_scam_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("student_loan_scam"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    // ── E55: secret_shopper_scam (lib.rs unit tests) ────────────────
+
+    #[test]
+    fn secret_shopper_scam_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "secret shopper position — deposit a check — wire the funds to our agent".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "secret_shopper_scam"),
+            "secret_shopper_scam must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn secret_shopper_scam_does_not_fire_without_alert_shape() {
+        let w = OverlayWindow {
+            title: "secret shopper position — deposit a check — wire the funds to our agent".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "secret_shopper_scam"),
+            "secret_shopper_scam must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn secret_shopper_scam_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("secret_shopper_scam"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    // ── E56: mlm_pyramid_recruitment (lib.rs unit tests) ────────────
+
+    #[test]
+    fn mlm_pyramid_recruitment_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "earn per referral — unlimited earning potential — join now and start earning"
+                .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "mlm_pyramid_recruitment"),
+            "mlm_pyramid_recruitment must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn mlm_pyramid_recruitment_does_not_fire_without_alert_shape() {
+        let w = OverlayWindow {
+            title: "earn per referral — unlimited earning potential — join now and start earning"
+                .into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "mlm_pyramid_recruitment"),
+            "mlm_pyramid_recruitment must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn mlm_pyramid_recruitment_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("mlm_pyramid_recruitment"),
             Some(DarkPatternCategory::Sneaking)
         );
     }

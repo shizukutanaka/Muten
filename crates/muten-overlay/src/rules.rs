@@ -196,6 +196,12 @@ pub enum CompositeCondition {
     HasAvBrandRenewalScam,
     /// The `recovery_scam` signal fired (E53 — fraud-recovery service + fee demand).
     HasRecoveryScam,
+    /// The `student_loan_scam` signal fired (E54 — loan forgiveness + processing fee).
+    HasStudentLoanScam,
+    /// The `secret_shopper_scam` signal fired (E55 — mystery shopper + check/wire-transfer demand).
+    HasSecretShopperScam,
+    /// The `mlm_pyramid_recruitment` signal fired (E56 — referral/downline framing + join CTA).
+    HasMlmPyramidRecruitment,
 }
 
 impl CompositeCondition {
@@ -253,6 +259,9 @@ impl CompositeCondition {
             "has_survey_reward_scam" => Some(Self::HasSurveyRewardScam),
             "has_av_brand_renewal_scam" => Some(Self::HasAvBrandRenewalScam),
             "has_recovery_scam" => Some(Self::HasRecoveryScam),
+            "has_student_loan_scam" => Some(Self::HasStudentLoanScam),
+            "has_secret_shopper_scam" => Some(Self::HasSecretShopperScam),
+            "has_mlm_pyramid_recruitment" => Some(Self::HasMlmPyramidRecruitment),
             _ => None,
         }
     }
