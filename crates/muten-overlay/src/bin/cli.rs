@@ -14,8 +14,8 @@
 use clap::{Parser, Subcommand};
 use muten_overlay::sink::merkle_root_of_log;
 use muten_overlay::{
-    classify, enforce, verify_chain, ChainedFileSink, Decision, EnumeratedWindow, MemorySink,
-    Monitor, NullController, OverlayWindow, Ruleset, RunConfig,
+    all_signals, classify, enforce, verify_chain, ChainedFileSink, Decision, EnumeratedWindow,
+    MemorySink, Monitor, NullController, OverlayWindow, Ruleset, RunConfig,
 };
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -153,6 +153,16 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// List every built-in detection signal with its default weight,
+    /// dark-pattern category, MITRE ATT&CK technique IDs, and
+    /// plain-language description. Useful for MDM operators building
+    /// blocklist templates, SIEM lookup tables, or documentation.
+    /// Exit: 0 always.
+    Signals {
+        /// Emit the catalog as a JSON array instead of a plain text table.
+        #[arg(long)]
+        json: bool,
+    },
     /// Run N sweeps over a JSON window list, writing a tamper-evident
     /// chained audit log and printing an event summary. Demonstrates
     /// the full daemon loop. Exit: 0 ok, 1 error.
@@ -207,6 +217,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             }
         }
         Cmd::Rules { file } => cmd_rules(&file),
+        Cmd::Signals { json } => cmd_signals(json),
         Cmd::Scareware {
             repeats,
             process,
@@ -427,6 +438,52 @@ fn cmd_rules(file: &std::path::Path) -> Result<ExitCode, String> {
     if warnings > 0 {
         eprintln!("{warnings} bounded-weight warning(s) — see SPECIFICATION.md §5.1");
         return Ok(ExitCode::from(1));
+    }
+    Ok(ExitCode::from(0))
+}
+
+fn cmd_signals(json: bool) -> Result<ExitCode, String> {
+    let signals = all_signals();
+    if json {
+        let val = serde_json::to_string_pretty(&signals)
+            .map_err(|e| format!("serializing signals: {e}"))?;
+        println!("{val}");
+    } else {
+        println!(
+            "{:<36} {:>7}  {:<22}  {:<12}  DESCRIPTION",
+            "SIGNAL", "WEIGHT", "CATEGORY", "MITRE"
+        );
+        println!("{}", "-".repeat(120));
+        for s in &signals {
+            let weight = match s.default_weight {
+                Some(w) => format!("{w:+}"),
+                None => "n/a".to_string(),
+            };
+            let cat = s
+                .category
+                .map(|c| c.as_str().to_string())
+                .unwrap_or_default();
+            let mitre = if s.mitre_techniques.is_empty() {
+                String::new()
+            } else {
+                s.mitre_techniques.join(",")
+            };
+            let desc = {
+                let mut chars = s.description.chars();
+                let truncated: String = chars.by_ref().take(59).collect();
+                if chars.next().is_some() {
+                    format!("{truncated}…")
+                } else {
+                    truncated
+                }
+            };
+            println!(
+                "{:<36} {:>7}  {:<22}  {:<12}  {}",
+                s.name, weight, cat, mitre, desc
+            );
+        }
+        println!();
+        println!("{} built-in signals", signals.len());
     }
     Ok(ExitCode::from(0))
 }

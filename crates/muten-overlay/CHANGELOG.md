@@ -699,6 +699,25 @@ MSRV 1.75, 286 tests.
   FasTrak smishing alert.  Weight `W_TRAFFIC_FINE_SCAM = 25`.  Category:
   `InterfaceInterference`.  MITRE: T1566.  10 confusables unit tests + 3 lib unit
   tests + 2 property tests + 4 scoring scenarios; 824 tests total.  (E43.)
+- **`all_signals()` registry API + `signals` CLI subcommand** (F1). A new
+  public function `all_signals() -> Vec<SignalInfo>` returns a machine-readable
+  catalog of every built-in detection signal muten ships. Each `SignalInfo`
+  carries `name`, `default_weight`, `category` (Gray et al. 2018
+  `DarkPatternCategory`), `mitre_techniques` (ATT&CK IDs), `description`
+  (the same human phrase used in `Verdict::explain`), and `high_fidelity`
+  (whether the signal is text/rule-based vs geometry-based). The list
+  currently contains 58 signals ordered by detection layer (geometry →
+  blocklist/phone → Unicode evasion → domain intelligence → content). A new
+  `signals [--json]` CLI subcommand surfaces this catalog: the default text
+  output is a formatted table (signal name, weight, category, MITRE, truncated
+  description); `--json` emits a pretty-printed JSON array suitable for SIEM
+  lookup-table seeding, MDM console integration, or blocklist-template
+  generation. Exit code always 0. This is a structural discoverability
+  improvement (roadmap F1): MDM operators no longer need to read source code
+  to know which signals exist, what weights they carry, or what dark-pattern
+  category they belong to. 4 unit tests (non-empty + unique names, weight
+  consistency with `signal_weight()`, nonempty descriptions, key signal
+  presence); 828 tests total.
 - **Sextortion / webcam-recording extortion lure** (`sextortion_lure`; E25).
   `has_sextortion_lure(s)` fires when the normalized title contains a *camera_cue*
   ("your camera" / "your webcam" / "we have recorded" / "have been recording" /

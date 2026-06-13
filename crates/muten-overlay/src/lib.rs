@@ -587,6 +587,121 @@ fn is_high_fidelity(signal: &str) -> bool {
     )
 }
 
+/// Machine-readable descriptor for one built-in detection signal.
+///
+/// Returned by [`all_signals`]. Intended for MDM operators who want to
+/// enumerate every signal muten ships, inspect its default weight and
+/// dark-pattern category, and decide which ones to override in their
+/// blocklist.  The `description` field reproduces the same human phrase
+/// used in [`Verdict::explain`].
+#[derive(Debug, Clone, Serialize)]
+pub struct SignalInfo {
+    /// Canonical signal name (the string that appears in `Verdict.signals`).
+    pub name: &'static str,
+    /// Default weight contribution when the signal fires.  `None` means the
+    /// signal is geometry-only (no content weight) or is operator-configured
+    /// (composite blocklist rules).
+    pub default_weight: Option<i32>,
+    /// Dark-pattern category per Gray et al. (2018), if assigned.
+    pub category: Option<DarkPatternCategory>,
+    /// MITRE ATT&CK technique IDs associated with this signal.
+    pub mitre_techniques: &'static [&'static str],
+    /// Human-readable phrase used in `Verdict::explain`.
+    pub description: &'static str,
+    /// `true` when the signal is text/rule-based (high-fidelity) rather than
+    /// geometry-based (low-fidelity).  Matches the logic in `Verdict::confidence`.
+    pub high_fidelity: bool,
+}
+
+/// Return a catalog of every built-in detection signal muten ships.
+///
+/// The list is stable within a minor version.  A major version bump may add,
+/// remove, or rename signals; a minor bump may add new ones.  Operators can
+/// iterate this list to build a UI, pre-populate a SIEM lookup table, or
+/// generate a blocklist template.
+///
+/// Signals are listed in roughly the same order they appear in the scoring
+/// block of [`classify`]: geometry signals first, then text/rule signals.
+#[must_use]
+pub fn all_signals() -> Vec<SignalInfo> {
+    const NAMES: &[&str] = &[
+        // ── Geometry (window structure) ──────────────────────────────
+        "fullscreen",
+        "topmost",
+        "no_close_button",
+        "blocks_input",
+        "unsolicited",
+        "very_new",
+        "input_trap",
+        "sudden_fullscreen_takeover",
+        "user_initiated",
+        // ── Blocklist / phone ────────────────────────────────────────
+        "blocklist_title",
+        "blocklist_host",
+        "blocklist_phone",
+        "phone_number",
+        // ── Unicode evasion ──────────────────────────────────────────
+        "mixed_script",
+        "whole_script_confusable",
+        "compat_chars_present",
+        "mixed_number_systems",
+        "excessive_combining_marks",
+        "bidi_override",
+        // ── Domain intelligence ──────────────────────────────────────
+        "brand_impersonation",
+        "combosquat_brand",
+        "typosquat_brand",
+        "cloud_storage_abuse",
+        "url_path_lure",
+        // ── Content signals (alert_shaped guard) ─────────────────────
+        "clickfix_instruction",
+        "urgency_countdown",
+        "forced_retention_cue",
+        "credential_harvest_cue",
+        "fake_scanner_cue",
+        "subscription_lure",
+        "authority_lure",
+        "download_trap_lure",
+        "prize_lure",
+        "crypto_drain_lure",
+        "screen_share_lure",
+        "qr_code_lure",
+        "ip_alarm_lure",
+        "package_fee_lure",
+        "sextortion_lure",
+        "gift_card_demand",
+        "refund_scam_cue",
+        "national_id_alarm",
+        "bank_account_alarm",
+        "false_registration_billing",
+        "fake_bsod_lure",
+        "advance_fee_lure",
+        "tech_support_invoice_scam",
+        "utility_cutoff_threat",
+        "healthcare_scam",
+        "job_scam",
+        "tax_authority_scam",
+        "social_media_account_alarm",
+        "immigration_visa_scam",
+        "government_grant_scam",
+        "debt_relief_scam",
+        "streaming_billing_scam",
+        "traffic_fine_scam",
+        "remote_access_lure",
+    ];
+    NAMES
+        .iter()
+        .map(|&name| SignalInfo {
+            name,
+            default_weight: signal_weight(name),
+            category: categories::category_of(name),
+            mitre_techniques: mitre::techniques_of(name),
+            description: signal_phrase(name),
+            high_fidelity: is_high_fidelity(name),
+        })
+        .collect()
+}
+
 /// Major brands muten ships a built-in homograph guard for (UTS #39
 /// skeleton collision, roadmap C8-2). Chosen to be long/distinctive
 /// enough that an accidental skeleton collision with an *unrelated*
@@ -5996,5 +6111,67 @@ mod tests {
             category_of("traffic_fine_scam"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
+    }
+
+    // ── all_signals() registry ─────────────────────────────────────
+
+    #[test]
+    fn all_signals_is_nonempty_and_names_are_unique() {
+        let sigs = all_signals();
+        assert!(
+            !sigs.is_empty(),
+            "all_signals() must return at least one entry"
+        );
+        let mut seen = std::collections::HashSet::new();
+        for s in &sigs {
+            assert!(
+                seen.insert(s.name),
+                "duplicate signal name in all_signals(): {}",
+                s.name
+            );
+        }
+    }
+
+    #[test]
+    fn all_signals_weight_consistent_with_signal_weight() {
+        for s in all_signals() {
+            let expected = signal_weight(s.name);
+            assert_eq!(
+                s.default_weight, expected,
+                "SignalInfo.default_weight mismatch for {}",
+                s.name
+            );
+        }
+    }
+
+    #[test]
+    fn all_signals_description_nonempty() {
+        for s in all_signals() {
+            assert!(
+                !s.description.is_empty(),
+                "signal {} has empty description",
+                s.name
+            );
+        }
+    }
+
+    #[test]
+    fn all_signals_contains_key_signals() {
+        let sigs = all_signals();
+        let names: Vec<&str> = sigs.iter().map(|s| s.name).collect();
+        for must in &[
+            "fullscreen",
+            "blocklist_title",
+            "phone_number",
+            "mixed_script",
+            "tax_authority_scam",
+            "traffic_fine_scam",
+            "user_initiated",
+        ] {
+            assert!(
+                names.contains(must),
+                "all_signals() missing expected signal: {must}"
+            );
+        }
     }
 }
