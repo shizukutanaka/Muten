@@ -356,6 +356,18 @@ fn signal_phrase(signal: &str) -> &str {
         "timeshare_travel_scam" => {
             "offers a complimentary vacation or resort membership and demands an activation fee, certificate fee, or closing cost before the prize can be claimed — a travel-prize advance-fee fraud commonly targeting timeshare owners (FTC travel fraud)"
         }
+        "windows_activation_scam" => {
+            "displays a fake Windows or Microsoft Office activation alarm (product key required, license expired, not genuine) paired with a 'call Microsoft support' or 'contact activation center' call-to-action — a tech-support-fraud overlay distinct from legitimate OS activation dialogs"
+        }
+        "survey_reward_scam" => {
+            "invites the victim to take a survey (complete our survey, answer 3 questions, selected for our survey) and promises a gift card or cash reward as bait — a browser-overlay advance-fee fraud pattern"
+        }
+        "av_brand_renewal_scam" => {
+            "displays a named antivirus brand (McAfee, Norton, Avast, Kaspersky, etc.) alongside a subscription-expiry or license-expired alarm to create urgency and drive victims to call a fake tech-support line"
+        }
+        "recovery_scam" => {
+            "targets prior fraud victims by claiming to recover their lost funds (crypto recovery, chargeback specialist, scam recovery service) for an upfront fee — a secondary-victimization fraud flagged by FBI IC3 2024"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -478,6 +490,10 @@ const W_CHARITY_SCAM_LURE: i32 = 25; // fake charity + irreversible payment (gif
 const W_RENTAL_SCAM_LURE: i32 = 25; // fake rental listing + advance deposit demand (FTC 2024 housing fraud)
 const W_PET_SALE_SCAM: i32 = 25; // fake pet listing + transport/crate deposit demand (FTC 2024 online shopping fraud)
 const W_TIMESHARE_TRAVEL_SCAM: i32 = 25; // vacation club / timeshare + activation fee demand (FTC travel prize fraud)
+const W_WINDOWS_ACTIVATION_SCAM: i32 = 30; // fake Windows/Office product-key popup + "call Microsoft" CTA (FTC tech-support fraud)
+const W_SURVEY_REWARD_SCAM: i32 = 25; // survey-invite + gift-card/cash-reward bait (APWG 2024 survey-lure phishing)
+const W_AV_BRAND_RENEWAL_SCAM: i32 = 30; // named AV brand + subscription-expiry alarm (APWG 2024 branded AV pop-up)
+const W_RECOVERY_SCAM: i32 = 30; // "recover your lost funds" + fee/specialist CTA (FBI IC3 2024 secondary-victimization)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -557,6 +573,10 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "rental_scam_lure" => Some(W_RENTAL_SCAM_LURE),
         "pet_sale_scam" => Some(W_PET_SALE_SCAM),
         "timeshare_travel_scam" => Some(W_TIMESHARE_TRAVEL_SCAM),
+        "windows_activation_scam" => Some(W_WINDOWS_ACTIVATION_SCAM),
+        "survey_reward_scam" => Some(W_SURVEY_REWARD_SCAM),
+        "av_brand_renewal_scam" => Some(W_AV_BRAND_RENEWAL_SCAM),
+        "recovery_scam" => Some(W_RECOVERY_SCAM),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -625,6 +645,10 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "rental_scam_lure"
             | "pet_sale_scam"
             | "timeshare_travel_scam"
+            | "windows_activation_scam"
+            | "survey_reward_scam"
+            | "av_brand_renewal_scam"
+            | "recovery_scam"
             | "remote_access_lure"
     )
 }
@@ -736,6 +760,10 @@ pub fn all_signals() -> Vec<SignalInfo> {
         "rental_scam_lure",
         "pet_sale_scam",
         "timeshare_travel_scam",
+        "windows_activation_scam",
+        "survey_reward_scam",
+        "av_brand_renewal_scam",
+        "recovery_scam",
         "remote_access_lure",
     ];
     NAMES
@@ -1694,6 +1722,22 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         score += rules.weight_of("timeshare_travel_scam", W_TIMESHARE_TRAVEL_SCAM);
         signals.push("timeshare_travel_scam".into());
     }
+    if alert_shaped && confusables::has_windows_activation_scam(&normalized_title) {
+        score += rules.weight_of("windows_activation_scam", W_WINDOWS_ACTIVATION_SCAM);
+        signals.push("windows_activation_scam".into());
+    }
+    if alert_shaped && confusables::has_survey_reward_scam(&normalized_title) {
+        score += rules.weight_of("survey_reward_scam", W_SURVEY_REWARD_SCAM);
+        signals.push("survey_reward_scam".into());
+    }
+    if alert_shaped && confusables::has_av_brand_renewal_scam(&normalized_title) {
+        score += rules.weight_of("av_brand_renewal_scam", W_AV_BRAND_RENEWAL_SCAM);
+        signals.push("av_brand_renewal_scam".into());
+    }
+    if alert_shaped && confusables::has_recovery_scam(&normalized_title) {
+        score += rules.weight_of("recovery_scam", W_RECOVERY_SCAM);
+        signals.push("recovery_scam".into());
+    }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
@@ -2050,6 +2094,10 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasRentalScamLure => has_sig("rental_scam_lure"),
         C::HasPetSaleScam => has_sig("pet_sale_scam"),
         C::HasTimeshareScam => has_sig("timeshare_travel_scam"),
+        C::HasWindowsActivationScam => has_sig("windows_activation_scam"),
+        C::HasSurveyRewardScam => has_sig("survey_reward_scam"),
+        C::HasAvBrandRenewalScam => has_sig("av_brand_renewal_scam"),
+        C::HasRecoveryScam => has_sig("recovery_scam"),
     }
 }
 
@@ -6673,6 +6721,216 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("timeshare_travel_scam"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    // ── E50: windows_activation_scam (lib.rs unit tests) ───────────
+
+    #[test]
+    fn windows_activation_scam_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "windows is not activated — call microsoft support to activate your copy".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "windows_activation_scam"),
+            "windows_activation_scam must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn windows_activation_scam_does_not_fire_without_alert_shape() {
+        let w = OverlayWindow {
+            title: "windows is not activated — call microsoft support to activate your copy".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "windows_activation_scam"),
+            "windows_activation_scam must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn windows_activation_scam_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("windows_activation_scam"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E51: survey_reward_scam (lib.rs unit tests) ─────────────────
+
+    #[test]
+    fn survey_reward_scam_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "take our survey and win a gift card — claim your amazon gift card now".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "survey_reward_scam"),
+            "survey_reward_scam must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn survey_reward_scam_does_not_fire_without_alert_shape() {
+        let w = OverlayWindow {
+            title: "take our survey and win a gift card — claim your amazon gift card now".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "survey_reward_scam"),
+            "survey_reward_scam must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn survey_reward_scam_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("survey_reward_scam"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E52: av_brand_renewal_scam (lib.rs unit tests) ─────────────
+
+    #[test]
+    fn av_brand_renewal_scam_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "mcafee subscription has expired — your device is unprotected — renew now"
+                .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "av_brand_renewal_scam"),
+            "av_brand_renewal_scam must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn av_brand_renewal_scam_does_not_fire_without_alert_shape() {
+        let w = OverlayWindow {
+            title: "mcafee subscription has expired — your device is unprotected — renew now"
+                .into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "av_brand_renewal_scam"),
+            "av_brand_renewal_scam must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn av_brand_renewal_scam_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("av_brand_renewal_scam"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E53: recovery_scam (lib.rs unit tests) ──────────────────────
+
+    #[test]
+    fn recovery_scam_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title:
+                "recover your lost funds — 100% guaranteed — contact our certified recovery expert"
+                    .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "recovery_scam"),
+            "recovery_scam must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn recovery_scam_does_not_fire_without_alert_shape() {
+        let w = OverlayWindow {
+            title:
+                "recover your lost funds — 100% guaranteed — contact our certified recovery expert"
+                    .into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "recovery_scam"),
+            "recovery_scam must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn recovery_scam_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("recovery_scam"),
             Some(DarkPatternCategory::Sneaking)
         );
     }

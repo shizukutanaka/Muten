@@ -1529,4 +1529,91 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_timeshare_travel_scam(&s));
         }
     }
+
+    /// has_windows_activation_scam never panics on arbitrary Unicode.
+    #[test]
+    fn windows_activation_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_windows_activation_scam(&s);
+    }
+
+    /// Plain ASCII without both an activation cue and a CTA
+    /// never fires has_windows_activation_scam.
+    #[test]
+    fn plain_ascii_never_fires_windows_activation_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let activation_cue = has("windows is not activated") || has("product key required")
+            || has("enter product key") || has("windows activation required")
+            || has("your windows license has expired") || has("office activation");
+        let cta = has("call microsoft support") || has("contact microsoft support")
+            || has("call now to activate") || has("microsoft activation center")
+            || has("activation support number");
+        if !(activation_cue && cta) {
+            prop_assert!(!muten_overlay::confusables::has_windows_activation_scam(&s));
+        }
+    }
+
+    /// has_survey_reward_scam never panics on arbitrary Unicode.
+    #[test]
+    fn survey_reward_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_survey_reward_scam(&s);
+    }
+
+    /// Plain ASCII without both a survey cue and a reward bait
+    /// never fires has_survey_reward_scam.
+    #[test]
+    fn plain_ascii_never_fires_survey_reward_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let survey_cue = has("take our survey") || has("complete a survey")
+            || has("you have been selected for our survey") || has("answer 3 questions")
+            || has("customer survey") || has("quick survey");
+        let reward_bait = has("win a gift card") || has("claim your gift card")
+            || has("amazon gift card") || has("$500 reward")
+            || has("claim your reward") || has("free iphone");
+        if !(survey_cue && reward_bait) {
+            prop_assert!(!muten_overlay::confusables::has_survey_reward_scam(&s));
+        }
+    }
+
+    /// has_av_brand_renewal_scam never panics on arbitrary Unicode.
+    #[test]
+    fn av_brand_renewal_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_av_brand_renewal_scam(&s);
+    }
+
+    /// Plain ASCII without both an AV brand and a renewal demand
+    /// never fires has_av_brand_renewal_scam.
+    #[test]
+    fn plain_ascii_never_fires_av_brand_renewal_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let av_brand = has("mcafee") || has("norton") || has("avast")
+            || has("kaspersky") || has("malwarebytes");
+        let renewal_demand = has("subscription has expired") || has("license has expired")
+            || has("your protection has expired") || has("renew now to stay protected")
+            || has("subscription renewal required") || has("device is no longer protected");
+        if !(av_brand && renewal_demand) {
+            prop_assert!(!muten_overlay::confusables::has_av_brand_renewal_scam(&s));
+        }
+    }
+
+    /// has_recovery_scam never panics on arbitrary Unicode.
+    #[test]
+    fn recovery_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_recovery_scam(&s);
+    }
+
+    /// Plain ASCII without both a recovery-service cue and a fee/contact demand
+    /// never fires has_recovery_scam.
+    #[test]
+    fn plain_ascii_never_fires_recovery_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let recovery_cue = has("recover your lost funds") || has("lost money to a scam")
+            || has("scam recovery service") || has("crypto recovery")
+            || has("chargeback specialist") || has("funds recovery");
+        let fee_demand = has("100% guaranteed") || has("no recovery no fee")
+            || has("contact our specialist") || has("free consultation")
+            || has("recovery expert") || has("upfront fee");
+        if !(recovery_cue && fee_demand) {
+            prop_assert!(!muten_overlay::confusables::has_recovery_scam(&s));
+        }
+    }
 }

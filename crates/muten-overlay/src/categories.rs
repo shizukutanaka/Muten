@@ -148,6 +148,10 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         "rental_scam_lure" => Some(Sneaking),  // fake listing disguises advance-fee extraction
         "pet_sale_scam" => Some(Sneaking), // fake pet ad disguises transport-advance-fee extraction
         "timeshare_travel_scam" => Some(Sneaking), // vacation prize framing disguises advance-fee extraction
+        "windows_activation_scam" => Some(InterfaceInterference), // Microsoft impersonation steers via fake authority
+        "survey_reward_scam" => Some(InterfaceInterference), // reward bait misdirects attention and action
+        "av_brand_renewal_scam" => Some(InterfaceInterference), // AV brand impersonation creates false urgency
+        "recovery_scam" => Some(Sneaking), // legitimate-service disguise conceals secondary-victimization fraud
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }

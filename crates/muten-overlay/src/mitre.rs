@@ -92,7 +92,11 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         | "charity_scam_lure"
         | "rental_scam_lure"
         | "pet_sale_scam"
-        | "timeshare_travel_scam" => &["T1566"],
+        | "timeshare_travel_scam"
+        | "windows_activation_scam"
+        | "survey_reward_scam"
+        | "av_brand_renewal_scam"
+        | "recovery_scam" => &["T1566"],
         _ => &[],
     }
 }
@@ -190,6 +194,10 @@ mod tests {
         assert_eq!(techniques_of("rental_scam_lure"), &["T1566"]);
         assert_eq!(techniques_of("pet_sale_scam"), &["T1566"]);
         assert_eq!(techniques_of("timeshare_travel_scam"), &["T1566"]);
+        assert_eq!(techniques_of("windows_activation_scam"), &["T1566"]);
+        assert_eq!(techniques_of("survey_reward_scam"), &["T1566"]);
+        assert_eq!(techniques_of("av_brand_renewal_scam"), &["T1566"]);
+        assert_eq!(techniques_of("recovery_scam"), &["T1566"]);
     }
 
     #[test]

@@ -3244,3 +3244,348 @@ fn timeshare_travel_scam_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E50: windows_activation_scam ─────────────────────────────────
+
+#[test]
+fn windows_activation_scam_fires_on_alert_shaped_window() {
+    let w = OverlayWindow {
+        title: "windows is not activated — call microsoft support to activate your copy".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "windows_activation_scam"),
+        "expected windows_activation_scam; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn windows_activation_scam_fp_guard_no_alert_shape() {
+    let w = OverlayWindow {
+        title: "windows is not activated — call microsoft support to activate your copy".into(),
+        url: None,
+        coverage_percent: 10,
+        topmost: false,
+        has_close_button: true,
+        blocks_input: false,
+        origin: Origin::UserInitiated,
+        age_ms: 5_000,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        !v.signals.iter().any(|s| s == "windows_activation_scam"),
+        "windows_activation_scam must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn windows_activation_scam_reaches_suspicious() {
+    let w = OverlayWindow {
+        title: "windows is not activated — call microsoft support to activate your copy".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.score >= 50,
+        "windows_activation_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn windows_activation_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "product key required — contact microsoft certified technician — call 1-800-555-0192".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "windows_activation_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}
+
+// ── E51: survey_reward_scam ───────────────────────────────────────
+
+#[test]
+fn survey_reward_scam_fires_on_alert_shaped_window() {
+    let w = OverlayWindow {
+        title: "take our survey and win a gift card — claim your amazon gift card now".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "survey_reward_scam"),
+        "expected survey_reward_scam; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn survey_reward_scam_fp_guard_no_alert_shape() {
+    let w = OverlayWindow {
+        title: "take our survey and win a gift card — claim your amazon gift card now".into(),
+        url: None,
+        coverage_percent: 10,
+        topmost: false,
+        has_close_button: true,
+        blocks_input: false,
+        origin: Origin::UserInitiated,
+        age_ms: 5_000,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        !v.signals.iter().any(|s| s == "survey_reward_scam"),
+        "survey_reward_scam must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn survey_reward_scam_reaches_suspicious() {
+    let w = OverlayWindow {
+        title: "you have been selected for our survey — claim your $500 reward — free iphone"
+            .into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.score >= 50,
+        "survey_reward_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn survey_reward_scam_plus_urgency_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "complete our quick survey — claim your amazon gift card — expires in 05:00"
+                .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "survey_reward_scam + urgency must reach Block; score = {}",
+        v.score
+    );
+}
+
+// ── E52: av_brand_renewal_scam ────────────────────────────────────
+
+#[test]
+fn av_brand_renewal_scam_fires_on_alert_shaped_window() {
+    let w = OverlayWindow {
+        title: "mcafee subscription has expired — your device is unprotected — renew now to stay protected".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "av_brand_renewal_scam"),
+        "expected av_brand_renewal_scam; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn av_brand_renewal_scam_fp_guard_no_alert_shape() {
+    let w = OverlayWindow {
+        title: "mcafee subscription has expired — your device is unprotected — renew now to stay protected".into(),
+        url: None,
+        coverage_percent: 10,
+        topmost: false,
+        has_close_button: true,
+        blocks_input: false,
+        origin: Origin::UserInitiated,
+        age_ms: 5_000,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        !v.signals.iter().any(|s| s == "av_brand_renewal_scam"),
+        "av_brand_renewal_scam must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn av_brand_renewal_scam_reaches_suspicious() {
+    let w = OverlayWindow {
+        title: "norton license has expired — your device is unprotected — subscription renewal required".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.score >= 50,
+        "av_brand_renewal_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn av_brand_renewal_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "kaspersky subscription has expired — your protection has expired — call 1-800-555-0193".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "av_brand_renewal_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}
+
+// ── E53: recovery_scam ────────────────────────────────────────────
+
+#[test]
+fn recovery_scam_fires_on_alert_shaped_window() {
+    let w = OverlayWindow {
+        title: "recover your lost funds — 100% guaranteed — contact our certified recovery expert"
+            .into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "recovery_scam"),
+        "expected recovery_scam; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn recovery_scam_fp_guard_no_alert_shape() {
+    let w = OverlayWindow {
+        title: "recover your lost funds — 100% guaranteed — contact our certified recovery expert"
+            .into(),
+        url: None,
+        coverage_percent: 10,
+        topmost: false,
+        has_close_button: true,
+        blocks_input: false,
+        origin: Origin::UserInitiated,
+        age_ms: 5_000,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        !v.signals.iter().any(|s| s == "recovery_scam"),
+        "recovery_scam must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn recovery_scam_reaches_suspicious() {
+    let w = OverlayWindow {
+        title: "scam recovery service — lost money to a scam — free consultation with our expert"
+            .into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.score >= 50,
+        "recovery_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn recovery_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "crypto recovery — we can recover your lost funds — no recovery no fee — call 1-800-555-0194".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "recovery_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}

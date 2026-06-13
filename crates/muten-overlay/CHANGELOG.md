@@ -751,6 +751,59 @@ MSRV 1.75, 286 tests.
   Weight `W_TIMESHARE_TRAVEL_SCAM = 25`. Category: Sneaking. MITRE: T1566.
   10 confusables unit tests + 3 lib unit tests + 2 property tests + 4 scoring
   scenarios. (E49.)
+- **Fake Windows / Office activation popup** (`windows_activation_scam`; E50).
+  `has_windows_activation_scam(s)` fires when the normalized title contains
+  both an *activation cue* (Windows is not activated, product key required,
+  enter product key, Windows activation required, office activation, your copy
+  of Windows is not genuine, ライセンス認証が必要, etc.) AND a *call-to-action*
+  (call Microsoft support, contact Microsoft certified technician, Microsoft
+  activation center, toll free activation, activation helpline,
+  Microsoftサポートに電話, etc.). A legitimate Windows activation dialog never
+  includes a "call us" instruction — that pairing is the defining tell of
+  tech-support-fraud activation pop-ups. FTC Tech Support Fraud advisory 2024;
+  Microsoft MSRC "fake activation" warnings. Weight `W_WINDOWS_ACTIVATION_SCAM
+  = 30`. Category: InterfaceInterference. MITRE: T1566. 10 confusables unit
+  tests + 3 lib unit tests + 2 property tests + 4 scoring scenarios; 951 tests
+  total. (E50.)
+- **Survey reward bait** (`survey_reward_scam`; E51). `has_survey_reward_scam(s)`
+  fires when the normalized title contains both a *survey-invite cue* (take our
+  survey, complete a survey, you have been selected for our survey, answer 3
+  questions, quick survey, アンケートに答える, アンケートへのご参加, etc.) AND a
+  *reward bait* (win a gift card, claim your gift card, amazon gift card, $500
+  reward, claim your reward, free iPhone, ギフトカードをもらう,
+  アンケート謝礼, etc.). Distinct from `prize_lure` (lottery-winner framing
+  without the survey hook). Very high volume browser-overlay pattern. APWG Q4
+  2024 "survey-lure phishing"; Google Safe Browsing blog 2024. Weight
+  `W_SURVEY_REWARD_SCAM = 25`. Category: InterfaceInterference. MITRE: T1566.
+  10 confusables unit tests + 3 lib unit tests + 2 property tests + 4 scoring
+  scenarios. (E51.)
+- **Fake antivirus brand renewal popup** (`av_brand_renewal_scam`; E52).
+  `has_av_brand_renewal_scam(s)` fires when the normalized title contains both a
+  *named AV brand* (mcafee, norton, avast, kaspersky, bitdefender, avg antivirus,
+  malwarebytes, eset nod, webroot, trend micro, マカフィー, ノートン,
+  カスペルスキー, etc.) AND a *renewal/expiry demand* (subscription has expired,
+  license has expired, your protection has expired, renew now to stay protected,
+  device is no longer protected, subscription renewal required, サブスクリプション
+  が期限切れ, etc.). Distinct from `subscription_lure` (no brand name) and
+  `fake_scanner_cue` (fake scan/threat count). FTC Consumer Sentinel 2024 Tech
+  Support top-10; APWG Q4 2024 "branded AV pop-up" phishing category. Weight
+  `W_AV_BRAND_RENEWAL_SCAM = 30`. Category: InterfaceInterference. MITRE: T1566.
+  10 confusables unit tests + 3 lib unit tests + 2 property tests + 4 scoring
+  scenarios. (E52.)
+- **Fraud-recovery / secondary-victimization scam** (`recovery_scam`; E53).
+  `has_recovery_scam(s)` fires when the normalized title contains both a
+  *recovery-service cue* (recover your lost funds, lost money to a scam, scam
+  recovery service, crypto recovery, chargeback specialist, funds recovery,
+  asset recovery specialist, investment recovery, 詐欺被害金の回収, 被害金を取り
+  戻す, etc.) AND a *fee/contact demand* (100% guaranteed, no recovery no fee,
+  contact our specialist, free consultation, recovery expert, upfront fee,
+  専門家に相談, 回収成功率100%, etc.). Recovery scams target prior fraud victims
+  by promising to recover lost money for an upfront fee that is itself stolen —
+  a growing secondary-victimization category. FBI IC3 2024; FTC "avoid recovery
+  scams" advisory 2024; 消費者庁 "二次被害型詐欺" advisory 2024. Weight
+  `W_RECOVERY_SCAM = 30`. Category: Sneaking (disguises fraud as legitimate
+  service). MITRE: T1566. 10 confusables unit tests + 3 lib unit tests + 2
+  property tests + 4 scoring scenarios; 1027 tests total. (E53.)
 - **`verify` CLI subcommand** (H6). `muten-overlay verify <log> [--json]`
   replays the SHA-256 hash chain of an audit log produced by `monitor`,
   verifies every link's `prev_hash` and `hash` field, and reports the event

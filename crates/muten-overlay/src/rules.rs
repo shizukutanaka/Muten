@@ -188,6 +188,14 @@ pub enum CompositeCondition {
     HasPetSaleScam,
     /// The `timeshare_travel_scam` signal fired (E49 — vacation club + activation fee demand).
     HasTimeshareScam,
+    /// The `windows_activation_scam` signal fired (E50 — fake Windows/Office product-key popup).
+    HasWindowsActivationScam,
+    /// The `survey_reward_scam` signal fired (E51 — survey-invite + gift-card reward bait).
+    HasSurveyRewardScam,
+    /// The `av_brand_renewal_scam` signal fired (E52 — named AV brand + subscription-expiry).
+    HasAvBrandRenewalScam,
+    /// The `recovery_scam` signal fired (E53 — fraud-recovery service + fee demand).
+    HasRecoveryScam,
 }
 
 impl CompositeCondition {
@@ -241,6 +249,10 @@ impl CompositeCondition {
             "has_rental_scam_lure" => Some(Self::HasRentalScamLure),
             "has_pet_sale_scam" => Some(Self::HasPetSaleScam),
             "has_timeshare_scam" => Some(Self::HasTimeshareScam),
+            "has_windows_activation_scam" => Some(Self::HasWindowsActivationScam),
+            "has_survey_reward_scam" => Some(Self::HasSurveyRewardScam),
+            "has_av_brand_renewal_scam" => Some(Self::HasAvBrandRenewalScam),
+            "has_recovery_scam" => Some(Self::HasRecoveryScam),
             _ => None,
         }
     }

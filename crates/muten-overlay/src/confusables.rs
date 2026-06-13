@@ -5769,3 +5769,564 @@ mod tests {
         ));
     }
 }
+
+// ── E50: windows_activation_scam ─────────────────────────────────────────────
+
+/// Detects fake Windows / Microsoft Office product-key / activation popups.
+///
+/// Fires when the normalized title contains **both** an *activation cue*
+/// (Windows not activated, license expired, product key required, etc.) **and**
+/// a *call-to-action* (call Microsoft support, enter product key, click to
+/// activate, contact activation center, etc.).
+///
+/// A legitimate Windows activation prompt never includes a support phone number
+/// or a "call us" instruction — those are the defining tells of this scam.
+/// Distinct from `subscription_lure` (streaming/SaaS generic) and
+/// `tech_support_invoice_scam` (fake invoice). False-positive guard: both cues
+/// must be present; normal Windows dialogs ("activate Windows", "enter key")
+/// contain the activation cue but never the attacker CTA.
+///
+/// Sources: FTC Tech Support Fraud advisory 2024; Microsoft MSRC "fake activation"
+/// warnings; FBI IC3 2024 tech-support complaints.
+#[must_use]
+pub fn has_windows_activation_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let activation_cue = has("windows is not activated")
+        || has("windows not activated")
+        || has("activate windows now")
+        || has("your windows license has expired")
+        || has("windows license expired")
+        || has("product key required")
+        || has("enter product key")
+        || has("windows activation required")
+        || has("office activation")
+        || has("activate your copy of windows")
+        || has("activate your copy of office")
+        || has("your copy of windows is not genuine")
+        || has("windows genuine advantage")
+        || has("activate microsoft")
+        || has("microsoft activation")
+        || has("ライセンス認証が必要")
+        || has("windowsのライセンス認証")
+        || has("ライセンスの有効期限が切れ")
+        || has("プロダクトキーを入力")
+        || has("officeのライセンスが");
+    let cta = has("call microsoft support")
+        || has("contact microsoft support")
+        || has("call now to activate")
+        || has("click to activate now")
+        || has("microsoft activation center")
+        || has("activation support number")
+        || has("call our activation")
+        || has("microsoft certified technician")
+        || has("toll free activation")
+        || has("activation helpline")
+        || has("contact microsoft certified")
+        || has("call microsoft")
+        || has("microsoftサポートに電話")
+        || has("ライセンス認証センター")
+        || has("認証サポートに電話");
+    activation_cue && cta
+}
+
+// ── E51: survey_reward_scam ───────────────────────────────────────────────────
+
+/// Detects fake "take our survey and win a gift card" browser-overlay scams.
+///
+/// Fires when the normalized title contains **both** a *survey-invite cue*
+/// (take our survey, complete a survey, you have been selected for our survey,
+/// answer 3 questions, customer survey, アンケートへのご参加, etc.) **and** a
+/// *reward bait* (win a gift card, claim your reward, earn $500, Amazon gift
+/// card, free iPhone, ギフトカードをもらう, アンケート謝礼, etc.).
+///
+/// Distinct from `prize_lure` (lottery/winner framing without survey).
+/// The AND-pair requirement means a genuine feedback survey ("take our survey
+/// — help us improve") or a genuine reward page ("claim your reward" after
+/// purchase) never fires alone.
+///
+/// Sources: FTC Online Shopping fraud 2024; APWG Q4 2024 survey-lure phishing;
+/// Google Safe Browsing blog "reward survey scams" 2024.
+#[must_use]
+pub fn has_survey_reward_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let survey_cue = has("take our survey")
+        || has("complete a survey")
+        || has("complete our survey")
+        || has("you have been selected for our survey")
+        || has("answer 3 questions")
+        || has("answer three questions")
+        || has("customer survey")
+        || has("our short survey")
+        || has("quick survey")
+        || has("selected for a survey")
+        || has("participate in our survey")
+        || has("share your feedback and win")
+        || has("アンケートに答える")
+        || has("アンケートへのご参加")
+        || has("アンケート回答で")
+        || has("3つの質問に答えて");
+    let reward_bait = has("win a gift card")
+        || has("claim your gift card")
+        || has("earn a gift card")
+        || has("amazon gift card")
+        || has("$500 reward")
+        || has("$250 reward")
+        || has("claim your reward")
+        || has("earn your reward")
+        || has("free iphone")
+        || has("free samsung")
+        || has("claim your prize now")
+        || has("you earned a reward")
+        || has("collect your reward")
+        || has("survey reward")
+        || has("ギフトカードをもらう")
+        || has("アンケート謝礼")
+        || has("amazonギフト券プレゼント")
+        || has("謝礼としてギフト");
+    survey_cue && reward_bait
+}
+
+// ── E52: av_brand_renewal_scam ────────────────────────────────────────────────
+
+/// Detects fake antivirus-brand renewal / expiry pop-up scams.
+///
+/// Fires when the normalized title contains **both** a *named AV brand*
+/// (mcafee, norton, avast, kaspersky, bitdefender, avg, malwarebytes,
+/// windows defender, eset, webroot, etc.) **and** a *renewal/expiry demand*
+/// (subscription expired, license has expired, renew now, your protection has
+/// expired, subscription ending, reactivate, サブスクリプションが期限切れ, etc.).
+///
+/// Distinct from `subscription_lure` (no brand name, generic subscription
+/// framing) and `fake_scanner_cue` (fake scan progress/threat count). The
+/// combination of a named security brand with an expiry alarm is the specific
+/// tell of fake AV renewal pop-ups used by tech-support scammers.
+///
+/// Sources: FTC Consumer Sentinel 2024 Tech Support top-10; APWG Q4 2024
+/// "branded AV pop-up" phishing category; Microsoft Edge Scareware Blocker
+/// blog 2025.
+#[must_use]
+pub fn has_av_brand_renewal_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let av_brand = has("mcafee")
+        || has("norton")
+        || has("avast")
+        || has("kaspersky")
+        || has("bitdefender")
+        || has("avg antivirus")
+        || has("malwarebytes")
+        || has("windows defender subscription")
+        || has("eset nod")
+        || has("webroot")
+        || has("trend micro")
+        || has("sophos")
+        || has("f-secure")
+        || has("bullguard")
+        || has("マカフィー")
+        || has("ノートン")
+        || has("カスペルスキー")
+        || has("ウイルスバスター");
+    let renewal_demand = has("subscription has expired")
+        || has("subscription expired")
+        || has("your subscription has expired")
+        || has("license has expired")
+        || has("license expired")
+        || has("your protection has expired")
+        || has("protection expired")
+        || has("renew your subscription")
+        || has("renew now to stay protected")
+        || has("reactivate your protection")
+        || has("subscription ending")
+        || has("expires today")
+        || has("your device is unprotected")
+        || has("device is no longer protected")
+        || has("subscription renewal required")
+        || has("サブスクリプションが期限切れ")
+        || has("ライセンスの有効期限が切れました")
+        || has("保護が期限切れ")
+        || has("今すぐ更新");
+    av_brand && renewal_demand
+}
+
+// ── E53: recovery_scam ────────────────────────────────────────────────────────
+
+/// Detects fraud-recovery scams targeting prior scam victims.
+///
+/// Fires when the normalized title contains **both** a *recovery-service cue*
+/// (recover your lost funds, lost money to a scam, scam recovery service,
+/// crypto recovery, chargeback specialist, funds recovery experts, etc.) **and**
+/// a *fee/contact demand* (upfront fee, contact our specialist, call now,
+/// 100% guaranteed, no recovery no fee, free consultation, 詐欺被害金の回収,
+/// etc.).
+///
+/// Recovery scams are a secondary-victimization fraud: attackers identify
+/// prior scam victims (often via dark-web lists of fraud victims) and promise
+/// to recover their lost money for an advance fee, which is itself stolen.
+/// FBI IC3 2024 flagged recovery scams as a growing category, with victims
+/// losing additional thousands after an initial fraud.
+///
+/// Sources: FBI IC3 2024; FTC "how to avoid recovery scams" advisory 2024;
+/// Europol Operation HAECHI 2024; 消費者庁 "二次被害型詐欺" advisory 2024.
+#[must_use]
+pub fn has_recovery_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let recovery_cue = has("recover your lost funds")
+        || has("recover lost funds")
+        || has("lost money to a scam")
+        || has("lost money to fraud")
+        || has("scam recovery service")
+        || has("fraud recovery service")
+        || has("crypto recovery")
+        || has("cryptocurrency recovery")
+        || has("chargeback specialist")
+        || has("funds recovery")
+        || has("asset recovery specialist")
+        || has("investment recovery")
+        || has("binary options recovery")
+        || has("romance scam recovery")
+        || has("we can recover your")
+        || has("get your money back from")
+        || has("詐欺被害金の回収")
+        || has("被害金を取り戻す")
+        || has("詐欺回収専門")
+        || has("振り込め詐欺の被害を回収");
+    let fee_demand = has("upfront fee")
+        || has("advance fee")
+        || has("retainer fee")
+        || has("100% guaranteed")
+        || has("guaranteed recovery")
+        || has("no recovery no fee")
+        || has("contact our specialist")
+        || has("free consultation")
+        || has("call our recovery")
+        || has("speak to our expert")
+        || has("certified recovery")
+        || has("licensed recovery")
+        || has("recovery expert")
+        || has("成功報酬")
+        || has("無料相談")
+        || has("回収成功率100%")
+        || has("専門家に相談");
+    recovery_cue && fee_demand
+}
+
+#[cfg(test)]
+mod e50_e53_tests {
+    use super::*;
+
+    // ── E50: windows_activation_scam ──────────────────────────────
+
+    #[test]
+    fn windows_activation_scam_fires_not_activated() {
+        assert!(has_windows_activation_scam(
+            "windows is not activated — call microsoft support to activate your copy"
+        ));
+    }
+
+    #[test]
+    fn windows_activation_scam_fires_product_key() {
+        assert!(has_windows_activation_scam(
+            "product key required — contact microsoft certified technician now"
+        ));
+    }
+
+    #[test]
+    fn windows_activation_scam_fires_license_expired() {
+        assert!(has_windows_activation_scam(
+            "your windows license has expired — click to activate now via microsoft activation center"
+        ));
+    }
+
+    #[test]
+    fn windows_activation_scam_fires_office() {
+        assert!(has_windows_activation_scam(
+            "office activation required — call our activation support number immediately"
+        ));
+    }
+
+    #[test]
+    fn windows_activation_scam_fires_jp() {
+        assert!(has_windows_activation_scam(
+            "ライセンス認証が必要です — microsoftサポートに電話してください"
+        ));
+    }
+
+    #[test]
+    fn windows_activation_scam_does_not_fire_activation_only() {
+        // Activation cue without CTA must not fire
+        assert!(!has_windows_activation_scam(
+            "windows is not activated — go to settings to activate"
+        ));
+        assert!(!has_windows_activation_scam("activate windows now"));
+    }
+
+    #[test]
+    fn windows_activation_scam_does_not_fire_cta_only() {
+        // CTA without activation cue must not fire
+        assert!(!has_windows_activation_scam(
+            "call microsoft support for help with your account"
+        ));
+    }
+
+    #[test]
+    fn windows_activation_scam_does_not_fire_benign() {
+        assert!(!has_windows_activation_scam(
+            "thank you for your purchase — your order has been confirmed"
+        ));
+        assert!(!has_windows_activation_scam("system update available"));
+    }
+
+    #[test]
+    fn windows_activation_scam_does_not_fire_jp_benign() {
+        assert!(!has_windows_activation_scam(
+            "ライセンス認証について詳しくはMicrosoftの公式サイトをご覧ください"
+        ));
+        assert!(!has_windows_activation_scam(
+            "プロダクトキーの確認方法についてサポートページをご覧ください"
+        ));
+    }
+
+    #[test]
+    fn windows_activation_scam_fires_genuine_not_genuine() {
+        assert!(has_windows_activation_scam(
+            "your copy of windows is not genuine — call microsoft activation center"
+        ));
+    }
+
+    // ── E51: survey_reward_scam ───────────────────────────────────
+
+    #[test]
+    fn survey_reward_scam_fires_gift_card() {
+        assert!(has_survey_reward_scam(
+            "take our survey and win a gift card — complete a survey to claim your reward"
+        ));
+    }
+
+    #[test]
+    fn survey_reward_scam_fires_amazon() {
+        assert!(has_survey_reward_scam(
+            "you have been selected for our survey — claim your amazon gift card now"
+        ));
+    }
+
+    #[test]
+    fn survey_reward_scam_fires_answer_questions() {
+        assert!(has_survey_reward_scam(
+            "answer 3 questions and earn a gift card — free iphone for survey"
+        ));
+    }
+
+    #[test]
+    fn survey_reward_scam_fires_jp() {
+        assert!(has_survey_reward_scam(
+            "アンケートに答えてamazonギフト券プレゼント — アンケートへのご参加をお願いします"
+        ));
+    }
+
+    #[test]
+    fn survey_reward_scam_fires_prize_framing() {
+        assert!(has_survey_reward_scam(
+            "complete our quick survey — claim your prize now — $500 reward"
+        ));
+    }
+
+    #[test]
+    fn survey_reward_scam_does_not_fire_survey_only() {
+        assert!(!has_survey_reward_scam(
+            "take our survey to help us improve our product — your feedback matters"
+        ));
+        assert!(!has_survey_reward_scam(
+            "complete a survey for research purposes"
+        ));
+    }
+
+    #[test]
+    fn survey_reward_scam_does_not_fire_reward_only() {
+        assert!(!has_survey_reward_scam(
+            "claim your reward for your recent purchase"
+        ));
+        assert!(!has_survey_reward_scam("amazon gift card balance check"));
+    }
+
+    #[test]
+    fn survey_reward_scam_does_not_fire_benign() {
+        assert!(!has_survey_reward_scam(
+            "customer feedback — we value your opinion"
+        ));
+        assert!(!has_survey_reward_scam(
+            "loyalty reward program — earn points"
+        ));
+    }
+
+    #[test]
+    fn survey_reward_scam_does_not_fire_jp_benign() {
+        assert!(!has_survey_reward_scam(
+            "アンケートにご協力いただきありがとうございます。ご意見を参考にします。"
+        ));
+        assert!(!has_survey_reward_scam(
+            "ポイントでプレゼントが当たるキャンペーン実施中"
+        ));
+    }
+
+    #[test]
+    fn survey_reward_scam_fires_quick_survey_reward() {
+        assert!(has_survey_reward_scam(
+            "our short survey — you earned a reward — collect your reward today"
+        ));
+    }
+
+    // ── E52: av_brand_renewal_scam ────────────────────────────────
+
+    #[test]
+    fn av_brand_renewal_scam_fires_mcafee_expired() {
+        assert!(has_av_brand_renewal_scam(
+            "mcafee subscription has expired — renew now to stay protected"
+        ));
+    }
+
+    #[test]
+    fn av_brand_renewal_scam_fires_norton_license() {
+        assert!(has_av_brand_renewal_scam(
+            "norton license has expired — your device is unprotected"
+        ));
+    }
+
+    #[test]
+    fn av_brand_renewal_scam_fires_avast_protection() {
+        assert!(has_av_brand_renewal_scam(
+            "avast — your protection has expired — reactivate your protection today"
+        ));
+    }
+
+    #[test]
+    fn av_brand_renewal_scam_fires_kaspersky_renewal() {
+        assert!(has_av_brand_renewal_scam(
+            "kaspersky — subscription renewal required — renew your subscription"
+        ));
+    }
+
+    #[test]
+    fn av_brand_renewal_scam_fires_jp() {
+        assert!(has_av_brand_renewal_scam(
+            "マカフィー — サブスクリプションが期限切れです — 今すぐ更新してください"
+        ));
+    }
+
+    #[test]
+    fn av_brand_renewal_scam_does_not_fire_brand_only() {
+        assert!(!has_av_brand_renewal_scam(
+            "mcafee total protection — full scan completed — no threats found"
+        ));
+        assert!(!has_av_brand_renewal_scam("norton download center"));
+    }
+
+    #[test]
+    fn av_brand_renewal_scam_does_not_fire_renewal_only() {
+        assert!(!has_av_brand_renewal_scam(
+            "your subscription has expired — renew now to continue"
+        ));
+        assert!(!has_av_brand_renewal_scam("license expired — please renew"));
+    }
+
+    #[test]
+    fn av_brand_renewal_scam_does_not_fire_benign() {
+        assert!(!has_av_brand_renewal_scam(
+            "virus scan complete — your computer is clean"
+        ));
+        assert!(!has_av_brand_renewal_scam("update your software now"));
+    }
+
+    #[test]
+    fn av_brand_renewal_scam_does_not_fire_jp_benign() {
+        assert!(!has_av_brand_renewal_scam(
+            "マカフィーの使い方についてサポートページをご確認ください"
+        ));
+        assert!(!has_av_brand_renewal_scam(
+            "ノートンの公式サイトからダウンロードしてください"
+        ));
+    }
+
+    #[test]
+    fn av_brand_renewal_scam_fires_malwarebytes_unprotected() {
+        assert!(has_av_brand_renewal_scam(
+            "malwarebytes — device is no longer protected — subscription ending"
+        ));
+    }
+
+    // ── E53: recovery_scam ────────────────────────────────────────
+
+    #[test]
+    fn recovery_scam_fires_lost_funds() {
+        assert!(has_recovery_scam(
+            "recover your lost funds — 100% guaranteed — contact our specialist"
+        ));
+    }
+
+    #[test]
+    fn recovery_scam_fires_crypto_recovery() {
+        assert!(has_recovery_scam(
+            "crypto recovery service — get your money back from fraud — free consultation"
+        ));
+    }
+
+    #[test]
+    fn recovery_scam_fires_chargeback() {
+        assert!(has_recovery_scam(
+            "chargeback specialist — lost money to a scam — recovery expert on call"
+        ));
+    }
+
+    #[test]
+    fn recovery_scam_fires_jp() {
+        assert!(has_recovery_scam(
+            "詐欺被害金の回収 — 回収成功率100% — 専門家に相談"
+        ));
+    }
+
+    #[test]
+    fn recovery_scam_fires_asset_recovery() {
+        assert!(has_recovery_scam(
+            "asset recovery specialist — scam recovery service — no recovery no fee"
+        ));
+    }
+
+    #[test]
+    fn recovery_scam_does_not_fire_recovery_only() {
+        assert!(!has_recovery_scam(
+            "data recovery service — recover deleted files from your hard drive"
+        ));
+        assert!(!has_recovery_scam(
+            "funds recovery — bank transfer completed"
+        ));
+    }
+
+    #[test]
+    fn recovery_scam_does_not_fire_fee_only() {
+        assert!(!has_recovery_scam(
+            "100% guaranteed results — call our specialist"
+        ));
+        assert!(!has_recovery_scam("free consultation — contact us today"));
+    }
+
+    #[test]
+    fn recovery_scam_does_not_fire_benign() {
+        assert!(!has_recovery_scam("data backup and recovery software"));
+        assert!(!has_recovery_scam("disaster recovery planning services"));
+    }
+
+    #[test]
+    fn recovery_scam_does_not_fire_jp_benign() {
+        assert!(!has_recovery_scam(
+            "データ復元サービス — 専門家に相談できます"
+        ));
+        assert!(!has_recovery_scam(
+            "無料相談を承っております。お気軽にお問い合わせください。"
+        ));
+    }
+
+    #[test]
+    fn recovery_scam_fires_investment_recovery() {
+        assert!(has_recovery_scam(
+            "investment recovery — we can recover your lost funds — certified recovery agent"
+        ));
+    }
+}
