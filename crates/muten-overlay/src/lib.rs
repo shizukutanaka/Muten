@@ -143,9 +143,13 @@ impl Verdict {
     /// downstream consumers can rely on it.
     /// Signal-quality confidence in this verdict.
     ///
-    /// `High` when at least one text-analysis or rule-based signal fired
-    /// (these are harder for an attacker to evade than geometry signals).
-    /// `Medium` when exactly one high-fidelity signal fired among several.
+    /// `High` when the verdict rests on a clean rule/text tell — either the
+    /// *only* signal that fired is a high-fidelity one (e.g. a confirmed
+    /// blocklist-host hard block, with no geometry noise to dilute it), or two
+    /// or more high-fidelity signals fired together. These are hard for an
+    /// attacker to evade.
+    /// `Medium` when exactly one high-fidelity signal fired *alongside* one or
+    /// more geometry signals (one tell amid noise).
     /// `Low` when only window-geometry signals fired (fullscreen / topmost /
     /// modal / origin), which a rogue OS helper could theoretically mis-report.
     ///
@@ -167,7 +171,13 @@ impl Verdict {
         let hf = self.signals.iter().filter(|s| is_high_fidelity(s)).count();
         match hf {
             0 => ConfidenceLevel::Low,
-            1 if self.signals.len() == 1 => ConfidenceLevel::Medium,
+            // A lone high-fidelity signal with nothing else is a clean,
+            // unambiguous tell — most importantly the `blocklist_host` hard
+            // block, the single most definitive verdict the classifier emits.
+            // Reporting it as merely Medium would understate a confirmed,
+            // operator-listed match.
+            1 if self.signals.len() == 1 => ConfidenceLevel::High,
+            // One high-fidelity tell amid geometry noise: medium.
             1 => ConfidenceLevel::Medium,
             _ => ConfidenceLevel::High,
         }
@@ -3676,6 +3686,64 @@ mod tests {
         let v = classify(&w, &Ruleset::default());
         assert_eq!(v.decision, Decision::Allow);
         assert_eq!(v.confidence(), ConfidenceLevel::High);
+    }
+
+    /// Regression for the collapsed-guard bug (Socratic round 6). A
+    /// confirmed `blocklist_host` hard block is the single most definitive
+    /// verdict the classifier emits — `signals == ["blocklist_host"]`, one
+    /// high-fidelity signal, nothing else. The old `confidence()` had a dead
+    /// guard (`1 if len == 1 => Medium` immediately followed by `1 => Medium`,
+    /// identical bodies) that reported this clean, operator-listed match as
+    /// only *Medium* confidence, contradicting the method's own doc ("High
+    /// when … a rule-based signal fired"). It must be High.
+    #[test]
+    fn confidence_high_for_lone_blocklist_host_hard_block() {
+        let rules = Ruleset::from_lines(&["host: known-scam.example"]);
+        let w = OverlayWindow {
+            title: "anything".into(),
+            url: Some("http://known-scam.example/x".into()),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &rules);
+        assert_eq!(v.decision, Decision::Block);
+        assert_eq!(v.signals, vec!["blocklist_host".to_string()]);
+        assert_eq!(
+            v.confidence(),
+            ConfidenceLevel::High,
+            "a lone confirmed blocklist-host match must be High confidence"
+        );
+    }
+
+    /// Confidence-boundary guard for the `Allow` path (Socratic round 6,
+    /// parallel to the decision-threshold boundary test). The Allow-branch
+    /// uses `score <= SUSPICIOUS_THRESHOLD/3` (High) and
+    /// `<= SUSPICIOUS_THRESHOLD*2/3` (Medium) — integer division gives exact
+    /// cutoffs at 16 and 33 for the default threshold of 50. The inclusive
+    /// `<=` at those exact values is the off-by-one this pins: 16→High,
+    /// 17→Medium, 33→Medium, 34→Low. Scores are set precisely via a
+    /// `weight: fullscreen N` override on a fullscreen-only (Allow) window.
+    #[test]
+    fn confidence_allow_path_boundaries_are_inclusive() {
+        let conf_at = |score: i32| {
+            let rules = Ruleset::from_lines(&[&format!("weight: fullscreen {score}")]);
+            let w = OverlayWindow {
+                title: "plain window".into(),
+                coverage_percent: 100,
+                has_close_button: true,
+                ..Default::default()
+            };
+            let v = classify(&w, &rules);
+            assert_eq!(v.score, score, "override should set exact score {score}");
+            assert_eq!(v.decision, Decision::Allow, "score {score} must be Allow");
+            v.confidence()
+        };
+        let hi = SUSPICIOUS_THRESHOLD / 3; // 16
+        let med = SUSPICIOUS_THRESHOLD * 2 / 3; // 33
+        assert_eq!(conf_at(hi), ConfidenceLevel::High, "16 → High");
+        assert_eq!(conf_at(hi + 1), ConfidenceLevel::Medium, "17 → Medium");
+        assert_eq!(conf_at(med), ConfidenceLevel::Medium, "33 → Medium");
+        assert_eq!(conf_at(med + 1), ConfidenceLevel::Low, "34 → Low");
     }
 
     #[test]

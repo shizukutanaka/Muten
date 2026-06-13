@@ -43,6 +43,22 @@ MSRV 1.75, 286 tests.
   commit. (M6.)
 
 ### Fixed
+- **`confidence()` under-reported a lone blocklist-host hard block** (Socratic
+  round 6). `Verdict::confidence()` had a collapsed match guard — `1 if
+  self.signals.len() == 1 => Medium` immediately followed by `1 => Medium` with
+  identical bodies — so a confirmed `blocklist_host` hard block, whose verdict
+  carries exactly one (high-fidelity) signal and is the single most definitive
+  result the classifier emits, was reported as only **Medium** confidence. That
+  contradicted the method's own doc ("High when … a rule-based signal fired")
+  and understated an operator's explicitly-listed match. The lone-high-fidelity
+  arm now returns **High**; the "one tell amid geometry noise" case (e.g. a
+  phone number alongside `unsolicited`) stays Medium, so no multi-signal verdict
+  changes. Found by Socratic self-examination (a `match` arm whose guard was
+  provably dead). Two new tests:
+  `confidence_high_for_lone_blocklist_host_hard_block` pins the fix, and
+  `confidence_allow_path_boundaries_are_inclusive` pins the Allow-branch score
+  cutoffs (16→High, 17→Medium, 33→Medium, 34→Low) against an off-by-one,
+  parallel to the round-5 decision-threshold boundary guard.
 - **Canonical JSON for `link_hash`** (C6-4). The audit-chain link hash used
   `serde_json::to_vec(detail)` to serialize the `AuditEvent.detail` payload,
   relying on serde_json's BTreeMap ordering. A new private `canonical_json()`
