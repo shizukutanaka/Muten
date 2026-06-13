@@ -7011,3 +7011,137 @@ mod e58_e59_tests {
         ));
     }
 }
+
+/// End-to-end JP-normalization invariant guard (Socratic round 2).
+///
+/// The existing JP scoring scenarios assert only `score >= 50`, which the
+/// window geometry alone satisfies — so they pass even if a JP content
+/// signal never fires. These tests close that gap directly: each asserts
+/// that a representative Japanese scam phrase, **after passing through
+/// `normalize_for_match`** (the exact path `classify()` uses), still fires
+/// its detector. If a future change to the normalization pipeline (e.g.
+/// extending `strip_symbols_and_emoji` into a Kana range, or a
+/// `fold_confusables` entry that remaps a CJK codepoint) silently broke
+/// Japanese-market detection, only a test on the *normalized* string would
+/// catch it — the raw-string unit tests above would not.
+#[cfg(test)]
+mod jp_normalization_invariant {
+    use super::*;
+
+    /// Assert a JP phrase still fires `f` after the full normalization pipeline.
+    fn fires_after_normalize(phrase: &str, f: impl Fn(&str) -> bool) -> bool {
+        f(&normalize_for_match(phrase))
+    }
+
+    #[test]
+    fn normalize_preserves_jp_pig_butchering_lure() {
+        assert!(fires_after_normalize(
+            "ロマンス詐欺ではありません 投資メンターと一緒に稼ごう 高利回り投資で仮想通貨投資",
+            has_pig_butchering_lure
+        ));
+    }
+
+    #[test]
+    fn normalize_preserves_jp_loan_fee_scam() {
+        assert!(fires_after_normalize(
+            "即日融資 審査不要ローン 前払い手数料が必要です 保証金が必要",
+            has_loan_fee_scam
+        ));
+    }
+
+    #[test]
+    fn normalize_preserves_jp_charity_scam_lure() {
+        assert!(fires_after_normalize(
+            "災害支援の募金にご協力ください ギフトカードで寄付してください",
+            has_charity_scam_lure
+        ));
+    }
+
+    #[test]
+    fn normalize_preserves_jp_rental_scam_lure() {
+        assert!(fires_after_normalize(
+            "賃貸物件 アパート募集 内覧前に入金 振込で保証金をお願いします",
+            has_rental_scam_lure
+        ));
+    }
+
+    #[test]
+    fn normalize_preserves_jp_pet_sale_scam() {
+        assert!(fires_after_normalize(
+            "子犬販売 ペット輸送費 配送前に入金してください",
+            has_pet_sale_scam
+        ));
+    }
+
+    #[test]
+    fn normalize_preserves_jp_timeshare_travel_scam() {
+        assert!(fires_after_normalize(
+            "タイムシェア リゾート会員 タイムシェア費用 会員費のお支払い",
+            has_timeshare_travel_scam
+        ));
+    }
+
+    #[test]
+    fn normalize_preserves_jp_windows_activation_scam() {
+        assert!(fires_after_normalize(
+            "windowsのライセンス認証が必要 microsoftサポートに電話してください",
+            has_windows_activation_scam
+        ));
+    }
+
+    #[test]
+    fn normalize_preserves_jp_av_brand_renewal_scam() {
+        assert!(fires_after_normalize(
+            "マカフィー サブスクリプションが期限切れ 今すぐ更新してください",
+            has_av_brand_renewal_scam
+        ));
+    }
+
+    #[test]
+    fn normalize_preserves_jp_recovery_scam() {
+        assert!(fires_after_normalize(
+            "詐欺被害金の回収 回収成功率100% 専門家に相談してください",
+            has_recovery_scam
+        ));
+    }
+
+    #[test]
+    fn normalize_preserves_jp_student_loan_scam() {
+        assert!(fires_after_normalize(
+            "学生ローン免除プログラム 申請手数料が必要です 今すぐ申請",
+            has_student_loan_scam
+        ));
+    }
+
+    #[test]
+    fn normalize_preserves_jp_secret_shopper_scam() {
+        assert!(fires_after_normalize(
+            "覆面調査員の募集 小切手を換金して送金してください",
+            has_secret_shopper_scam
+        ));
+    }
+
+    #[test]
+    fn normalize_preserves_jp_mlm_pyramid_recruitment() {
+        assert!(fires_after_normalize(
+            "マルチ商法 紹介料を稼ぐ 今すぐ参加 会員登録で収入",
+            has_mlm_pyramid_recruitment
+        ));
+    }
+
+    #[test]
+    fn normalize_preserves_jp_veterans_benefit_scam() {
+        assert!(fires_after_normalize(
+            "退役軍人給付 申請手数料が必要です 今すぐ申請してください",
+            has_veterans_benefit_scam
+        ));
+    }
+
+    #[test]
+    fn normalize_preserves_jp_fake_copyright_scam() {
+        assert!(fires_after_normalize(
+            "著作権侵害を検出 罰金を支払う 法的措置を避けるため",
+            has_fake_copyright_scam
+        ));
+    }
+}

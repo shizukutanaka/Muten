@@ -3127,6 +3127,12 @@ fn pet_sale_scam_jp_reaches_suspicious() {
     };
     let v = classify(&w, &Ruleset::default());
     assert!(
+        v.signals.iter().any(|s| s == "pet_sale_scam"),
+        "JP pet_sale_scam signal must actually fire through normalize_for_match \
+         (not pass on geometry alone); got {:?}",
+        v.signals
+    );
+    assert!(
         v.score >= 50,
         "JP pet_sale_scam must reach Suspicious; score = {}",
         v.score
@@ -3215,6 +3221,12 @@ fn timeshare_travel_scam_jp_reaches_suspicious() {
         age_ms: 100,
     };
     let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "timeshare_travel_scam"),
+        "JP timeshare_travel_scam signal must actually fire through \
+         normalize_for_match (not pass on geometry alone); got {:?}",
+        v.signals
+    );
     assert!(
         v.score >= 50,
         "JP timeshare_travel_scam must reach Suspicious; score = {}",

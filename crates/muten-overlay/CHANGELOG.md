@@ -891,6 +891,22 @@ MSRV 1.75, 286 tests.
   Both currently pass (no live bug); they are regression guards making the
   prior 16 additions and all future ones provably discoverable and documented.
   1134 tests total.
+- **JP-normalization end-to-end coverage** (Socratic round 2). A self-review
+  found the JP scoring scenarios asserted only `score >= 50` — which the window
+  geometry (90% coverage + topmost + no-close + unsolicited ≈ 95) already
+  satisfies, so they passed even if the Japanese content signal never fired:
+  a test "passing for the wrong reason". An empirical probe confirmed the JP
+  path is in fact sound (JP literals survive `normalize_for_match` unchanged
+  and fire), so this is a test-coverage gap, not a live bug. Fixed by (1)
+  strengthening the two JP scenarios to assert the specific signal appears in
+  `Verdict.signals`, and (2) adding a 14-test `jp_normalization_invariant`
+  module that asserts a representative Japanese scam phrase for every
+  JP-bearing signal still fires its detector *after* passing through the full
+  `normalize_for_match` pipeline (the exact path `classify()` uses). This
+  guards against a future normalization change (e.g. extending
+  `strip_symbols_and_emoji` into a Kana range, or a `fold_confusables` entry
+  remapping a CJK codepoint) silently killing Japanese-market detection —
+  which the raw-string unit tests could not catch. 1148 tests total.
 - **`verify` CLI subcommand** (H6). `muten-overlay verify <log> [--json]`
   replays the SHA-256 hash chain of an audit log produced by `monitor`,
   verifies every link's `prev_hash` and `hash` field, and reports the event
