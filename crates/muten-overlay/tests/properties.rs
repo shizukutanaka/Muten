@@ -922,4 +922,31 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_gift_card_demand(&s));
         }
     }
+
+    // ── E27: refund_scam_cue ──────────────────────────────────────────────
+
+    /// has_refund_scam_cue never panics on arbitrary Unicode input.
+    #[test]
+    fn has_refund_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_refund_scam_cue(&s);
+    }
+
+    /// Plain ASCII without both a refund noun and a claim action never fires.
+    #[test]
+    fn plain_ascii_never_fires_refund_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        // Mirror the AND-pair logic to identify false-positive-safe inputs.
+        let refund_noun = has("refund") || has("overpayment") || has("reimbursement")
+            || has("rebate") || has("cashback") || has("excess charge") || has("overcharged");
+        let refund_action = has("owed to you") || has("you are owed")
+            || has("claim your refund") || has("collect your refund")
+            || has("pending refund") || has("refund is ready")
+            || has("refund has been") || has("process your refund")
+            || has("transfer your refund") || has("your refund of")
+            || has("refund amount") || has("receive your refund")
+            || has("get your refund");
+        if !(refund_noun && refund_action) {
+            prop_assert!(!muten_overlay::confusables::has_refund_scam_cue(&s));
+        }
+    }
 }

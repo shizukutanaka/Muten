@@ -1333,6 +1333,71 @@ pub fn has_gift_card_demand(s: &str) -> bool {
     gift_card_noun && payment_instruction
 }
 
+/// E27 — Refund / overpayment scam lure.
+///
+/// "Refund scams" (also called overpayment scams) are among the top financial
+/// fraud vectors per FTC 2024 and IC3 2025, particularly targeting elderly
+/// users.  The scammer — posing as a support agent, bank, or government agency
+/// — claims the victim is owed a refund or that funds were accidentally
+/// deposited into their account and must be returned.  The overlay instructs
+/// the user to call a number or click a button to "process the refund", at
+/// which point the victim is coerced into handing over banking credentials or
+/// gift-card codes.
+///
+/// Two groups (AND-pair):
+/// - `refund_noun`: "refund", "overpayment", "reimbursement", "rebate",
+///   "cashback", "excess charge", 返金, 払い戻し, 過払い, 補償金.
+/// - `refund_action`: language that directs the victim to act to "collect" —
+///   "owed to you", "claim your refund", "pending refund", "refund is ready",
+///   "process your refund", 返金手続き, お手続きください, 返金が完了, 払い戻し手続き.
+///
+/// The AND-pair keeps plain store return-policy text ("refund within 30 days")
+/// from firing: it has a refund noun but no claim-oriented action verb.
+/// alert_shaped guard at the call site prevents FPs on legitimate bank portals
+/// (user-initiated, closable windows).
+#[must_use]
+pub fn has_refund_scam_cue(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // refund_noun: named refund/overpayment concepts
+    let refund_noun = has("refund")
+        || has("overpayment")
+        || has("reimbursement")
+        || has("rebate")
+        || has("cashback")
+        || has("excess charge")
+        || has("overcharged")
+        || has("返金")
+        || has("払い戻し")
+        || has("過払い")
+        || has("補償金");
+
+    // refund_action: claim/collect/process language unique to the scam
+    // (plain return-policy pages never say "owed to you" or "claim your refund")
+    let refund_action = has("owed to you")
+        || has("you are owed")
+        || has("claim your refund")
+        || has("collect your refund")
+        || has("pending refund")
+        || has("refund is ready")
+        || has("refund has been")
+        || has("process your refund")
+        || has("transfer your refund")
+        || has("your refund of")
+        || has("refund amount")
+        || has("receive your refund")
+        || has("get your refund")
+        || has("返金手続き")
+        || has("払い戻し手続き")
+        || has("返金が完了")
+        || has("お手続きください")
+        || has("ご返金")
+        || has("返金いたします")
+        || has("返金を受け取");
+
+    refund_noun && refund_action
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2633,5 +2698,76 @@ mod tests {
         assert!(!has_gift_card_demand(
             "purchase now to unlock premium features"
         ));
+    }
+
+    // ── has_refund_scam_cue ───────────────────────────────────────────────
+    #[test]
+    fn refund_scam_fires_on_owed_to_you() {
+        assert!(has_refund_scam_cue(
+            "a refund of $499 is owed to you — call to collect"
+        ));
+        assert!(has_refund_scam_cue(
+            "overpayment detected: $199 owed to you — click to claim"
+        ));
+        assert!(has_refund_scam_cue(
+            "your reimbursement of $299 owed to you — call support now"
+        ));
+    }
+
+    #[test]
+    fn refund_scam_fires_on_pending_refund() {
+        assert!(has_refund_scam_cue(
+            "pending refund: $349. call 1-800-555-0100 to process"
+        ));
+        assert!(has_refund_scam_cue(
+            "your refund of $299 has been approved — click here to receive"
+        ));
+        assert!(has_refund_scam_cue(
+            "cashback of $450 is ready — process your refund now"
+        ));
+    }
+
+    #[test]
+    fn refund_scam_fires_jp() {
+        assert!(has_refund_scam_cue(
+            "返金が完了しました。お手続きください。"
+        ));
+        assert!(has_refund_scam_cue(
+            "払い戻し手続きが必要です。ご連絡ください。"
+        ));
+        assert!(has_refund_scam_cue(
+            "ご返金いたします。返金手続きをお願いします。"
+        ));
+    }
+
+    #[test]
+    fn refund_scam_does_not_fire_on_benign() {
+        // Plain return policy — has refund noun but no claim action
+        assert!(!has_refund_scam_cue(
+            "refund policy: returns accepted within 30 days"
+        ));
+        assert!(!has_refund_scam_cue(
+            "we offer a full refund within 14 days of purchase"
+        ));
+        // Only action, no noun
+        assert!(!has_refund_scam_cue(
+            "claim your prize now by clicking here"
+        ));
+        // Rebate ad without claim action
+        assert!(!has_refund_scam_cue(
+            "mail-in rebate: save $20 on your next purchase"
+        ));
+        // Legitimate bank portal phrase — has noun but says "30 days" not "owed to you"
+        assert!(!has_refund_scam_cue(
+            "your overpayment will be processed within 5-7 business days"
+        ));
+    }
+
+    #[test]
+    fn refund_scam_does_not_fire_jp_benign() {
+        // Legitimate e-commerce return policy
+        assert!(!has_refund_scam_cue("返金は30日以内にお申し込みください"));
+        // Legitimate cancellation confirmation
+        assert!(!has_refund_scam_cue("キャンセルを承りました"));
     }
 }

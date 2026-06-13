@@ -1019,3 +1019,75 @@ fn gift_card_demand_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E27: refund_scam_cue ──────────────────────────────────────────────────
+
+#[test]
+fn refund_scam_reaches_suspicious() {
+    let v = classify(
+        &alert_window("a refund of $499 is owed to you — call our agent to collect"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "refund_scam_cue"),
+        "expected refund_scam_cue; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "refund_scam_cue must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn legitimate_refund_confirmation_does_not_fire_refund_scam() {
+    // Ordinary e-commerce refund confirmation — user-initiated, closable, small.
+    let v = classify(
+        &closable_window("your refund of $29 has been processed — thank you for your purchase"),
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "refund_scam_cue"),
+        "refund_scam_cue must not fire for legitimate refund confirmation; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_refund_scam_reaches_suspicious() {
+    let v = classify(
+        &alert_window("返金が完了しました。お手続きください。サポートに電話してください。"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "refund_scam_cue"),
+        "expected refund_scam_cue for JP refund lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP refund_scam_cue must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn refund_scam_plus_phone_reaches_block() {
+    let v = classify(
+        &alert_window(
+            "overpayment of $399 owed to you — call 1-800-555-0100 to collect your refund",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "refund_scam_cue"),
+        "expected refund_scam_cue; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "refund_scam_cue + phone must reach Block; score = {}",
+        v.score
+    );
+}

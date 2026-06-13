@@ -112,6 +112,25 @@ glob: * buy * gift card* and * code*     # "buy iTunes gift cards and send codes
 glob: * purchase gift card* to *         # "purchase gift cards to unlock"
 
 # ─────────────────────────────────────────────────────────────────
+# E27 — REFUND / OVERPAYMENT SCAM titles (FTC 2024 / IC3 2025).
+# Scammers posing as support agents, banks, or government agencies
+# falsely claim the victim has an uncollected refund or an accidental
+# overpayment to return.  Heuristic: has_refund_scam_cue (signal).
+# These explicit titles back-stop any normalization that might miss the
+# AND-pair pattern and are high-precision blocklist matches.
+# ─────────────────────────────────────────────────────────────────
+title: a refund is owed to you call now
+title: your refund is ready to collect call our agent
+title: overpayment detected claim your refund immediately
+title: pending refund of $499 call to process
+title: reimbursement waiting call support to claim
+title: 返金が完了しました今すぐお手続きください         # JP: refund ready, proceed now
+title: 払い戻し手続きが必要ですサポートに電話してください  # JP: refund procedure required
+title: 過払い金が発生しています返金手続きをお願いします    # JP: overpayment occurred, request refund
+glob: * refund of $* owed to you *       # "refund of $499 owed to you — call"
+glob: * overpayment * claim * refund *   # "overpayment detected, claim your refund"
+
+# ─────────────────────────────────────────────────────────────────
 # CRYPTO / REFUND / "RECOVERY" RE-VICTIMIZATION scams. FBI IC3 2024:
 # crypto-investment fraud drove the largest reported losses, and
 # "recovery" operators re-target prior victims promising to claw back

@@ -284,6 +284,9 @@ fn signal_phrase(signal: &str) -> &str {
         "gift_card_demand" => {
             "instructs the user to purchase gift cards and send or read out the redemption codes"
         }
+        "refund_scam_cue" => {
+            "uses a fake refund or overpayment lure to coerce the user into calling a scam number"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -382,6 +385,7 @@ const W_IP_ALARM: i32 = 20; // "your IP address has been hacked/flagged" — tec
 const W_PACKAGE_FEE: i32 = 20; // customs/delivery fee scam: package_noun + fee_demand (FTC 2024 #2)
 const W_SEXTORTION: i32 = 25; // webcam recording + crypto payment demand (FBI IC3 2024 +42% YoY)
 const W_GIFT_CARD_DEMAND: i32 = 30; // gift-card payment demand: card_noun + buy/send-codes (FTC #1 tech-support loss)
+const W_REFUND_SCAM: i32 = 25; // refund/overpayment lure: claim-oriented action + refund noun (FTC/IC3 2024 elderly-targeting)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -437,6 +441,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "package_fee_lure" => Some(W_PACKAGE_FEE),
         "sextortion_lure" => Some(W_SEXTORTION),
         "gift_card_demand" => Some(W_GIFT_CARD_DEMAND),
+        "refund_scam_cue" => Some(W_REFUND_SCAM),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -481,6 +486,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "package_fee_lure"
             | "sextortion_lure"
             | "gift_card_demand"
+            | "refund_scam_cue"
             | "remote_access_lure"
     )
 }
@@ -1138,6 +1144,20 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         signals.push("gift_card_demand".into());
     }
 
+    // E27 — Refund / overpayment scam lure (FTC 2024 / IC3 2025).
+    // Scammers posing as support agents, banks, or government agencies claim
+    // the victim has an uncollected refund or an overpayment to return.
+    // The overlay directs them to call a number or click a link to "process
+    // the refund", leading to credential theft or gift-card payment demands.
+    // Two groups: refund_noun (refund/overpayment/reimbursement/返金/払い戻し)
+    // AND refund_action (claim/collect/pending/owed-to-you language).
+    // alert_shaped guard: legitimate bank refund portals are user-initiated and
+    // closable — they never appear as unsolicited overlays.
+    if alert_shaped && confusables::has_refund_scam_cue(&normalized_title) {
+        score += rules.weight_of("refund_scam_cue", W_REFUND_SCAM);
+        signals.push("refund_scam_cue".into());
+    }
+
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
     // seize the machine. These tools are legitimate, so their name alone
@@ -1450,6 +1470,7 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasPackageFeeLure => has_sig("package_fee_lure"),
         C::HasSextortionLure => has_sig("sextortion_lure"),
         C::HasGiftCardDemand => has_sig("gift_card_demand"),
+        C::HasRefundScamCue => has_sig("refund_scam_cue"),
     }
 }
 
@@ -4679,6 +4700,59 @@ mod tests {
         assert_eq!(
             category_of("gift_card_demand"),
             Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E27: refund_scam_cue ──────────────────────────────────────────────
+    #[test]
+    fn refund_scam_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "a refund of $499 is owed to you — call 1-800-555-0100 to collect".into(),
+            url: None,
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 500,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "refund_scam_cue"),
+            "expected refund_scam_cue; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_REFUND_SCAM);
+    }
+
+    #[test]
+    fn refund_scam_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "your refund of $49 has been processed — thank you".into(),
+            url: None,
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 3_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "refund_scam_cue"),
+            "refund_scam_cue must not fire for user-initiated closable window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn refund_scam_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("refund_scam_cue"),
+            Some(DarkPatternCategory::Sneaking)
         );
     }
 }

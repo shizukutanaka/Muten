@@ -353,6 +353,25 @@ MSRV 1.75, 286 tests.
   rate in combination with the alert_shaped guard). Category: `InterfaceInterference`.
   MITRE: T1566.  7 confusables unit tests + 3 lib unit tests + 2 property tests + 3
   scoring scenarios; 569 tests total. (E26.)
+- **Refund / overpayment scam lure** (`refund_scam_cue`; E27). `has_refund_scam_cue(s)`
+  fires when the normalized title contains a *refund_noun* ("refund", "overpayment",
+  "reimbursement", "rebate", "cashback", "excess charge", "overcharged", 返金, 払い戻し,
+  過払い, 補償金) AND a *refund_action* ("owed to you", "you are owed", "claim your
+  refund", "collect your refund", "pending refund", "refund is ready", "refund has been",
+  "process/transfer/receive/get your refund", "your refund of", "refund amount",
+  返金手続き, 払い戻し手続き, 返金が完了, お手続きください, ご返金, 返金いたします,
+  返金を受け取). Scammers posing as support agents, banks, or government agencies
+  falsely claim the victim has an uncollected refund or overpayment to return,
+  then direct them to call a number or click a link to "process the refund" —
+  leading to credential theft or gift-card coercion. The AND-pair prevents plain
+  e-commerce return-policy text ("refund within 30 days") from firing; the
+  alert_shaped guard prevents legitimate bank refund-portal windows (user-initiated,
+  closable) from triggering. FTC 2024 and IC3 2025 identify refund/overpayment
+  scams as a top financial-fraud vector, particularly targeting elderly users.
+  Full JP coverage (返金手続き patterns). Weight `W_REFUND_SCAM = 25`. Category:
+  `Sneaking` (Gray et al. 2018 — false information disguised as a benefit). MITRE:
+  T1566. 9 confusables unit tests + 3 lib unit tests + 2 property tests + 4 scoring
+  scenarios; 596 tests total. (E27.)
 - **Sextortion / webcam-recording extortion lure** (`sextortion_lure`; E25).
   `has_sextortion_lure(s)` fires when the normalized title contains a *camera_cue*
   ("your camera" / "your webcam" / "we have recorded" / "have been recording" /
