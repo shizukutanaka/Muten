@@ -543,6 +543,24 @@ MSRV 1.75, 286 tests.
   (user-initiated, closable) from triggering.  10 confusables unit tests +
   3 lib unit tests + 2 property tests + 4 scoring scenarios; 712 tests total.
   (E35.)
+- **Fake job / work-from-home employment fraud** (`job_scam`; E36).
+  `has_job_scam(s)` fires when the normalized title contains a *job_offer*
+  ("work from home", "remote work opportunity", "earn from home",
+  "make money from home", "part time job", "data entry job",
+  "easy money opportunity", "hiring now", 在宅ワーク, 副業, テレワーク,
+  在宅アルバイト, 内職) AND a *fee_gate* ("registration fee", "equipment
+  deposit", "background check fee", "starter kit", "training fee",
+  "upfront fee", "refundable deposit", "security deposit",
+  登録料, 機材費, 保証金, 入会金, 初期費用).  Targets the top-5 IC3 2025
+  non-elder-fraud loss category and FTC 2024 #1 business-opportunity fraud type
+  — fake work-from-home job postings that require an advance fee (registration,
+  equipment deposit, starter kit) to "start working".  Legitimate employers
+  never charge candidates an upfront fee; the fee is the sole scam tell, making
+  the AND-pair extremely high specificity.  Weight `W_JOB_SCAM = 25`.  Category:
+  `Sneaking`.  MITRE: T1566.  alert_shaped guard prevents legitimate job-board
+  pages (user-initiated, closable) from triggering.  10 confusables unit tests
+  + 3 lib unit tests + 2 property tests + 4 scoring scenarios; 726 tests total.
+  (E36.)
 - **Sextortion / webcam-recording extortion lure** (`sextortion_lure`; E25).
   `has_sextortion_lure(s)` fires when the normalized title contains a *camera_cue*
   ("your camera" / "your webcam" / "we have recorded" / "have been recording" /

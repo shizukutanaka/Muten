@@ -1165,4 +1165,33 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_healthcare_scam(&s));
         }
     }
+
+    // ── E36: job_scam ─────────────────────────────────────────────────────────
+
+    /// has_job_scam never panics on arbitrary Unicode input.
+    #[test]
+    fn has_job_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_job_scam(&s);
+    }
+
+    /// Plain ASCII without both a job offer and a fee gate never fires.
+    #[test]
+    fn plain_ascii_never_fires_job_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let job_offer = has("work from home") || has("remote work opportunity")
+            || has("earn from home") || has("make money from home")
+            || has("part time job") || has("data entry job")
+            || has("flexible work") || has("easy money opportunity")
+            || has("job offer") || has("hiring now")
+            || has("work at home") || has("online job");
+        let fee_gate = has("registration fee") || has("equipment deposit")
+            || has("background check fee") || has("starter kit")
+            || has("training fee") || has("materials fee")
+            || has("buy kit to start") || has("pay to start")
+            || has("upfront fee") || has("refundable deposit")
+            || has("security deposit") || has("kit fee");
+        if !(job_offer && fee_gate) {
+            prop_assert!(!muten_overlay::confusables::has_job_scam(&s));
+        }
+    }
 }

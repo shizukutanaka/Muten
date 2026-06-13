@@ -158,6 +158,8 @@ pub enum CompositeCondition {
     HasUtilityCutoffThreat,
     /// The `healthcare_scam` signal fired (E35 — Medicare/benefit expiry lure).
     HasHealthcareScam,
+    /// The `job_scam` signal fired (E36 — fake job offer with advance-fee gate).
+    HasJobScam,
 }
 
 impl CompositeCondition {
@@ -196,6 +198,7 @@ impl CompositeCondition {
             "has_tech_support_invoice_scam" => Some(Self::HasTechSupportInvoiceScam),
             "has_utility_cutoff_threat" => Some(Self::HasUtilityCutoffThreat),
             "has_healthcare_scam" => Some(Self::HasHealthcareScam),
+            "has_job_scam" => Some(Self::HasJobScam),
             _ => None,
         }
     }

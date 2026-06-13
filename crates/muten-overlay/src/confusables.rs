@@ -1977,6 +1977,77 @@ pub fn has_healthcare_scam(s: &str) -> bool {
     health_benefit && benefit_urgency
 }
 
+/// E36 — fake job / work-from-home scam (employment fraud with advance fee).
+///
+/// Detects overlays that advertise a remote job or work-from-home opportunity
+/// but require the victim to pay an upfront fee — a "registration fee",
+/// "equipment deposit", "starter kit purchase", or "background check fee" —
+/// before starting work.  Employment fraud is a top-5 IC3 2025 non-elder-fraud
+/// loss category and the FTC 2024 #1 business-opportunity fraud type.
+///
+/// AND-pair design:
+/// - `job_offer`: language advertising the remote/flexible work opportunity —
+///   "work from home", "remote work opportunity", "earn from home",
+///   "make money from home", "part time job", "data entry job",
+///   "flexible work", "easy money", "job offer", "hiring now",
+///   在宅ワーク, 副業, テレワーク求人, 在宅アルバイト.
+/// - `fee_gate`: advance-fee extraction attached to the job offer —
+///   "registration fee", "equipment deposit", "background check fee",
+///   "starter kit", "training fee", "materials fee", "buy kit to start",
+///   "purchase equipment", "pay to start", "upfront fee", "refundable deposit",
+///   登録料, 機材費, 保証金, 入会金, 初期費用.
+///
+/// The AND-pair ensures legitimate job-board pages (job_offer, no fee) and
+/// legitimate equipment-purchase pages (fee, no job offer) do not fire.
+/// The alert_shaped guard at the call site prevents user-initiated job
+/// application pages from triggering.
+#[must_use]
+pub fn has_job_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // job_offer: advertisement of remote / flexible work
+    let job_offer = has("work from home")
+        || has("remote work opportunity")
+        || has("earn from home")
+        || has("make money from home")
+        || has("part time job")
+        || has("data entry job")
+        || has("flexible work")
+        || has("easy money opportunity")
+        || has("job offer")
+        || has("hiring now")
+        || has("position available")
+        || has("work at home")
+        || has("online job")
+        || has("在宅ワーク")  // work-from-home (JP)
+        || has("副業")        // side job / secondary income (JP)
+        || has("テレワーク")  // telework / remote work (JP)
+        || has("在宅アルバイト") // work-from-home part-time (JP)
+        || has("内職"); // piecework / home-based work (JP)
+
+    // fee_gate: advance-fee extraction attached to the job offer
+    let fee_gate = has("registration fee")
+        || has("equipment deposit")
+        || has("background check fee")
+        || has("starter kit")
+        || has("training fee")
+        || has("materials fee")
+        || has("buy kit to start")
+        || has("purchase equipment")
+        || has("pay to start")
+        || has("upfront fee")
+        || has("refundable deposit")
+        || has("security deposit")
+        || has("kit fee")
+        || has("登録料")  // registration fee (JP)
+        || has("機材費") // equipment cost (JP)
+        || has("保証金") // security deposit (JP)
+        || has("入会金") // membership/entrance fee (JP)
+        || has("初期費用"); // initial cost / setup fee (JP)
+
+    job_offer && fee_gate
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3906,5 +3977,61 @@ mod tests {
         ));
         // Health plan information page
         assert!(!has_healthcare_scam("国民健康保険の加入手続きのご案内"));
+    }
+
+    // ── has_job_scam ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn job_scam_fires_on_work_from_home_plus_registration_fee() {
+        assert!(has_job_scam(
+            "work from home — easy money opportunity — registration fee required to start"
+        ));
+        assert!(has_job_scam(
+            "data entry job — part time job available — pay to start — starter kit fee $49"
+        ));
+    }
+
+    #[test]
+    fn job_scam_fires_on_hiring_plus_deposit() {
+        assert!(has_job_scam(
+            "hiring now — work at home — refundable deposit required — equipment deposit $199"
+        ));
+        assert!(has_job_scam(
+            "remote work opportunity — flexible work — background check fee upfront fee required"
+        ));
+    }
+
+    #[test]
+    fn job_scam_fires_jp() {
+        assert!(has_job_scam(
+            "在宅ワークで月収50万円。副業募集中。登録料3000円が必要です。"
+        ));
+        assert!(has_job_scam(
+            "内職・テレワーク求人。保証金をお預けいただきます。初期費用が必要。"
+        ));
+    }
+
+    #[test]
+    fn job_scam_does_not_fire_on_benign() {
+        // Legitimate job listing — no fee
+        assert!(!has_job_scam(
+            "work from home position available — apply now — no experience required"
+        ));
+        // Fee without job offer
+        assert!(!has_job_scam("equipment deposit required for this rental"));
+        // Legitimate training program — no job offer keyword
+        assert!(!has_job_scam(
+            "training fee: $99 for the certification course"
+        ));
+    }
+
+    #[test]
+    fn job_scam_does_not_fire_jp_benign() {
+        // Legitimate job post without fee
+        assert!(!has_job_scam(
+            "在宅ワーク・テレワークの求人情報サイト。無料登録で転職。"
+        ));
+        // Legitimate membership fee without job offer
+        assert!(!has_job_scam("入会金は初回のみ5000円です。月会費は無料。"));
     }
 }

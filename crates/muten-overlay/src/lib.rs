@@ -311,6 +311,9 @@ fn signal_phrase(signal: &str) -> &str {
         "healthcare_scam" => {
             "impersonates Medicare, Medicaid, or an insurance provider, claiming a benefit is expiring or a free medical device is available, to coerce the victim into calling a scam number"
         }
+        "job_scam" => {
+            "advertises a fake work-from-home or remote job opportunity but requires an upfront fee (registration, equipment deposit, starter kit, background check) to start"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -418,6 +421,7 @@ const W_ADVANCE_FEE_LURE: i32 = 25; // 419/advance-fee: windfall claim + fee-ext
 const W_TECH_INVOICE_SCAM: i32 = 25; // fake tech-support invoice: charge claim + call-to-cancel (FTC 2025 impostor)
 const W_UTILITY_CUTOFF: i32 = 25; // fake utility disconnection threat: utility_service + cutoff_threat (FTC #3 impostor)
 const W_HEALTHCARE_SCAM: i32 = 25; // Medicare/benefit expiry + free-offer lure (IC3 2025 #1 elder-fraud)
+const W_JOB_SCAM: i32 = 25; // employment fraud: job offer + advance-fee gate (IC3 2025 top-5, FTC #1 biz-opp)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -482,6 +486,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "tech_support_invoice_scam" => Some(W_TECH_INVOICE_SCAM),
         "utility_cutoff_threat" => Some(W_UTILITY_CUTOFF),
         "healthcare_scam" => Some(W_HEALTHCARE_SCAM),
+        "job_scam" => Some(W_JOB_SCAM),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -535,6 +540,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "tech_support_invoice_scam"
             | "utility_cutoff_threat"
             | "healthcare_scam"
+            | "job_scam"
             | "remote_access_lure"
     )
 }
@@ -1332,6 +1338,21 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         signals.push("healthcare_scam".into());
     }
 
+    // E36 — fake job / work-from-home employment fraud (IC3 2025 top-5
+    // non-elder-fraud loss category, FTC 2024 #1 business-opportunity fraud).
+    // An overlay advertises a remote job or work-from-home opportunity
+    // (job_offer: "work from home", "remote work opportunity", "earn from home",
+    // "data entry job", 在宅ワーク, 副業) AND requires an advance fee to start
+    // (fee_gate: "registration fee", "equipment deposit", "starter kit",
+    // "background check fee", "upfront fee", 登録料, 機材費, 保証金, 入会金).
+    // Legitimate employers never charge candidates an upfront fee — the fee
+    // is the scam tell.  alert_shaped guard prevents legitimate job-board
+    // pages (closable, user-initiated) from triggering.
+    if alert_shaped && confusables::has_job_scam(&normalized_title) {
+        score += rules.weight_of("job_scam", W_JOB_SCAM);
+        signals.push("job_scam".into());
+    }
+
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
     // seize the machine. These tools are legitimate, so their name alone
@@ -1653,6 +1674,7 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasTechSupportInvoiceScam => has_sig("tech_support_invoice_scam"),
         C::HasUtilityCutoffThreat => has_sig("utility_cutoff_threat"),
         C::HasHealthcareScam => has_sig("healthcare_scam"),
+        C::HasJobScam => has_sig("job_scam"),
     }
 }
 
@@ -5373,5 +5395,57 @@ mod tests {
             category_of("healthcare_scam"),
             Some(DarkPatternCategory::Sneaking)
         );
+    }
+
+    // ── E36: job_scam ────────────────────────────────────────────────────────
+
+    #[test]
+    fn job_scam_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "work from home — easy money opportunity — registration fee required to start"
+                .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "job_scam"),
+            "expected job_scam; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_JOB_SCAM);
+    }
+
+    #[test]
+    fn job_scam_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "work from home — equipment deposit required to start".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "job_scam"),
+            "job_scam must not fire on user-initiated page; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn job_scam_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(category_of("job_scam"), Some(DarkPatternCategory::Sneaking));
     }
 }

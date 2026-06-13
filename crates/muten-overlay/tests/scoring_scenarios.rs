@@ -1734,3 +1734,85 @@ fn healthcare_scam_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E36: job_scam ─────────────────────────────────────────────────────────────
+
+#[test]
+fn job_scam_reaches_suspicious() {
+    let v = classify(
+        &alert_window(
+            "work from home opportunity — easy money — registration fee required to start today",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "job_scam"),
+        "expected job_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "job_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn legitimate_job_listing_does_not_fire_job_scam() {
+    let v = classify(
+        &OverlayWindow {
+            title: "work from home — remote work opportunity — apply now — no fee required".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 3_000,
+        },
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "job_scam"),
+        "job_scam must not fire on legitimate job listing; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_job_scam_reaches_suspicious() {
+    let v = classify(
+        &alert_window("在宅ワークで高収入。副業募集中。登録料3000円が必要です。"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "job_scam"),
+        "expected job_scam for JP employment fraud; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP job_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn job_scam_plus_phone_reaches_block() {
+    let v = classify(
+        &alert_window(
+            "data entry job work from home — equipment deposit required — call 1-800-555-0100",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "job_scam"),
+        "expected job_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "job_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}

@@ -196,6 +196,21 @@ glob: * medicare * will expire *
 glob: * health * benefits * claim your free *
 
 # ─────────────────────────────────────────────────────────────────
+# FAKE JOB / WORK-FROM-HOME employment fraud (E36). Heuristic:
+# has_job_scam. Sources: IC3 2025 top-5 non-elder-fraud loss category,
+# FTC 2024 #1 business-opportunity fraud type.
+# ─────────────────────────────────────────────────────────────────
+title: work from home easy money opportunity registration fee required
+title: earn from home data entry job equipment deposit to start
+title: hiring now work at home starter kit fee required upfront
+title: remote work opportunity flexible work refundable deposit required
+title: part time job make money from home background check fee required
+title: 在宅ワーク副業募集登録料が必要です                     # JP: work-from-home side job, registration fee required
+title: 内職テレワーク在宅アルバイト保証金初期費用が必要です   # JP: piecework/telework, deposit/setup fee required
+glob: * work from home * registration fee *
+glob: * part time job * equipment deposit *
+
+# ─────────────────────────────────────────────────────────────────
 # FAKE TECH-SUPPORT INVOICE / cancel-scam (E33). Heuristic:
 # has_tech_support_invoice_scam. Sources: FTC 2025 impostor-scam data,
 # FBI IC3 2025 tech-support fraud sub-category.

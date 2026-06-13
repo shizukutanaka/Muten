@@ -87,7 +87,7 @@ produces these.
 
 ## Status
 
-`muten-overlay` v0.6.0 — 712 tests, `clippy -D warnings` clean, MSRV 1.75.0.
+`muten-overlay` v0.6.0 — 726 tests, `clippy -D warnings` clean, MSRV 1.75.0.
 CI runs format/lint/test, an MSRV build, and a supply-chain gate
 (cargo-audit + cargo-deny + gitleaks) on every PR.
 
