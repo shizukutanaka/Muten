@@ -1317,3 +1317,88 @@ fn false_reg_billing_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E31: fake_bsod_lure ───────────────────────────────────────────────────────
+
+#[test]
+fn fake_bsod_reaches_suspicious() {
+    let v = classify(
+        &alert_window(
+            "stop code: memory_management — do not restart — call microsoft support 1-800-555-0100",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "fake_bsod_lure"),
+        "expected fake_bsod_lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "fake_bsod_lure must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn legitimate_bsod_article_does_not_fire() {
+    // IT blog: mentions blue screen but user-initiated and closable
+    let v = classify(
+        &OverlayWindow {
+            title: "how to fix blue screen errors and stop codes in windows 10".into(),
+            url: None,
+            coverage_percent: 12,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 8_000,
+        },
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "fake_bsod_lure"),
+        "fake_bsod_lure must not fire on IT troubleshooting page; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_fake_bsod_reaches_suspicious() {
+    let v = classify(
+        &alert_window(
+            "ブルースクリーンが発生しました。再起動しないでください。マイクロソフトサポートに電話してください。",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "fake_bsod_lure"),
+        "expected fake_bsod_lure for JP BSOD scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP fake_bsod_lure must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn fake_bsod_plus_phone_reaches_block() {
+    let v = classify(
+        &alert_window(
+            "windows has been blocked call microsoft certified technician 1-800-555-0100",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "fake_bsod_lure"),
+        "expected fake_bsod_lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "fake_bsod_lure + phone must reach Block; score = {}",
+        v.score
+    );
+}

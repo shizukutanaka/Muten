@@ -1010,6 +1010,7 @@ proptest! {
         let _ = muten_overlay::confusables::has_false_registration_billing(&s);
     }
 
+
     /// Plain ASCII without both a reg claim and a payment ultimatum never fires.
     #[test]
     fn plain_ascii_never_fires_false_registration_billing(s in "[a-z .,!?]{1,60}") {
@@ -1027,6 +1028,34 @@ proptest! {
             || has("amount due") || has("settle your balance");
         if !(reg_claim && payment_ultimatum) {
             prop_assert!(!muten_overlay::confusables::has_false_registration_billing(&s));
+        }
+    }
+
+    // ── E31: fake_bsod_lure ───────────────────────────────────────────────────
+
+    /// has_fake_bsod_lure never panics on arbitrary Unicode input.
+    #[test]
+    fn has_fake_bsod_lure_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_fake_bsod_lure(&s);
+    }
+
+    /// Plain ASCII without both a BSOD marker and a call barrier never fires.
+    #[test]
+    fn plain_ascii_never_fires_fake_bsod_lure(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let bsod_marker = has("windows has been blocked") || has("windows is blocked")
+            || has("your pc is blocked") || has("stop code")
+            || has("memory_management") || has("kmode exception")
+            || has("kernel security check") || has("irql not less")
+            || has("dpc watchdog") || has("blue screen") || has("kernel panic")
+            || has("critical process died") || has("system thread exception");
+        let call_barrier = has("do not restart") || has("do not turn off")
+            || has("do not close this") || has("do not shut down")
+            || has("call microsoft") || has("contact microsoft")
+            || has("microsoft support") || has("microsoft certified")
+            || has("windows helpline") || has("apple support");
+        if !(bsod_marker && call_barrier) {
+            prop_assert!(!muten_overlay::confusables::has_fake_bsod_lure(&s));
         }
     }
 }

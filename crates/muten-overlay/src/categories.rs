@@ -128,6 +128,7 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         "national_id_alarm" => Some(InterfaceInterference),
         "bank_account_alarm" => Some(InterfaceInterference),
         "false_registration_billing" => Some(InterfaceInterference),
+        "fake_bsod_lure" => Some(Obstruction),
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }

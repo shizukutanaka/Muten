@@ -1615,6 +1615,81 @@ pub fn has_false_registration_billing(s: &str) -> bool {
     reg_claim && payment_ultimatum
 }
 
+/// E31 — fake BSOD / "Windows has been blocked" tech-support scam overlay.
+///
+/// Detects the well-documented tech-support scam pattern where an overlay
+/// mimics a Windows Blue Screen of Death (BSOD) or macOS kernel panic,
+/// displaying Windows error codes (e.g., "Stop Code: MEMORY_MANAGEMENT") and
+/// urging the victim to call a fake Microsoft/Apple support number immediately.
+/// Distinct from `has_fake_scanner_cue` (which targets rogue-AV scanning
+/// progress) — E31 targets the OS-impersonation / kiosk-lock variant where the
+/// attacker mimics a system crash page.
+///
+/// AND-pair design:
+/// - `bsod_marker`: language specific to OS crash / blocked-screen impersonation —
+///   "windows has been blocked", "windows is blocked", "your pc is blocked",
+///   "stop code", "memory_management", "kmode exception", "kernel security check",
+///   "irql not less", "dpc watchdog", "blue screen", "kernel panic",
+///   Windowsがブロック, PCがブロック, カーネルパニック.
+/// - `call_barrier`: scam-specific call-to-action around the fake error —
+///   "do not restart", "do not turn off", "do not close this",
+///   "call microsoft", "contact microsoft", "microsoft support",
+///   "microsoft certified", "windows helpline",
+///   再起動しないでください, マイクロソフトサポート, テクニカルサポート.
+///
+/// The AND-pair ensures low FP risk: legitimate Windows BSODs never instruct
+/// users to "call Microsoft" by phone, and windows that merely mention
+/// "blue screen" without a call barrier (e.g., IT blog articles) do not fire.
+/// The alert_shaped guard at the call site handles the geometry dimension.
+#[must_use]
+pub fn has_fake_bsod_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // bsod_marker: OS crash impersonation / blocked-screen language
+    let bsod_marker = has("windows has been blocked")
+        || has("windows is blocked")
+        || has("your pc is blocked")
+        || has("your computer is blocked")
+        || has("this pc is blocked")
+        || has("stop code")       // Windows BSOD stop-code field
+        || has("memory_management") // Windows BSOD error name
+        || has("kmode exception") // "KMODE_EXCEPTION_NOT_HANDLED"
+        || has("kernel security check") // "KERNEL_SECURITY_CHECK_FAILURE"
+        || has("irql not less")   // "IRQL_NOT_LESS_OR_EQUAL"
+        || has("dpc watchdog")    // "DPC_WATCHDOG_VIOLATION"
+        || has("blue screen")     // describing the BSOD screen
+        || has("kernel panic")    // macOS crash equivalent
+        || has("critical process died") // Windows BSOD message
+        || has("system thread exception") // Windows BSOD
+        || has("ブルースクリーン")  // blue screen (JP)
+        || has("windowsがブロック") // Windows is blocked (JP, case-folded)
+        || has("pcがブロック")      // PC is blocked (JP, case-folded)
+        || has("カーネルパニック"); // kernel panic (JP)
+
+    // call_barrier: scam-specific instruction attached to the fake crash
+    let call_barrier = has("do not restart")
+        || has("do not turn off")
+        || has("do not close this")
+        || has("do not shut down")
+        || has("call microsoft")
+        || has("contact microsoft")
+        || has("microsoft support")
+        || has("microsoft certified")
+        || has("microsoft technician")
+        || has("windows helpline")
+        || has("windows support line")
+        || has("microsoft help desk")
+        || has("apple support")       // macOS kernel-panic equivalent
+        || has("apple certified")
+        || has("再起動しないでください") // do not restart (JP)
+        || has("シャットダウンしないで") // do not shut down (JP)
+        || has("マイクロソフトサポート") // Microsoft support (JP)
+        || has("マイクロソフト認定")    // Microsoft certified (JP)
+        || has("テクニカルサポートに電話"); // call technical support (JP)
+
+    bsod_marker && call_barrier
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3238,5 +3313,73 @@ mod tests {
         assert!(!has_false_registration_billing(
             "請求書を送付いたします。お支払い期限をご確認ください。"
         ));
+    }
+
+    // ── has_fake_bsod_lure ───────────────────────────────────────────────────
+
+    #[test]
+    fn fake_bsod_fires_on_stop_code_and_call_microsoft() {
+        assert!(has_fake_bsod_lure(
+            "stop code: memory_management — call microsoft support immediately"
+        ));
+        assert!(has_fake_bsod_lure(
+            "stop code: kmode exception — do not restart your computer call microsoft"
+        ));
+    }
+
+    #[test]
+    fn fake_bsod_fires_on_windows_blocked() {
+        assert!(has_fake_bsod_lure(
+            "windows has been blocked call microsoft certified technician 1-800-555-0100"
+        ));
+        assert!(has_fake_bsod_lure(
+            "your pc is blocked — do not turn off this computer — contact microsoft"
+        ));
+    }
+
+    #[test]
+    fn fake_bsod_fires_on_blue_screen_do_not_restart() {
+        assert!(has_fake_bsod_lure(
+            "blue screen error — do not restart — call windows helpline now"
+        ));
+        assert!(has_fake_bsod_lure(
+            "kernel panic — do not shut down — call apple support immediately"
+        ));
+    }
+
+    #[test]
+    fn fake_bsod_fires_jp() {
+        assert!(has_fake_bsod_lure(
+            "ブルースクリーンが発生しました。再起動しないでください。マイクロソフトサポートに電話してください。"
+        ));
+        assert!(has_fake_bsod_lure(
+            "windowsがブロックされました。テクニカルサポートに電話してください。"
+        ));
+    }
+
+    #[test]
+    fn fake_bsod_does_not_fire_on_benign() {
+        // BSOD marker only — no call barrier
+        assert!(!has_fake_bsod_lure("blue screen troubleshooting guide"));
+        // Call barrier only — no BSOD marker
+        assert!(!has_fake_bsod_lure(
+            "do not restart your computer while updates are installing"
+        ));
+        // IT article mentioning stop codes
+        assert!(!has_fake_bsod_lure(
+            "how to read windows stop codes for debugging"
+        ));
+        // Legitimate kernel panic report without call instruction
+        assert!(!has_fake_bsod_lure("kernel panic log: cpu 0 caller"));
+    }
+
+    #[test]
+    fn fake_bsod_does_not_fire_jp_benign() {
+        // Legitimate update progress — no BSOD marker
+        assert!(!has_fake_bsod_lure(
+            "更新プログラムのインストール中は再起動しないでください。"
+        ));
+        // BSOD article without call instruction
+        assert!(!has_fake_bsod_lure("ブルースクリーンエラーの原因と対処法"));
     }
 }

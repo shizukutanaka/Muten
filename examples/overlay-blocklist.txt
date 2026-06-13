@@ -166,6 +166,23 @@ glob: * registered * outstanding fee *
 glob: * enrollment * legal action *
 
 # ─────────────────────────────────────────────────────────────────
+# FAKE BSOD / "Windows has been blocked" tech-support scam (E31).
+# Overlay impersonates a Windows Blue Screen of Death or macOS kernel
+# panic to coerce the victim into calling a fake Microsoft/Apple support
+# number.  Heuristic: has_fake_bsod_lure.  Sources: FBI IC3 2025
+# tech-support fraud category, Microsoft MSTIC (FakeBlue campaign 2025).
+# ─────────────────────────────────────────────────────────────────
+title: windows has been blocked call microsoft support immediately
+title: stop code memory management call microsoft certified technician
+title: your pc is blocked do not restart call microsoft
+title: critical stop kernel security check failure call windows helpline
+title: blue screen error do not turn off call microsoft support
+title: カーネルパニック マイクロソフトサポートに電話してください           # JP: kernel panic, call Microsoft support
+title: ブルースクリーンが発生しました再起動しないでください                 # JP: BSOD occurred, do not restart
+glob: * stop code * call microsoft *
+glob: * windows * blocked * do not restart *
+
+# ─────────────────────────────────────────────────────────────────
 # CRYPTO / REFUND / "RECOVERY" RE-VICTIMIZATION scams. FBI IC3 2024:
 # crypto-investment fraud drove the largest reported losses, and
 # "recovery" operators re-target prior victims promising to claw back

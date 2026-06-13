@@ -444,6 +444,29 @@ MSRV 1.75, 286 tests.
   e-commerce order confirmations (user-initiated, closable) from triggering.
   9 confusables unit tests + 3 lib unit tests + 2 property tests + 4 scoring
   scenarios; 641 tests total. (E30.)
+- **Fake BSOD / "Windows has been blocked" tech-support scam**
+  (`fake_bsod_lure`; E31). `has_fake_bsod_lure(s)` fires when the normalized
+  title contains a *bsod_marker* ("stop code", "windows has been blocked",
+  "your pc is blocked", "memory_management", "kmode exception",
+  "kernel security check", "irql not less", "dpc watchdog", "blue screen",
+  "kernel panic", "critical process died", ブルースクリーン, windowsがブロック,
+  pcがブロック, カーネルパニック) AND a *call_barrier* ("do not restart",
+  "do not turn off", "do not close this", "call microsoft", "contact microsoft",
+  "microsoft support", "microsoft certified", "windows helpline", "apple support",
+  再起動しないでください, マイクロソフトサポート, テクニカルサポートに電話).
+  Targets the widespread "FakeBlue" campaign (Microsoft MSTIC 2025) and FBI
+  IC3 2025 tech-support fraud category where an overlay mimics a Windows BSOD
+  or macOS kernel panic to push victims to call a scam phone number. Distinct
+  from `has_fake_scanner_cue` (rogue-AV scanning progress): E31 targets
+  *OS crash impersonation* with a call-to-phone instruction. Legitimate Windows
+  BSODs display a QR code linking to support.microsoft.com, not a phone number.
+  The AND-pair ensures BSOD-related IT articles (bsod_marker only) and
+  legitimate update warnings ("do not restart while installing") do not fire.
+  Weight `W_FAKE_BSOD_LURE = 30`. Category: `Obstruction`. MITRE: T1036
+  (Masquerading — impersonates OS crash). alert_shaped guard prevents
+  IT troubleshooting browser tabs from triggering. 10 confusables unit tests
+  + 3 lib unit tests + 2 property tests + 4 scoring scenarios; 656 tests total.
+  (E31.)
 - **Sextortion / webcam-recording extortion lure** (`sextortion_lure`; E25).
   `has_sextortion_lure(s)` fires when the normalized title contains a *camera_cue*
   ("your camera" / "your webcam" / "we have recorded" / "have been recording" /

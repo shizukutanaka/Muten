@@ -296,6 +296,9 @@ fn signal_phrase(signal: &str) -> &str {
         "false_registration_billing" => {
             "falsely claims the user registered for a paid service and demands immediate payment under threat of legal action (ワンクリック詐欺)"
         }
+        "fake_bsod_lure" => {
+            "impersonates a Windows Blue Screen of Death or OS kernel panic to trick the victim into calling a fake Microsoft or Apple support number"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -398,6 +401,7 @@ const W_REFUND_SCAM: i32 = 25; // refund/overpayment lure: claim-oriented action
 const W_NATIONAL_ID_ALARM: i32 = 30; // SSN/NIN/マイナンバー suspension alarm (FTC #1 government impersonation subcategory)
 const W_BANK_ACCOUNT_ALARM: i32 = 25; // fake bank-fraud alert: bank/card noun + freeze/fraud alarm (distinct from credential_harvest)
 const W_FALSE_REG_BILLING: i32 = 25; // ワンクリック詐欺: false registration claim + payment ultimatum
+const W_FAKE_BSOD_LURE: i32 = 30; // fake BSOD / Windows-blocked overlay impersonating OS crash (T1036)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -457,6 +461,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "national_id_alarm" => Some(W_NATIONAL_ID_ALARM),
         "bank_account_alarm" => Some(W_BANK_ACCOUNT_ALARM),
         "false_registration_billing" => Some(W_FALSE_REG_BILLING),
+        "fake_bsod_lure" => Some(W_FAKE_BSOD_LURE),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -505,6 +510,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "national_id_alarm"
             | "bank_account_alarm"
             | "false_registration_billing"
+            | "fake_bsod_lure"
             | "remote_access_lure"
     )
 }
@@ -1221,6 +1227,22 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         signals.push("false_registration_billing".into());
     }
 
+    // E31 — fake BSOD / "Windows has been blocked" tech-support scam (FBI IC3 2025,
+    // Microsoft MSTIC).  An overlay mimics a Windows Blue Screen of Death or macOS
+    // kernel panic (bsod_marker: "stop code", "windows has been blocked", "blue
+    // screen", "kernel panic") AND attaches a scam phone instruction (call_barrier:
+    // "do not restart", "call microsoft", "microsoft certified technician").
+    // Legitimate Windows BSODs never instruct users to call a phone number — they
+    // show a QR code linking to support.microsoft.com.  alert_shaped guard prevents
+    // IT troubleshooting guides (user-initiated, closable) from triggering.
+    // Weight 30 reflects the AND-pair's high specificity: bsod_marker alone fires
+    // on IT articles; call_barrier alone fires on legitimate update instructions;
+    // only their combination is unambiguously scam-shaped.
+    if alert_shaped && confusables::has_fake_bsod_lure(&normalized_title) {
+        score += rules.weight_of("fake_bsod_lure", W_FAKE_BSOD_LURE);
+        signals.push("fake_bsod_lure".into());
+    }
+
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
     // seize the machine. These tools are legitimate, so their name alone
@@ -1537,6 +1559,7 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasNationalIdAlarm => has_sig("national_id_alarm"),
         C::HasBankAccountAlarm => has_sig("bank_account_alarm"),
         C::HasFalseRegistrationBilling => has_sig("false_registration_billing"),
+        C::HasFakeBsodLure => has_sig("fake_bsod_lure"),
     }
 }
 
@@ -4980,6 +5003,60 @@ mod tests {
         assert_eq!(
             category_of("false_registration_billing"),
             Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E31: fake_bsod_lure ──────────────────────────────────────────────────
+
+    #[test]
+    fn fake_bsod_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "stop code: memory_management — do not restart — call microsoft support".into(),
+            url: None,
+            coverage_percent: 99,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "fake_bsod_lure"),
+            "expected fake_bsod_lure; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_FAKE_BSOD_LURE);
+    }
+
+    #[test]
+    fn fake_bsod_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "stop code: memory_management — do not restart — call microsoft".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "fake_bsod_lure"),
+            "fake_bsod_lure must not fire on user-initiated page; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn fake_bsod_category_is_obstruction() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("fake_bsod_lure"),
+            Some(DarkPatternCategory::Obstruction)
         );
     }
 }

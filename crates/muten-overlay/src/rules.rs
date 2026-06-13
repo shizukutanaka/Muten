@@ -148,6 +148,8 @@ pub enum CompositeCondition {
     HasBankAccountAlarm,
     /// The `false_registration_billing` signal fired (E30 — ワンクリック詐欺 fake billing).
     HasFalseRegistrationBilling,
+    /// The `fake_bsod_lure` signal fired (E31 — fake BSOD / Windows-blocked overlay).
+    HasFakeBsodLure,
 }
 
 impl CompositeCondition {
@@ -181,6 +183,7 @@ impl CompositeCondition {
             "has_national_id_alarm" => Some(Self::HasNationalIdAlarm),
             "has_bank_account_alarm" => Some(Self::HasBankAccountAlarm),
             "has_false_registration_billing" => Some(Self::HasFalseRegistrationBilling),
+            "has_fake_bsod_lure" => Some(Self::HasFakeBsodLure),
             _ => None,
         }
     }
