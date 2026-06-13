@@ -4099,6 +4099,39 @@ mod tests {
         assert_eq!(v_boosted.score, 60, "overridden fullscreen weight is 60");
     }
 
+    /// Integer-overflow safety of the additive score (Socratic round 7). The
+    /// score is `i32`, accumulated via `score += rules.weight_of(...)`. Without
+    /// the parse-time weight clamp, two co-firing signals each overridden near
+    /// `i32::MAX` would overflow the accumulation — a debug-build panic or a
+    /// release-build wrap that flips a would-be Block to Allow via `score.max(0)`.
+    /// With operator weights clamped to ±`MAX_ABS_WEIGHT`, the same hostile
+    /// config now produces a large-but-finite score and a correct Block, and the
+    /// addition cannot overflow (this test would panic in debug on overflow).
+    #[test]
+    fn extreme_weight_override_does_not_overflow_score() {
+        let rules = Ruleset::from_lines(&[
+            "weight: fullscreen 2000000000",
+            "weight: topmost 2000000000",
+            "weight: no_close_button 2000000000",
+            "weight: unsolicited 2000000000",
+        ]);
+        let w = OverlayWindow {
+            title: "special offer".into(),
+            url: None,
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &rules);
+        // No panic (debug) / no wrap (release): score is positive and the
+        // verdict is Block, not an overflow-wrapped Allow.
+        assert!(v.score > 0, "score must stay positive, got {}", v.score);
+        assert_eq!(v.decision, Decision::Block);
+    }
+
     #[test]
     fn weight_override_to_zero_silences_signal() {
         // With fullscreen weight set to 0, a fullscreen window that normally

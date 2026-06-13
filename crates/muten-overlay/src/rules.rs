@@ -326,6 +326,19 @@ struct GlobPattern {
     display: String,
 }
 
+/// Largest absolute per-signal / composite weight an operator blocklist may
+/// set. The additive score is `i32`; without a bound, two co-firing signals
+/// each overridden near `i32::MAX` (e.g. a fat-fingered `weight: fullscreen
+/// 2000000000`) would overflow the accumulation — a debug-build panic, or a
+/// release-build two's-complement wrap that can flip a would-be Block to Allow
+/// after the `score.max(0)` clamp. Operator weights are clamped to ±this at
+/// parse time. The bound is ~250× the largest built-in weight, so it never
+/// constrains legitimate tuning, and a value beyond it is semantically
+/// identical anyway (anything ≥ `BLOCK_THRESHOLD` already forces Block). Even
+/// with every signal and thousands of composites clamped to this, the worst-
+/// case sum stays far below `i32::MAX`, so the score arithmetic cannot overflow.
+pub(crate) const MAX_ABS_WEIGHT: i32 = 10_000;
+
 impl Ruleset {
     /// Parse a blocklist from its text form. Unknown/blank lines are
     /// skipped silently; a malformed entry never aborts the load
@@ -407,6 +420,7 @@ impl Ruleset {
                 if let Some((name, tail)) = parts.split_first() {
                     if let Some((weight_str, cond_strs)) = tail.split_first() {
                         if let Ok(weight) = weight_str.parse::<i32>() {
+                            let weight = weight.clamp(-MAX_ABS_WEIGHT, MAX_ABS_WEIGHT);
                             let conditions: Vec<CompositeCondition> = cond_strs
                                 .iter()
                                 .filter_map(|s| CompositeCondition::from_str(s))
@@ -433,6 +447,7 @@ impl Ruleset {
                 let mut parts = rest.split_whitespace();
                 if let (Some(sig), Some(val_str)) = (parts.next(), parts.next()) {
                     if let Ok(val) = val_str.parse::<i32>() {
+                        let val = val.clamp(-MAX_ABS_WEIGHT, MAX_ABS_WEIGHT);
                         weight_overrides.insert(sig.to_ascii_lowercase(), val);
                     }
                 }
@@ -1222,6 +1237,30 @@ mod tests {
     fn weight_override_missing_value_is_dropped() {
         let rs = Ruleset::from_lines(&["weight: phone_number"]);
         assert_eq!(rs.weight_override_count(), 0);
+    }
+
+    #[test]
+    fn weight_override_is_clamped_to_sane_bound() {
+        // A fat-fingered or hostile huge weight is clamped to ±MAX_ABS_WEIGHT,
+        // so two co-firing overridden signals can never overflow the i32 score
+        // accumulation in classify().
+        let rs = Ruleset::from_lines(&[
+            "weight: fullscreen 2000000000",
+            "weight: topmost -2000000000",
+        ]);
+        assert_eq!(rs.weight_of("fullscreen", 30), MAX_ABS_WEIGHT);
+        assert_eq!(rs.weight_of("topmost", 15), -MAX_ABS_WEIGHT);
+    }
+
+    #[test]
+    fn composite_weight_is_clamped_to_sane_bound() {
+        let rs = Ruleset::from_lines(&["composite: huge 2000000000 fullscreen topmost"]);
+        let rule = rs
+            .composite_rules()
+            .iter()
+            .find(|r| r.name == "huge")
+            .expect("composite rule parsed");
+        assert_eq!(rule.weight, MAX_ABS_WEIGHT);
     }
 
     #[test]

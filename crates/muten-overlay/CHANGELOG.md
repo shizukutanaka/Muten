@@ -43,6 +43,22 @@ MSRV 1.75, 286 tests.
   commit. (M6.)
 
 ### Fixed
+- **Additive score could overflow under extreme operator weights** (Socratic
+  round 7). The `i32` score is accumulated with plain `score += rules.weight_of(...)`,
+  and `weight:` / `composite:` weights were parsed as unbounded `i32`. Two
+  co-firing signals each overridden near `i32::MAX` (e.g. a fat-fingered
+  `weight: fullscreen 2000000000` on two signals) would overflow the
+  accumulation — a debug-build panic (config-driven DoS) or a release-build
+  two's-complement wrap that flips a would-be **Block** to **Allow** after the
+  `score.max(0)` clamp (a security-relevant misverdict). Operator weights are
+  now clamped at parse time to ±`MAX_ABS_WEIGHT` (10 000 — ~250× the largest
+  built-in weight, so legitimate tuning is unaffected and any larger value is
+  semantically identical since it already exceeds `BLOCK_THRESHOLD`). Even with
+  every signal plus thousands of composites at the bound, the worst-case sum
+  stays far below `i32::MAX`, so the arithmetic cannot overflow. Three tests:
+  `weight_override_is_clamped_to_sane_bound`, `composite_weight_is_clamped_to_sane_bound`,
+  and `extreme_weight_override_does_not_overflow_score` (which would panic in a
+  debug build if the overflow were still reachable).
 - **`confidence()` under-reported a lone blocklist-host hard block** (Socratic
   round 6). `Verdict::confidence()` had a collapsed match guard — `1 if
   self.signals.len() == 1 => Medium` immediately followed by `1 => Medium` with
