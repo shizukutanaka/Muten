@@ -180,6 +180,10 @@ pub enum CompositeCondition {
     HasLoanFeeScam,
     /// The `data_uri_page` signal fired (A9 — URL uses data: or file:// scheme).
     HasDataUriPage,
+    /// The `charity_scam_lure` signal fired (E46 — fake charity + irreversible payment method).
+    HasCharityScamLure,
+    /// The `rental_scam_lure` signal fired (E47 — fake rental listing + advance deposit demand).
+    HasRentalScamLure,
 }
 
 impl CompositeCondition {
@@ -229,6 +233,8 @@ impl CompositeCondition {
             "has_pig_butchering_lure" => Some(Self::HasPigButcheringLure),
             "has_loan_fee_scam" => Some(Self::HasLoanFeeScam),
             "has_data_uri_page" => Some(Self::HasDataUriPage),
+            "has_charity_scam_lure" => Some(Self::HasCharityScamLure),
+            "has_rental_scam_lure" => Some(Self::HasRentalScamLure),
             _ => None,
         }
     }

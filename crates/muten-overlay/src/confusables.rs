@@ -2567,6 +2567,130 @@ pub fn has_loan_fee_scam(s: &str) -> bool {
     loan_approval && fee_gate
 }
 
+/// E46 — Charity / disaster-relief scam.
+///
+/// Fires when the normalized title contains BOTH a *charity/donation cue*
+/// (humanitarian appeal, donation solicitation, disaster-relief framing) AND
+/// a *suspicious payment method* (gift card, wire transfer, cryptocurrency,
+/// or money order — never used by legitimate charities for small-donor
+/// collections). This AND-pair is near-zero false-positive: legitimate
+/// charities use credit/debit card payment processors or PayPal; requesting
+/// gift cards or cryptocurrency is a textbook charity-fraud tell.
+///
+/// Source: FTC "Charity Scams" 2024; BBB Wise Giving Alliance advisory;
+/// FBI IC3 post-disaster fraud alerts (Maui 2023, Hurricane Helene 2024).
+/// T1566 Phishing (social engineering with urgency).
+pub fn has_charity_scam_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let charity_cue = has("donate now")
+        || has("your donation")
+        || has("disaster relief")
+        || has("hurricane relief")
+        || has("earthquake relief")
+        || has("flood relief")
+        || has("wildfire relief")
+        || has("emergency relief fund")
+        || has("relief fund")
+        || has("humanitarian aid")
+        || has("help the victims")
+        || has("help survivors")
+        || has("support victims")
+        || has("disaster victims")
+        || has("crisis fund")
+        || has("charity foundation")
+        || has("official charity")
+        || has("verified charity")
+        || has("100% goes to")
+        || has("all proceeds go")
+        || has("義援金")
+        || has("募金")
+        || has("寄付をお願い")
+        || has("被災者支援")
+        || has("復興支援")
+        || has("災害支援");
+    let suspicious_payment = has("gift card")
+        || has("itunes card")
+        || has("google play card")
+        || has("steam card")
+        || has("amazon gift card")
+        || has("wire transfer")
+        || has("bank wire")
+        || has("western union")
+        || has("moneygram")
+        || has("bitcoin donation")
+        || has("crypto donation")
+        || has("send bitcoin")
+        || has("send ethereum")
+        || has("send crypto")
+        || has("money order only")
+        || has("prepaid card")
+        || has("ギフトカード")
+        || has("仮想通貨で寄付")
+        || has("ビットコインで")
+        || has("電子マネー")
+        || has("送金してください");
+    charity_cue && suspicious_payment
+}
+
+/// E47 — Rental / housing scam.
+///
+/// Fires when the normalized title contains BOTH a *rental/housing cue*
+/// (apartment, room, house listing for rent or lease) AND an *advance-payment
+/// demand* (deposit or first-month rent required before viewing or signing,
+/// sent via wire/gift card/etc.). This AND-pair is the defining tell of
+/// rental fraud: scammers post fake listings on legitimate property sites
+/// and demand deposits via irreversible payment methods before the victim
+/// can view the property.
+///
+/// Source: FTC Consumer Sentinel 2024 (housing fraud top-5 by complaint
+/// count); BBB 2024 rental scam advisory; CFPB housing fraud warnings.
+/// T1566 Phishing (fake property listing).
+pub fn has_rental_scam_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let rental_cue = has("apartment for rent")
+        || has("room for rent")
+        || has("house for rent")
+        || has("rental listing")
+        || has("available for rent")
+        || has("lease agreement")
+        || has("month-to-month lease")
+        || has("rental property")
+        || has("furnished apartment")
+        || has("affordable rent")
+        || has("below market rent")
+        || has("no credit check rental")
+        || has("pet-friendly rental")
+        || has("studio apartment")
+        || has("bedroom apartment")
+        || has("賃貸物件")
+        || has("アパート募集")
+        || has("賃貸マンション")
+        || has("部屋貸します")
+        || has("家賃")
+        || has("入居者募集");
+    let advance_demand = has("send deposit")
+        || has("wire deposit")
+        || has("deposit required before")
+        || has("first month deposit")
+        || has("security deposit via")
+        || has("deposit before viewing")
+        || has("deposit to hold")
+        || has("send first month")
+        || has("pay to reserve")
+        || has("payment to secure")
+        || has("gift card for deposit")
+        || has("money order for deposit")
+        || has("payment before visit")
+        || has("deposit upfront")
+        || has("敷金を送金")
+        || has("前払いで敷金")
+        || has("内覧前に入金")
+        || has("振込で保証金")
+        || has("先に敷金")
+        || has("入金後に鍵を");
+    rental_cue && advance_demand
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5157,6 +5281,188 @@ mod tests {
     fn loan_fee_scam_fires_transfer_fee() {
         assert!(has_loan_fee_scam(
             "emergency loan approved — transfer fee required before we release funds"
+        ));
+    }
+
+    // ── E46: charity_scam_lure ────────────────────────────────────
+
+    #[test]
+    fn charity_scam_fires_gift_card_donation() {
+        assert!(has_charity_scam_lure(
+            "hurricane relief fund — donate now with gift card or bitcoin donation"
+        ));
+    }
+
+    #[test]
+    fn charity_scam_fires_wire_transfer() {
+        assert!(has_charity_scam_lure(
+            "disaster relief — your donation helps victims — send via wire transfer"
+        ));
+    }
+
+    #[test]
+    fn charity_scam_fires_crypto_donation() {
+        assert!(has_charity_scam_lure(
+            "earthquake relief — 100% goes to victims — send bitcoin donation"
+        ));
+    }
+
+    #[test]
+    fn charity_scam_fires_jp() {
+        assert!(has_charity_scam_lure(
+            "被災者支援義援金 — ギフトカードでお振込みください"
+        ));
+        assert!(has_charity_scam_lure(
+            "災害支援募金：仮想通貨で寄付をお願いします"
+        ));
+    }
+
+    #[test]
+    fn charity_scam_does_not_fire_charity_only() {
+        // Only charity cue — no suspicious payment method
+        assert!(!has_charity_scam_lure(
+            "donate now to help hurricane relief victims — all proceeds go to recovery"
+        ));
+        assert!(!has_charity_scam_lure(
+            "earthquake relief fund — your donation is tax deductible"
+        ));
+    }
+
+    #[test]
+    fn charity_scam_does_not_fire_payment_only() {
+        // Only payment method — no charity cue
+        assert!(!has_charity_scam_lure(
+            "please send via gift card or wire transfer for your order"
+        ));
+        assert!(!has_charity_scam_lure(
+            "bitcoin donation accepted for membership renewal"
+        ));
+    }
+
+    #[test]
+    fn charity_scam_does_not_fire_benign() {
+        // Legitimate charity website content (no suspicious payment)
+        assert!(!has_charity_scam_lure(
+            "red cross — donate now — credit card accepted — 100% goes to disaster victims"
+        ));
+        assert!(!has_charity_scam_lure(
+            "support disaster relief with paypal"
+        ));
+    }
+
+    #[test]
+    fn charity_scam_does_not_fire_jp_benign() {
+        // Legitimate JP donation (no suspicious payment method)
+        assert!(!has_charity_scam_lure(
+            "被災者支援のご寄付はクレジットカードでお申し込みください。"
+        ));
+        // Gift card without charity cue
+        assert!(!has_charity_scam_lure("ギフトカードのご購入はこちらから。"));
+    }
+
+    #[test]
+    fn charity_scam_fires_western_union() {
+        assert!(has_charity_scam_lure(
+            "emergency relief fund — help survivors — donate via western union"
+        ));
+    }
+
+    #[test]
+    fn charity_scam_fires_100_percent() {
+        assert!(has_charity_scam_lure(
+            "100% goes to wildfire relief — send money order only"
+        ));
+    }
+
+    // ── E47: rental_scam_lure ─────────────────────────────────────
+
+    #[test]
+    fn rental_scam_fires_deposit_before_viewing() {
+        assert!(has_rental_scam_lure(
+            "apartment for rent — deposit before viewing to hold unit — affordable rent"
+        ));
+    }
+
+    #[test]
+    fn rental_scam_fires_wire_deposit() {
+        assert!(has_rental_scam_lure(
+            "room for rent — wire deposit — deposit to hold available immediately"
+        ));
+    }
+
+    #[test]
+    fn rental_scam_fires_gift_card_deposit() {
+        assert!(has_rental_scam_lure(
+            "studio apartment — no credit check rental — gift card for deposit required"
+        ));
+    }
+
+    #[test]
+    fn rental_scam_fires_jp() {
+        assert!(has_rental_scam_lure(
+            "賃貸物件 — 内覧前に入金をお願いします — 入居者募集"
+        ));
+        assert!(has_rental_scam_lure(
+            "アパート募集 — 先に敷金をお振込みください — 家賃格安"
+        ));
+    }
+
+    #[test]
+    fn rental_scam_does_not_fire_rental_only() {
+        // Only rental cue — no advance-payment demand
+        assert!(!has_rental_scam_lure(
+            "affordable apartment for rent — 2 bedroom — pets welcome — call to schedule viewing"
+        ));
+        assert!(!has_rental_scam_lure(
+            "furnished studio apartment — available for rent — no credit check"
+        ));
+    }
+
+    #[test]
+    fn rental_scam_does_not_fire_payment_only() {
+        // Only payment demand — no rental cue
+        assert!(!has_rental_scam_lure(
+            "send deposit before we ship — payment to secure your order"
+        ));
+        assert!(!has_rental_scam_lure(
+            "deposit required before delivery — contact us to arrange"
+        ));
+    }
+
+    #[test]
+    fn rental_scam_does_not_fire_benign() {
+        // Legitimate rental listing (deposit mentioned but not advance-payment fraud)
+        assert!(!has_rental_scam_lure(
+            "apartment for rent — security deposit equals one month — view by appointment"
+        ));
+        assert!(!has_rental_scam_lure(
+            "house for rent — contact landlord to schedule walk-through"
+        ));
+    }
+
+    #[test]
+    fn rental_scam_does_not_fire_jp_benign() {
+        // Rental without advance payment demand
+        assert!(!has_rental_scam_lure(
+            "賃貸物件の敷金・礼金について。内覧のご予約はこちら。"
+        ));
+        // Advance payment without rental cue
+        assert!(!has_rental_scam_lure(
+            "先に敷金をご用意ください。商品の発送前に確認いたします。"
+        ));
+    }
+
+    #[test]
+    fn rental_scam_fires_pay_to_reserve() {
+        assert!(has_rental_scam_lure(
+            "bedroom apartment available — pay to reserve now — below market rent"
+        ));
+    }
+
+    #[test]
+    fn rental_scam_fires_upfront_deposit() {
+        assert!(has_rental_scam_lure(
+            "no credit check rental — deposit upfront to secure the room for rent"
         ));
     }
 }

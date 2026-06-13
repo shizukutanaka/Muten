@@ -344,6 +344,12 @@ fn signal_phrase(signal: &str) -> &str {
         "data_uri_page" => {
             "is hosted at a data: or file:// URL, a technique used by tech-support scammers to serve fake-alert overlays without a domain that can be blocklisted"
         }
+        "charity_scam_lure" => {
+            "impersonates a disaster-relief or humanitarian charity and instructs the user to donate via gift card, wire transfer, cryptocurrency, or money order — payment methods no legitimate charity uses for small-donor collections"
+        }
+        "rental_scam_lure" => {
+            "posts a fake rental or housing listing (apartment, room, or house for rent) and demands an advance deposit via wire transfer, gift card, or money order before the victim can view the property, which does not exist or is not owned by the scammer"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -462,6 +468,8 @@ const W_TRAFFIC_FINE_SCAM: i32 = 25; // traffic/parking/toll violation + payment
 const W_PIG_BUTCHERING_LURE: i32 = 30; // romance/mentor cue + investment platform (IC3 2024 #1 by loss $4.57B)
 const W_LOAN_FEE_SCAM: i32 = 30; // pre-approved loan + upfront-fee gate (FTC advance-fee loan fraud)
 const W_DATA_URI_PAGE: i32 = 25; // alert-shaped window served from data: or file:// URL (blocklist-bypass technique)
+const W_CHARITY_SCAM_LURE: i32 = 25; // fake charity + irreversible payment (gift card/wire/crypto) after disaster
+const W_RENTAL_SCAM_LURE: i32 = 25; // fake rental listing + advance deposit demand (FTC 2024 housing fraud)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -537,6 +545,8 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "pig_butchering_lure" => Some(W_PIG_BUTCHERING_LURE),
         "loan_fee_scam" => Some(W_LOAN_FEE_SCAM),
         "data_uri_page" => Some(W_DATA_URI_PAGE),
+        "charity_scam_lure" => Some(W_CHARITY_SCAM_LURE),
+        "rental_scam_lure" => Some(W_RENTAL_SCAM_LURE),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -601,6 +611,8 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "pig_butchering_lure"
             | "loan_fee_scam"
             | "data_uri_page"
+            | "charity_scam_lure"
+            | "rental_scam_lure"
             | "remote_access_lure"
     )
 }
@@ -708,6 +720,8 @@ pub fn all_signals() -> Vec<SignalInfo> {
         "pig_butchering_lure",
         "loan_fee_scam",
         "data_uri_page",
+        "charity_scam_lure",
+        "rental_scam_lure",
         "remote_access_lure",
     ];
     NAMES
@@ -1650,6 +1664,14 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         score += rules.weight_of("loan_fee_scam", W_LOAN_FEE_SCAM);
         signals.push("loan_fee_scam".into());
     }
+    if alert_shaped && confusables::has_charity_scam_lure(&normalized_title) {
+        score += rules.weight_of("charity_scam_lure", W_CHARITY_SCAM_LURE);
+        signals.push("charity_scam_lure".into());
+    }
+    if alert_shaped && confusables::has_rental_scam_lure(&normalized_title) {
+        score += rules.weight_of("rental_scam_lure", W_RENTAL_SCAM_LURE);
+        signals.push("rental_scam_lure".into());
+    }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
@@ -2002,6 +2024,8 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasPigButcheringLure => has_sig("pig_butchering_lure"),
         C::HasLoanFeeScam => has_sig("loan_fee_scam"),
         C::HasDataUriPage => has_sig("data_uri_page"),
+        C::HasCharityScamLure => has_sig("charity_scam_lure"),
+        C::HasRentalScamLure => has_sig("rental_scam_lure"),
     }
 }
 
@@ -6417,6 +6441,108 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("data_uri_page"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    // ── E46: charity_scam_lure (lib.rs unit tests) ────────────────
+
+    #[test]
+    fn charity_scam_lure_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "hurricane relief fund — donate now — send bitcoin donation".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "charity_scam_lure"),
+            "charity_scam_lure must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn charity_scam_lure_does_not_fire_without_alert_shape() {
+        let w = OverlayWindow {
+            title: "hurricane relief fund — donate now — send bitcoin donation".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "charity_scam_lure"),
+            "charity_scam_lure must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn charity_scam_lure_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("charity_scam_lure"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    // ── E47: rental_scam_lure (lib.rs unit tests) ─────────────────
+
+    #[test]
+    fn rental_scam_lure_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "apartment for rent — deposit before viewing — wire deposit to hold unit".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "rental_scam_lure"),
+            "rental_scam_lure must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn rental_scam_lure_does_not_fire_without_alert_shape() {
+        let w = OverlayWindow {
+            title: "apartment for rent — deposit before viewing — wire deposit to hold unit".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "rental_scam_lure"),
+            "rental_scam_lure must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn rental_scam_lure_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("rental_scam_lure"),
             Some(DarkPatternCategory::Sneaking)
         );
     }

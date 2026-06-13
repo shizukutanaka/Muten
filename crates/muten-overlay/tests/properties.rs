@@ -1400,6 +1400,62 @@ proptest! {
         }
     }
 
+    /// has_charity_scam_lure never panics on arbitrary Unicode.
+    #[test]
+    fn charity_scam_lure_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_charity_scam_lure(&s);
+    }
+
+    /// Plain ASCII without both a charity cue and a suspicious-payment cue
+    /// never fires has_charity_scam_lure.
+    #[test]
+    fn plain_ascii_never_fires_charity_scam_lure(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let charity_cue = has("donate now") || has("disaster relief") || has("hurricane relief")
+            || has("earthquake relief") || has("flood relief") || has("wildfire relief")
+            || has("emergency relief fund") || has("relief fund") || has("humanitarian aid")
+            || has("help the victims") || has("help survivors") || has("support victims")
+            || has("disaster victims") || has("crisis fund") || has("charity foundation")
+            || has("official charity") || has("verified charity") || has("100% goes to")
+            || has("all proceeds go");
+        let suspicious_payment = has("gift card") || has("itunes card") || has("google play card")
+            || has("steam card") || has("amazon gift card") || has("wire transfer")
+            || has("bank wire") || has("western union") || has("moneygram")
+            || has("bitcoin donation") || has("crypto donation") || has("send bitcoin")
+            || has("send ethereum") || has("send crypto") || has("money order only")
+            || has("prepaid card");
+        if !(charity_cue && suspicious_payment) {
+            prop_assert!(!muten_overlay::confusables::has_charity_scam_lure(&s));
+        }
+    }
+
+    /// has_rental_scam_lure never panics on arbitrary Unicode.
+    #[test]
+    fn rental_scam_lure_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_rental_scam_lure(&s);
+    }
+
+    /// Plain ASCII without both a rental cue and an advance-deposit demand
+    /// never fires has_rental_scam_lure.
+    #[test]
+    fn plain_ascii_never_fires_rental_scam_lure(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let rental_cue = has("apartment for rent") || has("room for rent") || has("house for rent")
+            || has("rental listing") || has("available for rent") || has("lease agreement")
+            || has("rental property") || has("furnished apartment") || has("affordable rent")
+            || has("below market rent") || has("no credit check rental") || has("studio apartment");
+        let advance_demand = has("send deposit") || has("wire deposit")
+            || has("deposit required before") || has("first month deposit")
+            || has("security deposit via") || has("deposit before viewing")
+            || has("deposit to hold") || has("send first month") || has("pay to reserve")
+            || has("payment to secure") || has("gift card for deposit")
+            || has("money order for deposit") || has("payment before visit")
+            || has("deposit upfront");
+        if !(rental_cue && advance_demand) {
+            prop_assert!(!muten_overlay::confusables::has_rental_scam_lure(&s));
+        }
+    }
+
     /// has_loan_fee_scam never panics on arbitrary Unicode.
     #[test]
     fn loan_fee_scam_never_panics(s in ".*") {

@@ -699,6 +699,32 @@ MSRV 1.75, 286 tests.
   FasTrak smishing alert.  Weight `W_TRAFFIC_FINE_SCAM = 25`.  Category:
   `InterfaceInterference`.  MITRE: T1566.  10 confusables unit tests + 3 lib unit
   tests + 2 property tests + 4 scoring scenarios; 824 tests total.  (E43.)
+- **Charity / disaster-relief scam** (`charity_scam_lure`; E46).
+  `has_charity_scam_lure(s)` fires when the normalized title contains both a
+  *charity/donation cue* (donate now, disaster/hurricane/earthquake/flood/wildfire
+  relief, humanitarian aid, help the victims, emergency relief fund, 義援金, 募金,
+  被災者支援, etc.) AND a *suspicious payment method* (gift card, iTunes/Google
+  Play/Steam/Amazon gift card, wire transfer, Western Union, MoneyGram, bitcoin
+  donation, crypto donation, money order only, prepaid card, ギフトカード,
+  仮想通貨で寄付, etc.). Legitimate charities never solicit gift cards,
+  cryptocurrency, or wire transfers for small-donor collections — this AND-pair
+  is the definitive charity-fraud tell. FTC "Charity Scams" 2024; BBB Wise
+  Giving Alliance advisory; FBI IC3 post-disaster alerts (Maui 2023, Hurricane
+  Helene 2024). Weight `W_CHARITY_SCAM_LURE = 25`. Category: Sneaking. MITRE:
+  T1566. 10 confusables unit tests + 3 lib unit tests + 2 property tests +
+  4 scoring scenarios; 913 tests total. (E46.)
+- **Rental / housing scam** (`rental_scam_lure`; E47). `has_rental_scam_lure(s)`
+  fires when the normalized title contains both a *rental/housing cue* (apartment/
+  room/house for rent, rental listing, studio apartment, no credit check rental,
+  賃貸物件, アパート募集, 家賃, 入居者募集, etc.) AND an *advance-deposit demand*
+  (send deposit, wire deposit, deposit before viewing, deposit to hold, gift card
+  for deposit, deposit upfront, 内覧前に入金, 先に敷金, 振込で保証金, etc.). A
+  legitimate landlord does not require irreversible advance payment before the
+  tenant views the property. FTC Consumer Sentinel 2024 (housing fraud top-5 by
+  complaint count); BBB 2024 rental scam advisory; CFPB housing fraud warnings.
+  Weight `W_RENTAL_SCAM_LURE = 25`. Category: Sneaking. MITRE: T1566. 10
+  confusables unit tests + 3 lib unit tests + 2 property tests + 4 scoring
+  scenarios. (E47.)
 - **`verify` CLI subcommand** (H6). `muten-overlay verify <log> [--json]`
   replays the SHA-256 hash chain of an audit log produced by `monitor`,
   verifies every link's `prev_hash` and `hash` field, and reports the event

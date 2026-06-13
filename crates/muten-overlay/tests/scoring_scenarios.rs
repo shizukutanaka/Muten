@@ -2882,3 +2882,191 @@ fn data_uri_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E46: charity_scam_lure ────────────────────────────────────────
+
+#[test]
+fn charity_scam_lure_fires_on_alert_shaped_window() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "hurricane relief fund — donate now — send bitcoin donation".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "charity_scam_lure"),
+        "expected charity_scam_lure; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn charity_scam_lure_fp_guard_no_alert_shape() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "hurricane relief fund — donate now — send bitcoin donation".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        },
+        &rules,
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "charity_scam_lure"),
+        "charity_scam_lure must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_charity_scam_reaches_suspicious() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "被災者支援義援金 — ギフトカードでお振込みください".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 50,
+        "JP charity_scam_lure must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn charity_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "emergency relief fund — help survivors — call 1-800-555-0245 — send via western union".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "charity_scam_lure + phone must reach Block; score = {}",
+        v.score
+    );
+}
+
+// ── E47: rental_scam_lure ─────────────────────────────────────────
+
+#[test]
+fn rental_scam_lure_fires_on_alert_shaped_window() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "apartment for rent — deposit before viewing to hold unit".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "rental_scam_lure"),
+        "expected rental_scam_lure; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn rental_scam_lure_fp_guard_no_alert_shape() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "apartment for rent — deposit before viewing to hold unit".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        },
+        &rules,
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "rental_scam_lure"),
+        "rental_scam_lure must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_rental_scam_reaches_suspicious() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "賃貸物件 — 内覧前に入金をお願いします — アパート募集 — 先に敷金".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 50,
+        "JP rental_scam_lure must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn rental_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "studio apartment available — no credit check rental — call 1-800-555-0256 — deposit upfront to secure".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "rental_scam_lure + phone must reach Block; score = {}",
+        v.score
+    );
+}
