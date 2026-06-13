@@ -346,14 +346,23 @@ title: あなたのIPアドレスがブロックされました
 title: IPアドレスがハッキングされました
 # 法執行なりすまし (Japanese police/authority impersonation): IPA 2025,
 # 警察庁 サイバー犯罪対策, 国民生活センター. The E17 authority_lure
-# heuristic already fires on 警察庁/警視庁/国税庁 + coercion words; these
-# supplementary titles catch operator-formatted JP overlay strings.
+# heuristic already fires on 警察庁/警視庁/国税庁/法務省/検察庁 + coercion words;
+# these supplementary titles catch operator-formatted JP overlay strings.
 title: 警察庁からの警告
 title: 警視庁よりロックされました
 title: 国税庁 未払い税金の警告
 title: サイバー警察 不正アクセスを検出
 title: あなたのデバイスは警察庁によりブロックされました
 title: 消費者庁 違反が検出されました
+title: 検察庁 起訴状が発行されました                     # JP: Public Prosecutors indictment
+title: 法務省 令状 あなたのデバイスを凍結します           # JP: Ministry of Justice arrest warrant
+# US government impersonation (authority_lure extended: IRS, FTC, Customs, DEA)
+title: internal revenue service warning your account is suspended
+title: internal revenue service notice unpaid taxes penalty arrest
+title: federal trade commission illegal activity warning
+title: customs and border protection violation notice penalty
+title: drug enforcement administration warning your device is blocked
+title: secret service warning unauthorized transaction detected
 
 # ─────────────────────────────────────────────────────────────────
 # HOST / INFRASTRUCTURE PATTERNS

@@ -924,12 +924,18 @@ pub fn has_authority_lure(s: &str) -> bool {
         || has("cyber police")
         || has("law enforcement")
         || has("europol")
-        || has("hmrc")                  // UK revenue/customs
-        || has("national crime agency") // UK NCA
+        || has("hmrc")                           // UK revenue/customs
+        || has("national crime agency")          // UK NCA
         || has("australian federal police")
-        || has("afp")                   // Australian Federal Police
-        || has("bundeskriminalamt")     // German BKA
-        || has("gendarmerie"); // French Gendarmerie
+        || has("afp")                            // Australian Federal Police
+        || has("bundeskriminalamt")              // German BKA
+        || has("gendarmerie")                    // French Gendarmerie
+        || has("internal revenue service")       // US IRS (FTC #2 government impersonator)
+        || has("federal trade commission")       // US FTC impersonation
+        || has("customs and border protection")  // US CBP impersonation
+        || has("social security administration") // US SSA (complement to national_id_alarm)
+        || has("secret service")                 // US Secret Service impersonation
+        || has("drug enforcement"); // US DEA impersonation
 
     // ── Japanese-language agency tokens (preserved by normalize_for_match) ─
     // `normalize_for_match` uses `to_ascii_lowercase()` — CJK is untouched.
@@ -942,7 +948,10 @@ pub fn has_authority_lure(s: &str) -> bool {
         || has("デジタル警察")         // Digital Police (generic scam term)
         || has("内閣サイバー")         // Cabinet Cyber Security Center
         || has("財務省")               // Ministry of Finance
-        || has("総務省"); // Ministry of Internal Affairs
+        || has("総務省")               // Ministry of Internal Affairs
+        || has("法務省")               // Ministry of Justice (impersonated in "arrest warrant" scams)
+        || has("検察庁")               // Public Prosecutors Office
+        || has("最高裁"); // Supreme Court (fake "court order" scam)
 
     // ── English coercion / action tokens ─────────────────────────────
     let coercion_en = has("warning")
@@ -954,7 +963,11 @@ pub fn has_authority_lure(s: &str) -> bool {
         || has("violation")
         || has("fine")
         || has("penalty")
-        || has("arrested");
+        || has("arrested")
+        || has("warrant")   // arrest warrant language (IRS/police impersonation)
+        || has("subpoena")  // court-order impersonation
+        || has("indicted")  // criminal indictment framing
+        || has("charges"); // "criminal charges" framing
 
     // ── Japanese coercion / action tokens ────────────────────────────
     let coercion_jp = has("警告")      // warning
@@ -967,7 +980,10 @@ pub fn has_authority_lure(s: &str) -> bool {
         || has("摘発")                 // crackdown
         || has("不正アクセス")         // unauthorized access
         || has("調査中")               // under investigation
-        || has("凍結"); // frozen (account)
+        || has("凍結")                 // frozen (account)
+        || has("令状")                 // warrant (arrest/search warrant scam)
+        || has("差し押さえ")           // seizure / asset freeze
+        || has("起訴"); // prosecution / indictment
 
     (agency_en || agency_jp) && (coercion_en || coercion_jp)
 }
@@ -2383,6 +2399,57 @@ mod tests {
         assert!(has_authority_lure(
             "australian federal police violation notice"
         ));
+    }
+
+    #[test]
+    fn authority_lure_fires_on_irs_and_us_agencies() {
+        // IRS impersonation — FTC #2 government impersonator
+        assert!(has_authority_lure(
+            "internal revenue service warning: unpaid taxes penalty"
+        ));
+        assert!(has_authority_lure(
+            "internal revenue service notice your account is suspended"
+        ));
+        // FTC impersonation
+        assert!(has_authority_lure(
+            "federal trade commission warning illegal activity detected"
+        ));
+        // US Customs
+        assert!(has_authority_lure(
+            "customs and border protection violation notice penalty"
+        ));
+        // DEA
+        assert!(has_authority_lure(
+            "drug enforcement warning your device is blocked"
+        ));
+    }
+
+    #[test]
+    fn authority_lure_fires_on_warrant_and_legal_coercion() {
+        // Warrant + existing agency
+        assert!(has_authority_lure("fbi arrest warrant issued against you"));
+        // Subpoena framing
+        assert!(has_authority_lure("department of justice subpoena notice"));
+        // JP warrant
+        assert!(has_authority_lure("警察庁 令状 逮捕"));
+        // JP prosecutors + prosecution coercion
+        assert!(has_authority_lure("検察庁 起訴状 不正アクセス"));
+        // JP Ministry of Justice + freeze
+        assert!(has_authority_lure("法務省 凍結通知 違法"));
+    }
+
+    #[test]
+    fn authority_lure_does_not_fire_on_irs_benign() {
+        // Plain IRS info — no coercion
+        assert!(!has_authority_lure(
+            "internal revenue service tax filing deadline"
+        ));
+        // Plain customs info — no coercion
+        assert!(!has_authority_lure(
+            "customs and border protection: declare items over $800"
+        ));
+        // JP Ministry of Justice info
+        assert!(!has_authority_lure("法務省 出入国在留管理局 在留資格"));
     }
 
     // ── has_screen_share_lure ─────────────────────────────────────────────

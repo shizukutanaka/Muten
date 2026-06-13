@@ -53,6 +53,21 @@ MSRV 1.75, 286 tests.
   stability.
 
 ### Added (this pass)
+- **Extended `authority_lure` agency + coercion coverage** (E17 / C9-7).
+  `has_authority_lure` gains six additional English-language agencies commonly
+  impersonated in US government scams (FTC 2024 top-impersonators list):
+  "internal revenue service" (IRS — FTC #2 government impersonator), "federal
+  trade commission" (FTC impersonation), "customs and border protection" (CBP
+  scams), "social security administration" (complement to `national_id_alarm`),
+  "secret service", and "drug enforcement" (DEA impersonation).  Three
+  additional JP agencies: 法務省 (Ministry of Justice — fake "arrest warrant"
+  scams), 検察庁 (Public Prosecutors Office), 最高裁 (Supreme Court fake-order
+  scams).  Four new English coercion words: "warrant" (arrest-warrant
+  impersonation), "subpoena" (court-order impersonation), "indicted", and
+  "charges".  Three new JP coercion words: 令状 (warrant), 差し押さえ (seizure /
+  asset freeze), 起訴 (prosecution / indictment).  No weight or threshold
+  change — only the agency and coercion match lists are extended.  3 new
+  fires/not-fires test groups; 627 tests total.
 - **MITRE ATT&CK® technique tags** (`mitre` module; H3). A new
   `Verdict.mitre_techniques: Vec<String>` field carries the sorted,
   deduplicated set of ATT&CK for Enterprise v16 technique IDs implied by the
