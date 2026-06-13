@@ -3846,3 +3846,261 @@ fn mlm_pyramid_recruitment_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E57: ip_host_url ──────────────────────────────────────────────
+
+#[test]
+fn ip_host_url_fires_on_alert_shaped_window() {
+    let w = OverlayWindow {
+        title: "your computer is infected — immediate action required".into(),
+        url: Some("http://185.234.219.45/microsoft/support".into()),
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "ip_host_url"),
+        "expected ip_host_url; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn ip_host_url_fp_guard_no_alert_shape() {
+    let w = OverlayWindow {
+        title: "intranet dashboard".into(),
+        url: Some("http://10.0.0.5/dashboard".into()),
+        coverage_percent: 10,
+        topmost: false,
+        has_close_button: true,
+        blocks_input: false,
+        origin: Origin::UserInitiated,
+        age_ms: 5_000,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        !v.signals.iter().any(|s| s == "ip_host_url"),
+        "ip_host_url must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn ip_host_url_does_not_fire_on_hostname() {
+    let w = OverlayWindow {
+        title: "your computer is infected".into(),
+        url: Some("http://fake-support.example.com/alert".into()),
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        !v.signals.iter().any(|s| s == "ip_host_url"),
+        "ip_host_url must not fire on hostname URL; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn ip_host_url_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "virus alert — call 1-800-555-0198 now".into(),
+            url: Some("http://203.0.113.7/warning".into()),
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "ip_host_url + phone must reach Block; score = {}",
+        v.score
+    );
+}
+
+// ── E58: veterans_benefit_scam ────────────────────────────────────
+
+#[test]
+fn veterans_benefit_scam_fires_on_alert_shaped_window() {
+    let w = OverlayWindow {
+        title: "va disability claim — processing fee — expedite your claim today".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "veterans_benefit_scam"),
+        "expected veterans_benefit_scam; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn veterans_benefit_scam_fp_guard_no_alert_shape() {
+    let w = OverlayWindow {
+        title: "va disability claim — processing fee — expedite your claim today".into(),
+        url: None,
+        coverage_percent: 10,
+        topmost: false,
+        has_close_button: true,
+        blocks_input: false,
+        origin: Origin::UserInitiated,
+        age_ms: 5_000,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        !v.signals.iter().any(|s| s == "veterans_benefit_scam"),
+        "veterans_benefit_scam must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn veterans_benefit_scam_reaches_suspicious() {
+    let w = OverlayWindow {
+        title: "veterans benefit — limited time — apply now to qualify for compensation".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.score >= 50,
+        "veterans_benefit_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn veterans_benefit_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "gi bill — claim assistance fee to unlock your benefits — call 1-800-555-0199"
+                .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "veterans_benefit_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}
+
+// ── E59: fake_copyright_scam ──────────────────────────────────────
+
+#[test]
+fn fake_copyright_scam_fires_on_alert_shaped_window() {
+    let w = OverlayWindow {
+        title: "dmca violation — pay settlement — click to settle immediately".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "fake_copyright_scam"),
+        "expected fake_copyright_scam; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn fake_copyright_scam_fp_guard_no_alert_shape() {
+    let w = OverlayWindow {
+        title: "dmca violation — pay settlement — click to settle immediately".into(),
+        url: None,
+        coverage_percent: 10,
+        topmost: false,
+        has_close_button: true,
+        blocks_input: false,
+        origin: Origin::UserInitiated,
+        age_ms: 5_000,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        !v.signals.iter().any(|s| s == "fake_copyright_scam"),
+        "fake_copyright_scam must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn fake_copyright_scam_reaches_suspicious() {
+    let w = OverlayWindow {
+        title: "copyright infringement — pay penalty — prevent legal action".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.score >= 50,
+        "fake_copyright_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn fake_copyright_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title:
+                "piracy detected on your ip — pay fine — avoid prosecution — call 1-800-555-0200"
+                    .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "fake_copyright_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}

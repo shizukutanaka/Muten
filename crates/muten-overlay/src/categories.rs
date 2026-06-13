@@ -155,6 +155,9 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         "student_loan_scam" => Some(Sneaking), // government-program guise conceals fee extraction
         "secret_shopper_scam" => Some(Sneaking), // legitimate-job guise conceals money-mule recruitment
         "mlm_pyramid_recruitment" => Some(Sneaking), // business-opportunity guise disguises pyramid structure
+        "ip_host_url" => Some(Sneaking), // raw IP host conceals the absence of a legitimate registered domain
+        "veterans_benefit_scam" => Some(Sneaking), // legitimate-agency guise conceals fee-for-free-service fraud
+        "fake_copyright_scam" => Some(InterfaceInterference), // legal-threat framing steers victim into urgent payment
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }

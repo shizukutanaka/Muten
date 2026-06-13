@@ -6733,3 +6733,281 @@ mod e54_e56_tests {
         ));
     }
 }
+
+// ── E58: veterans_benefit_scam ────────────────────────────────────────────────
+
+/// Detects fake veterans / military benefit processing scams.
+///
+/// Fires when the normalized title contains **both** a *veterans/benefit cue*
+/// (VA disability claim, veteran benefit, military pension, GI Bill,
+/// veterans compensation, disability rating, 退役軍人給付, etc.) **and** a
+/// *fee/urgency demand* (processing fee, claim assistance fee, limited time,
+/// apply now, expedite your claim, registration required, 申請手数料, etc.).
+///
+/// The VA does not charge veterans to file disability claims or process
+/// benefits — any fee demand is the defining tell. This pattern targets
+/// veterans with promise of expedited claim processing for a fee. FTC
+/// Consumer Sentinel 2024 military/veterans fraud top-5; VA OIG 2024
+/// veterans benefit fraud advisory; BBB Military Line advisory 2024.
+#[must_use]
+pub fn has_veterans_benefit_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let veterans_cue = has("va disability")
+        || has("veteran disability")
+        || has("veterans disability")
+        || has("va benefit")
+        || has("veteran benefit")
+        || has("veterans benefit")
+        || has("military pension")
+        || has("gi bill")
+        || has("veterans compensation")
+        || has("disability rating increase")
+        || has("va claim")
+        || has("veteran claim")
+        || has("veterans claim")
+        || has("combat veteran")
+        || has("service-connected disability")
+        || has("退役軍人給付")
+        || has("傷病補償")
+        || has("退役軍人障害");
+    let fee_demand = has("processing fee")
+        || has("claim assistance fee")
+        || has("claim processing fee")
+        || has("expedite your claim")
+        || has("accelerate your claim")
+        || has("limited time")
+        || has("apply now to qualify")
+        || has("registration required")
+        || has("unlock your benefits")
+        || has("increase your rating")
+        || has("we will file for you")
+        || has("申請手数料")
+        || has("給付加速")
+        || has("今すぐ申請");
+    veterans_cue && fee_demand
+}
+
+// ── E59: fake_copyright_scam ──────────────────────────────────────────────────
+
+/// Detects fake copyright / DMCA / piracy violation notice scams.
+///
+/// Fires when the normalized title contains **both** a *violation notice cue*
+/// (copyright violation, DMCA notice, piracy detected, illegal download,
+/// copyright infringement, your IP has been flagged for piracy,
+/// 著作権侵害通知, etc.) **and** a *pay/resolve demand* (pay settlement,
+/// pay fine, click to settle, resolve this notice, contact our legal team,
+/// pay penalty, 罰金を支払う, 示談金, etc.).
+///
+/// A legitimate DMCA takedown notice is directed at the service provider,
+/// not the individual user in a browser overlay — and never demands an
+/// immediate payment via a pop-up. Distinct from `tax_authority_scam` (IRS
+/// impostor) and `national_id_alarm` (SSN). FTC 2024 "copyright impostor"
+/// advisory; APWG Q4 2024 "legal threat" phishing category; BBB 2024
+/// DMCA scam alert.
+#[must_use]
+pub fn has_fake_copyright_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let violation_cue = has("copyright violation")
+        || has("dmca notice")
+        || has("dmca violation")
+        || has("piracy detected")
+        || has("illegal download detected")
+        || has("copyright infringement")
+        || has("your ip has been flagged for piracy")
+        || has("illegal streaming")
+        || has("torrent violation")
+        || has("piracy warning")
+        || has("intellectual property violation")
+        || has("著作権侵害")
+        || has("著作権違反通知")
+        || has("違法ダウンロード検出")
+        || has("海賊版を検出");
+    let pay_demand = has("pay settlement")
+        || has("pay fine")
+        || has("pay penalty")
+        || has("click to settle")
+        || has("resolve this notice")
+        || has("contact our legal team")
+        || has("settlement amount")
+        || has("pay the settlement")
+        || has("legal settlement required")
+        || has("avoid prosecution")
+        || has("prevent legal action")
+        || has("罰金を支払う")
+        || has("示談金")
+        || has("法的措置を避ける");
+    violation_cue && pay_demand
+}
+
+#[cfg(test)]
+mod e58_e59_tests {
+    use super::*;
+
+    // ── E58: veterans_benefit_scam ────────────────────────────────
+
+    #[test]
+    fn veterans_benefit_scam_fires_va_disability_fee() {
+        assert!(has_veterans_benefit_scam(
+            "va disability claim — processing fee — expedite your claim today"
+        ));
+    }
+
+    #[test]
+    fn veterans_benefit_scam_fires_veteran_benefit_limited_time() {
+        assert!(has_veterans_benefit_scam(
+            "veterans benefit — limited time — apply now to qualify for compensation"
+        ));
+    }
+
+    #[test]
+    fn veterans_benefit_scam_fires_gi_bill_registration() {
+        assert!(has_veterans_benefit_scam(
+            "gi bill — registration required — claim assistance fee to unlock your benefits"
+        ));
+    }
+
+    #[test]
+    fn veterans_benefit_scam_fires_disability_rating_fee() {
+        assert!(has_veterans_benefit_scam(
+            "service-connected disability — we will file for you — claim processing fee"
+        ));
+    }
+
+    #[test]
+    fn veterans_benefit_scam_fires_jp() {
+        assert!(has_veterans_benefit_scam(
+            "退役軍人給付 — 申請手数料が必要です — 今すぐ申請"
+        ));
+    }
+
+    #[test]
+    fn veterans_benefit_scam_does_not_fire_benefit_only() {
+        assert!(!has_veterans_benefit_scam(
+            "va disability benefits — apply online — free to veterans — va.gov"
+        ));
+        assert!(!has_veterans_benefit_scam(
+            "veterans benefit information center"
+        ));
+    }
+
+    #[test]
+    fn veterans_benefit_scam_does_not_fire_fee_only() {
+        assert!(!has_veterans_benefit_scam(
+            "processing fee required — apply now to qualify"
+        ));
+        assert!(!has_veterans_benefit_scam(
+            "limited time offer — registration required"
+        ));
+    }
+
+    #[test]
+    fn veterans_benefit_scam_does_not_fire_benign() {
+        assert!(!has_veterans_benefit_scam(
+            "veterans support services — housing assistance — free legal aid"
+        ));
+        assert!(!has_veterans_benefit_scam(
+            "military discount program — 10% off"
+        ));
+    }
+
+    #[test]
+    fn veterans_benefit_scam_does_not_fire_jp_benign() {
+        assert!(!has_veterans_benefit_scam(
+            "退役軍人支援センターへようこそ — 無料相談はこちら"
+        ));
+        assert!(!has_veterans_benefit_scam(
+            "申請手数料について詳しくはウェブサイトをご確認ください"
+        ));
+    }
+
+    #[test]
+    fn veterans_benefit_scam_fires_combat_veteran_increase_rating() {
+        assert!(has_veterans_benefit_scam(
+            "combat veteran — increase your rating — we will file for you — claim assistance fee"
+        ));
+    }
+
+    // ── E59: fake_copyright_scam ──────────────────────────────────
+
+    #[test]
+    fn fake_copyright_scam_fires_dmca_settle() {
+        assert!(has_fake_copyright_scam(
+            "dmca violation — pay settlement — click to settle immediately"
+        ));
+    }
+
+    #[test]
+    fn fake_copyright_scam_fires_piracy_penalty() {
+        assert!(has_fake_copyright_scam(
+            "piracy detected on your ip — pay fine — avoid prosecution"
+        ));
+    }
+
+    #[test]
+    fn fake_copyright_scam_fires_copyright_legal_team() {
+        assert!(has_fake_copyright_scam(
+            "copyright violation — contact our legal team — legal settlement required"
+        ));
+    }
+
+    #[test]
+    fn fake_copyright_scam_fires_illegal_download_settlement() {
+        assert!(has_fake_copyright_scam(
+            "illegal download detected — pay the settlement amount — prevent legal action"
+        ));
+    }
+
+    #[test]
+    fn fake_copyright_scam_fires_jp() {
+        assert!(has_fake_copyright_scam(
+            "著作権侵害を検出 — 罰金を支払う — 法的措置を避ける"
+        ));
+    }
+
+    #[test]
+    fn fake_copyright_scam_does_not_fire_violation_only() {
+        assert!(!has_fake_copyright_scam(
+            "copyright violation notice received — contact us for more information"
+        ));
+        assert!(!has_fake_copyright_scam(
+            "dmca notice — learn more about copyright law"
+        ));
+    }
+
+    #[test]
+    fn fake_copyright_scam_does_not_fire_payment_only() {
+        assert!(!has_fake_copyright_scam(
+            "pay fine for parking violation — avoid prosecution"
+        ));
+        assert!(!has_fake_copyright_scam(
+            "pay settlement for insurance claim"
+        ));
+    }
+
+    #[test]
+    fn fake_copyright_scam_does_not_fire_benign() {
+        assert!(!has_fake_copyright_scam(
+            "copyright 2025 — all rights reserved — terms of service"
+        ));
+        assert!(!has_fake_copyright_scam(
+            "download our software — free for personal use"
+        ));
+    }
+
+    #[test]
+    fn fake_copyright_scam_does_not_fire_jp_benign() {
+        assert!(!has_fake_copyright_scam(
+            "著作権について — コンテンツの使用許可をお申し込みください"
+        ));
+        assert!(!has_fake_copyright_scam(
+            "罰金の支払い方法についてよくあるご質問"
+        ));
+    }
+
+    #[test]
+    fn fake_copyright_scam_fires_torrent_avoid_prosecution() {
+        assert!(has_fake_copyright_scam(
+            "torrent violation — your ip has been flagged for piracy — pay penalty"
+        ));
+    }
+}

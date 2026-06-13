@@ -840,6 +840,42 @@ MSRV 1.75, 286 tests.
   Weight `W_MLM_PYRAMID_RECRUITMENT = 25`. Category: Sneaking. MITRE: T1566.
   10 confusables unit tests + 3 lib unit tests + 2 property tests + 4 scoring
   scenarios; 1084 tests total. (E56.)
+- **Raw-IP URL host** (`ip_host_url`; E57). A structural URL check (like
+  `data_uri_page`): when an alert-shaped window's `url` host is a bare IPv4 or
+  IPv6 address rather than a hostname, the signal fires. No legitimate support,
+  banking, or government page is served from a raw IP — attackers use raw IPs
+  to avoid domain registration and per-domain blocklisting. Implemented as a
+  pure `std::net::IpAddr` parse on the extracted host (IPv6 brackets stripped)
+  inside the existing `alert_shaped` guard; no confusables.rs function needed.
+  Weight `W_IP_HOST_URL = 35` (high — raw-IP infrastructure is a strong tell).
+  Category: Sneaking. MITRE: T1566. 6 lib unit tests + 4 scoring scenarios.
+  (E57; GAP_ANALYSIS_2026H2 area A.)
+- **Veterans / military benefit scam** (`veterans_benefit_scam`; E58).
+  `has_veterans_benefit_scam(s)` fires when the normalized title contains both a
+  *veterans/benefit cue* (VA disability claim, veteran benefit, military pension,
+  GI Bill, veterans compensation, service-connected disability, 退役軍人給付,
+  傷病補償, etc.) AND a *fee/urgency demand* (processing fee, claim assistance
+  fee, expedite your claim, apply now to qualify, unlock your benefits,
+  申請手数料, 今すぐ申請, etc.). The VA charges no fee to file disability claims;
+  any fee demand is the defining scam tell. FTC Consumer Sentinel 2024
+  military/veterans fraud top-5; VA OIG 2024 advisory; BBB Military Line 2024.
+  Weight `W_VETERANS_BENEFIT_SCAM = 30`. Category: Sneaking. MITRE: T1566. 10
+  confusables unit tests + 3 lib unit tests + 2 property tests + 4 scoring
+  scenarios. (E58.)
+- **Fake copyright / DMCA violation scam** (`fake_copyright_scam`; E59).
+  `has_fake_copyright_scam(s)` fires when the normalized title contains both a
+  *violation-notice cue* (copyright violation, DMCA notice, piracy detected,
+  illegal download detected, copyright infringement, your IP has been flagged
+  for piracy, torrent violation, 著作権侵害, 違法ダウンロード検出, etc.) AND a
+  *pay/resolve demand* (pay settlement, pay fine, pay penalty, click to settle,
+  contact our legal team, avoid prosecution, prevent legal action, 罰金を支払う,
+  示談金, 法的措置を避ける, etc.). A legitimate DMCA takedown targets the service
+  provider, not the individual user via a browser overlay demanding immediate
+  payment. Distinct from `tax_authority_scam` and `national_id_alarm`. FTC 2024
+  "copyright impostor" advisory; APWG Q4 2024 "legal threat" phishing category.
+  Weight `W_FAKE_COPYRIGHT_SCAM = 30`. Category: InterfaceInterference. MITRE:
+  T1566. 10 confusables unit tests + 3 lib unit tests + 2 property tests + 4
+  scoring scenarios; 1132 tests total. (E59.)
 - **`verify` CLI subcommand** (H6). `muten-overlay verify <log> [--json]`
   replays the SHA-256 hash chain of an audit log produced by `monitor`,
   verifies every link's `prev_hash` and `hash` field, and reports the event

@@ -344,6 +344,9 @@ fn signal_phrase(signal: &str) -> &str {
         "data_uri_page" => {
             "is hosted at a data: or file:// URL, a technique used by tech-support scammers to serve fake-alert overlays without a domain that can be blocklisted"
         }
+        "ip_host_url" => {
+            "is hosted at a raw IPv4 or IPv6 address instead of a hostname — no legitimate support, banking, or government page uses a bare IP address, making this a strong scam-infrastructure indicator"
+        }
         "charity_scam_lure" => {
             "impersonates a disaster-relief or humanitarian charity and instructs the user to donate via gift card, wire transfer, cryptocurrency, or money order — payment methods no legitimate charity uses for small-donor collections"
         }
@@ -376,6 +379,12 @@ fn signal_phrase(signal: &str) -> &str {
         }
         "mlm_pyramid_recruitment" => {
             "promotes a multi-level or network-marketing income opportunity using referral/downline/tier-bonus framing and demands payment to join, activate, or enroll — the classic tell of pyramid-scheme recruitment"
+        }
+        "veterans_benefit_scam" => {
+            "claims to expedite or file a VA disability, veteran benefit, or GI Bill claim for a processing or claim-assistance fee — the VA charges no fee to file claims; any fee demand is a scam tell"
+        }
+        "fake_copyright_scam" => {
+            "displays a fake DMCA notice, copyright violation, or piracy-detected alert and demands immediate payment of a settlement or fine to avoid prosecution — legitimate takedowns target service providers, not individual users via browser overlays"
         }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
@@ -495,6 +504,7 @@ const W_TRAFFIC_FINE_SCAM: i32 = 25; // traffic/parking/toll violation + payment
 const W_PIG_BUTCHERING_LURE: i32 = 30; // romance/mentor cue + investment platform (IC3 2024 #1 by loss $4.57B)
 const W_LOAN_FEE_SCAM: i32 = 30; // pre-approved loan + upfront-fee gate (FTC advance-fee loan fraud)
 const W_DATA_URI_PAGE: i32 = 25; // alert-shaped window served from data: or file:// URL (blocklist-bypass technique)
+const W_IP_HOST_URL: i32 = 35; // URL host is a raw IPv4/IPv6 address — no legitimate support page uses raw IP
 const W_CHARITY_SCAM_LURE: i32 = 25; // fake charity + irreversible payment (gift card/wire/crypto) after disaster
 const W_RENTAL_SCAM_LURE: i32 = 25; // fake rental listing + advance deposit demand (FTC 2024 housing fraud)
 const W_PET_SALE_SCAM: i32 = 25; // fake pet listing + transport/crate deposit demand (FTC 2024 online shopping fraud)
@@ -506,6 +516,8 @@ const W_RECOVERY_SCAM: i32 = 30; // "recover your lost funds" + fee/specialist C
 const W_STUDENT_LOAN_SCAM: i32 = 25; // student loan forgiveness + processing fee (FTC 2024 DOE SAVE plan fraud spike)
 const W_SECRET_SHOPPER_SCAM: i32 = 30; // secret/mystery shopper + deposit check/wire funds (money-mule via fake job)
 const W_MLM_PYRAMID_RECRUITMENT: i32 = 25; // referral/downline/residual income + join/invest CTA (FTC 2024 pyramid scheme)
+const W_VETERANS_BENEFIT_SCAM: i32 = 30; // VA/veteran disability/benefit claim + processing fee (FTC 2024 military fraud)
+const W_FAKE_COPYRIGHT_SCAM: i32 = 30; // DMCA/copyright violation notice + pay settlement/fine (APWG 2024 legal-threat phishing)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -581,6 +593,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "pig_butchering_lure" => Some(W_PIG_BUTCHERING_LURE),
         "loan_fee_scam" => Some(W_LOAN_FEE_SCAM),
         "data_uri_page" => Some(W_DATA_URI_PAGE),
+        "ip_host_url" => Some(W_IP_HOST_URL),
         "charity_scam_lure" => Some(W_CHARITY_SCAM_LURE),
         "rental_scam_lure" => Some(W_RENTAL_SCAM_LURE),
         "pet_sale_scam" => Some(W_PET_SALE_SCAM),
@@ -592,6 +605,8 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "student_loan_scam" => Some(W_STUDENT_LOAN_SCAM),
         "secret_shopper_scam" => Some(W_SECRET_SHOPPER_SCAM),
         "mlm_pyramid_recruitment" => Some(W_MLM_PYRAMID_RECRUITMENT),
+        "veterans_benefit_scam" => Some(W_VETERANS_BENEFIT_SCAM),
+        "fake_copyright_scam" => Some(W_FAKE_COPYRIGHT_SCAM),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -656,6 +671,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "pig_butchering_lure"
             | "loan_fee_scam"
             | "data_uri_page"
+            | "ip_host_url"
             | "charity_scam_lure"
             | "rental_scam_lure"
             | "pet_sale_scam"
@@ -667,6 +683,8 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "student_loan_scam"
             | "secret_shopper_scam"
             | "mlm_pyramid_recruitment"
+            | "veterans_benefit_scam"
+            | "fake_copyright_scam"
             | "remote_access_lure"
     )
 }
@@ -774,6 +792,7 @@ pub fn all_signals() -> Vec<SignalInfo> {
         "pig_butchering_lure",
         "loan_fee_scam",
         "data_uri_page",
+        "ip_host_url",
         "charity_scam_lure",
         "rental_scam_lure",
         "pet_sale_scam",
@@ -785,6 +804,8 @@ pub fn all_signals() -> Vec<SignalInfo> {
         "student_loan_scam",
         "secret_shopper_scam",
         "mlm_pyramid_recruitment",
+        "veterans_benefit_scam",
+        "fake_copyright_scam",
         "remote_access_lure",
     ];
     NAMES
@@ -1061,6 +1082,21 @@ const FULLSCREEN_COVERAGE: u8 = 85;
 /// ([`rules::host_str`]) so the three host-parsing sites can't drift.
 fn url_host(url: &str) -> &str {
     crate::rules::host_str(url)
+}
+
+/// True when the URL host is a raw IPv4 or IPv6 address.
+///
+/// No legitimate support, banking, or government page uses a bare IP
+/// address as its host — raw-IP URLs are a strong scam-infrastructure
+/// indicator (attackers avoid domain registration to evade blocklists).
+fn url_host_is_ip(url: &str) -> bool {
+    let host = url_host(url);
+    // Strip IPv6 brackets "[::1]" → "::1" for parse
+    let host = host
+        .strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host);
+    host.parse::<std::net::IpAddr>().is_ok()
 }
 
 /// Extract the path component of a URL (the part after the host and
@@ -1771,6 +1807,14 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         score += rules.weight_of("mlm_pyramid_recruitment", W_MLM_PYRAMID_RECRUITMENT);
         signals.push("mlm_pyramid_recruitment".into());
     }
+    if alert_shaped && confusables::has_veterans_benefit_scam(&normalized_title) {
+        score += rules.weight_of("veterans_benefit_scam", W_VETERANS_BENEFIT_SCAM);
+        signals.push("veterans_benefit_scam".into());
+    }
+    if alert_shaped && confusables::has_fake_copyright_scam(&normalized_title) {
+        score += rules.weight_of("fake_copyright_scam", W_FAKE_COPYRIGHT_SCAM);
+        signals.push("fake_copyright_scam".into());
+    }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
@@ -1983,6 +2027,17 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
                 score += rules.weight_of("data_uri_page", W_DATA_URI_PAGE);
                 signals.push("data_uri_page".into());
             }
+            // Raw-IP URL host: no legitimate support/banking/gov page uses
+            // a bare IPv4/IPv6 — attackers use raw IPs to avoid domain
+            // registration. Only fires inside alert_shaped (a raw-IP URL on
+            // a benign, user-initiated, closable page isn't a scam tell on
+            // its own). Near-zero FP: enterprise intranet pages served via
+            // raw IP are user-initiated and small/closable, not unsolicited
+            // full-screen alert-shaped windows.
+            if url_host_is_ip(url) {
+                score += rules.weight_of("ip_host_url", W_IP_HOST_URL);
+                signals.push("ip_host_url".into());
+            }
         }
     }
 
@@ -2123,6 +2178,7 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasPigButcheringLure => has_sig("pig_butchering_lure"),
         C::HasLoanFeeScam => has_sig("loan_fee_scam"),
         C::HasDataUriPage => has_sig("data_uri_page"),
+        C::HasIpHostUrl => has_sig("ip_host_url"),
         C::HasCharityScamLure => has_sig("charity_scam_lure"),
         C::HasRentalScamLure => has_sig("rental_scam_lure"),
         C::HasPetSaleScam => has_sig("pet_sale_scam"),
@@ -2134,6 +2190,8 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasStudentLoanScam => has_sig("student_loan_scam"),
         C::HasSecretShopperScam => has_sig("secret_shopper_scam"),
         C::HasMlmPyramidRecruitment => has_sig("mlm_pyramid_recruitment"),
+        C::HasVeteransBenefitScam => has_sig("veterans_benefit_scam"),
+        C::HasFakeCopyrightScam => has_sig("fake_copyright_scam"),
     }
 }
 
@@ -7125,6 +7183,207 @@ mod tests {
         assert_eq!(
             category_of("mlm_pyramid_recruitment"),
             Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    // ── E57: ip_host_url (lib.rs unit tests) ────────────────────────
+
+    #[test]
+    fn ip_host_url_fires_on_ipv4_url() {
+        let w = OverlayWindow {
+            title: "your computer is infected — call support now".into(),
+            url: Some("http://185.234.219.45/microsoft/support".into()),
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "ip_host_url"),
+            "ip_host_url must fire on IPv4-hosted alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn ip_host_url_does_not_fire_without_alert_shape() {
+        let w = OverlayWindow {
+            title: "intranet dashboard".into(),
+            url: Some("http://10.0.0.1/dashboard".into()),
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "ip_host_url"),
+            "ip_host_url must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn ip_host_url_does_not_fire_on_hostname() {
+        let w = OverlayWindow {
+            title: "your computer is infected — call support now".into(),
+            url: Some("http://microsoft-support-alert.com/scan".into()),
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "ip_host_url"),
+            "ip_host_url must not fire on hostname URL; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn ip_host_url_fires_on_ipv4_with_port() {
+        let w = OverlayWindow {
+            title: "virus detected".into(),
+            url: Some("https://192.168.100.5:8080/warning".into()),
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "ip_host_url"),
+            "ip_host_url must fire on IPv4:port URL; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn ip_host_url_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("ip_host_url"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    #[test]
+    fn url_host_is_ip_helper_ipv4() {
+        assert!(url_host_is_ip("http://1.2.3.4/path"));
+        assert!(url_host_is_ip("http://192.168.0.1:8080/"));
+        assert!(!url_host_is_ip("http://example.com/path"));
+        assert!(!url_host_is_ip("http://1.2.3.4.5/path")); // not valid IPv4
+    }
+
+    // ── E58: veterans_benefit_scam (lib.rs unit tests) ──────────────
+
+    #[test]
+    fn veterans_benefit_scam_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "va disability claim — processing fee — expedite your claim today".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "veterans_benefit_scam"),
+            "veterans_benefit_scam must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn veterans_benefit_scam_does_not_fire_without_alert_shape() {
+        let w = OverlayWindow {
+            title: "va disability claim — processing fee — expedite your claim today".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "veterans_benefit_scam"),
+            "veterans_benefit_scam must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn veterans_benefit_scam_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("veterans_benefit_scam"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    // ── E59: fake_copyright_scam (lib.rs unit tests) ─────────────────
+
+    #[test]
+    fn fake_copyright_scam_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "dmca violation — pay settlement — click to settle immediately".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "fake_copyright_scam"),
+            "fake_copyright_scam must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn fake_copyright_scam_does_not_fire_without_alert_shape() {
+        let w = OverlayWindow {
+            title: "dmca violation — pay settlement — click to settle immediately".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "fake_copyright_scam"),
+            "fake_copyright_scam must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn fake_copyright_scam_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("fake_copyright_scam"),
+            Some(DarkPatternCategory::InterfaceInterference)
         );
     }
 }

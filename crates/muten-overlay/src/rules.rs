@@ -202,6 +202,12 @@ pub enum CompositeCondition {
     HasSecretShopperScam,
     /// The `mlm_pyramid_recruitment` signal fired (E56 — referral/downline framing + join CTA).
     HasMlmPyramidRecruitment,
+    /// The `ip_host_url` signal fired (E57 — URL host is a raw IPv4/IPv6 address).
+    HasIpHostUrl,
+    /// The `veterans_benefit_scam` signal fired (E58 — VA/veteran benefit + processing fee).
+    HasVeteransBenefitScam,
+    /// The `fake_copyright_scam` signal fired (E59 — DMCA/copyright notice + pay settlement).
+    HasFakeCopyrightScam,
 }
 
 impl CompositeCondition {
@@ -262,6 +268,9 @@ impl CompositeCondition {
             "has_student_loan_scam" => Some(Self::HasStudentLoanScam),
             "has_secret_shopper_scam" => Some(Self::HasSecretShopperScam),
             "has_mlm_pyramid_recruitment" => Some(Self::HasMlmPyramidRecruitment),
+            "has_ip_host_url" => Some(Self::HasIpHostUrl),
+            "has_veterans_benefit_scam" => Some(Self::HasVeteransBenefitScam),
+            "has_fake_copyright_scam" => Some(Self::HasFakeCopyrightScam),
             _ => None,
         }
     }

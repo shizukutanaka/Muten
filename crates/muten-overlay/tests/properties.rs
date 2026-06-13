@@ -1681,4 +1681,49 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_mlm_pyramid_recruitment(&s));
         }
     }
+
+    /// has_veterans_benefit_scam never panics on arbitrary Unicode.
+    #[test]
+    fn veterans_benefit_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_veterans_benefit_scam(&s);
+    }
+
+    /// Plain ASCII without both a veterans/benefit cue and a fee/urgency demand
+    /// never fires has_veterans_benefit_scam.
+    #[test]
+    fn plain_ascii_never_fires_veterans_benefit_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let veterans_cue = has("va disability") || has("veteran disability")
+            || has("veterans disability") || has("va benefit")
+            || has("veteran benefit") || has("gi bill")
+            || has("veterans compensation") || has("va claim");
+        let fee_demand = has("processing fee") || has("claim assistance fee")
+            || has("expedite your claim") || has("limited time")
+            || has("apply now to qualify") || has("unlock your benefits");
+        if !(veterans_cue && fee_demand) {
+            prop_assert!(!muten_overlay::confusables::has_veterans_benefit_scam(&s));
+        }
+    }
+
+    /// has_fake_copyright_scam never panics on arbitrary Unicode.
+    #[test]
+    fn fake_copyright_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_fake_copyright_scam(&s);
+    }
+
+    /// Plain ASCII without both a violation cue and a pay/settle demand
+    /// never fires has_fake_copyright_scam.
+    #[test]
+    fn plain_ascii_never_fires_fake_copyright_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let violation_cue = has("copyright violation") || has("dmca notice")
+            || has("dmca violation") || has("piracy detected")
+            || has("illegal download detected") || has("copyright infringement");
+        let pay_demand = has("pay settlement") || has("pay fine")
+            || has("pay penalty") || has("click to settle")
+            || has("resolve this notice") || has("avoid prosecution");
+        if !(violation_cue && pay_demand) {
+            prop_assert!(!muten_overlay::confusables::has_fake_copyright_scam(&s));
+        }
+    }
 }
