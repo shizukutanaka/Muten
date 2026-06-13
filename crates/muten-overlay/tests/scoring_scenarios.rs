@@ -1485,3 +1485,86 @@ fn advance_fee_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E33: tech_support_invoice_scam ───────────────────────────────────────────
+
+#[test]
+fn tech_invoice_scam_reaches_suspicious() {
+    let v = classify(
+        &alert_window(
+            "you have been charged $499 norton subscription renewal call to cancel 1-800-555-0100",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "tech_support_invoice_scam"),
+        "expected tech_support_invoice_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "tech_support_invoice_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn legitimate_invoice_notification_does_not_fire() {
+    // Legitimate billing email shown in a closable, user-initiated window
+    let v = classify(
+        &OverlayWindow {
+            title: "billing confirmation — your subscription has been renewed — thank you".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 3_000,
+        },
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "tech_support_invoice_scam"),
+        "tech_support_invoice_scam must not fire on user-initiated invoice; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_tech_invoice_reaches_suspicious() {
+    let v = classify(
+        &alert_window("自動更新料金¥49800が課金されました。キャンセルするには電話してください。"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "tech_support_invoice_scam"),
+        "expected tech_support_invoice_scam for JP billing scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP tech_support_invoice_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn tech_invoice_plus_phone_reaches_block() {
+    let v = classify(
+        &alert_window(
+            "a charge of $599 mcafee total protection — if you did not authorize call 1-800-555-0100",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "tech_support_invoice_scam"),
+        "expected tech_support_invoice_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "tech_support_invoice_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}

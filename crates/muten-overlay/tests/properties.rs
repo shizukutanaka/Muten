@@ -1084,4 +1084,31 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_advance_fee_lure(&s));
         }
     }
+
+    // ── E33: tech_support_invoice_scam ────────────────────────────────────────
+
+    /// has_tech_support_invoice_scam never panics on arbitrary Unicode input.
+    #[test]
+    fn has_tech_support_invoice_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_tech_support_invoice_scam(&s);
+    }
+
+    /// Plain ASCII without both a charge claim and a cancel CTA never fires.
+    #[test]
+    fn plain_ascii_never_fires_tech_support_invoice_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let charge_claim = has("you have been charged") || has("a charge of")
+            || has("an invoice for") || has("your account has been charged")
+            || has("payment of $") || has("auto-charged")
+            || has("billing confirmation") || has("subscription has been renewed")
+            || has("renewal charge") || has("has been debited");
+        let cancel_cta = has("call to cancel") || has("to cancel call")
+            || has("if you did not authorize") || has("unauthorized charge")
+            || has("dispute this charge") || has("contact billing")
+            || has("cancel this subscription") || has("to report fraud call")
+            || has("to reverse this charge") || has("did not approve this");
+        if !(charge_claim && cancel_cta) {
+            prop_assert!(!muten_overlay::confusables::has_tech_support_invoice_scam(&s));
+        }
+    }
 }

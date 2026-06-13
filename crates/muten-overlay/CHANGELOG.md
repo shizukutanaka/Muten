@@ -485,6 +485,26 @@ MSRV 1.75, 286 tests.
   (user-initiated, closable) from triggering.  10 confusables unit tests +
   3 lib unit tests + 2 property tests + 4 scoring scenarios; 670 tests total.
   (E32.)
+- **Fake tech-support invoice / "you were charged" cancel-scam**
+  (`tech_support_invoice_scam`; E33). `has_tech_support_invoice_scam(s)` fires
+  when the normalized title contains a *charge_claim* ("you have been charged",
+  "a charge of", "an invoice for", "subscription has been renewed",
+  "auto-charged", "billing confirmation", "renewal charge", "has been debited",
+  ご請求が完了, 課金されました, お引き落とし, 自動更新料金) AND a *cancel_cta*
+  ("call to cancel", "if you did not authorize", "dispute this charge",
+  "unauthorized charge", "to cancel call", "contact billing",
+  キャンセルするには電話, 不正な請求, ご解約はお電話, 請求に心当たりのない).
+  Targets the prevalent attack where an overlay claims a large charge (e.g.,
+  $499 Microsoft support plan, $399 McAfee renewal) was already processed and
+  urges the victim to call a scam "cancel" line — directly resulting in
+  tech-support fraud engagement.  Distinct from `subscription_lure` (no charge
+  claimed — subscription expired), `false_registration_billing` (false
+  registration + pay-or-face-consequences), and `refund_scam_cue` (owed a
+  refund).  Grounded in FTC 2025 impostor-scam category data.  Weight
+  `W_TECH_INVOICE_SCAM = 25`.  Category: `InterfaceInterference`.  MITRE: T1566.
+  alert_shaped guard prevents legitimate invoice notifications (user-initiated,
+  closable) from triggering.  10 confusables unit tests + 3 lib unit tests +
+  2 property tests + 4 scoring scenarios; 684 tests total.  (E33.)
 - **Sextortion / webcam-recording extortion lure** (`sextortion_lure`; E25).
   `has_sextortion_lure(s)` fires when the normalized title contains a *camera_cue*
   ("your camera" / "your webcam" / "we have recorded" / "have been recording" /

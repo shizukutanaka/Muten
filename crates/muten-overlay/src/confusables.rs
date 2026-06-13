@@ -1763,6 +1763,78 @@ pub fn has_advance_fee_lure(s: &str) -> bool {
     fund_claim && release_fee
 }
 
+/// E33 — fake tech-support invoice / "you were charged" cancel-scam.
+///
+/// Detects the increasingly prevalent attack pattern where an overlay claims
+/// a large charge (e.g., $399 McAfee renewal, $499 Microsoft support plan,
+/// $549 Amazon Prime) was processed on the victim's account and urges them to
+/// "call to cancel" — connecting them to a fake support number.  Distinct from:
+/// - `subscription_lure` (targets *expired* subscriptions — no charge claimed)
+/// - `false_registration_billing` (targets *false registration* + pay-or-face-consequences)
+/// - `refund_scam_cue` (targets claiming a refund is owed to the victim)
+///
+/// AND-pair design:
+/// - `charge_claim`: language asserting a charge was already processed —
+///   "you have been charged", "a charge of", "an invoice for", "your account
+///   has been charged", "payment of $", "auto-charged", "billing confirmation",
+///   "subscription has been renewed", "renewal charge", "order #",
+///   ご請求が完了, 課金されました, お引き落とし, 自動更新料金.
+/// - `cancel_cta`: call-to-cancel / dispute instruction —
+///   "call to cancel", "to cancel call", "if you did not authorize",
+///   "unauthorized charge", "dispute this charge", "contact billing",
+///   "cancel this subscription", "to report fraud call", "to reverse this",
+///   キャンセルするには電話, 不正な請求, お問い合わせください, 解約電話.
+///
+/// The AND-pair ensures legitimate invoice emails reflected as window titles
+/// (charge_claim, no cancel_cta) and legitimate help-desk pages ("call us to
+/// cancel", no charge claim) do not fire.  alert_shaped guard prevents
+/// user-initiated invoice viewing sessions from triggering.
+#[must_use]
+pub fn has_tech_support_invoice_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // charge_claim: asserts a charge was already processed
+    let charge_claim = has("you have been charged")
+        || has("a charge of")
+        || has("an invoice for")
+        || has("your account has been charged")
+        || has("payment of $")
+        || has("auto-charged")
+        || has("billing confirmation")
+        || has("subscription has been renewed")
+        || has("renewal charge")
+        || has("auto renewal of")
+        || has("order confirmation")
+        || has("has been debited")
+        || has("was charged to your account")
+        || has("ご請求が完了")   // billing is complete (JP)
+        || has("課金されました") // you have been charged (JP)
+        || has("お引き落とし")   // account deduction / direct debit (JP)
+        || has("自動更新料金")   // auto-renewal charge (JP)
+        || has("ご請求金額が確定"); // billing amount confirmed (JP)
+
+    // cancel_cta: call-to-cancel / dispute urgency
+    let cancel_cta = has("call to cancel")
+        || has("to cancel call")
+        || has("if you did not authorize")
+        || has("if you did not make this")
+        || has("unauthorized charge")
+        || has("dispute this charge")
+        || has("contact billing")
+        || has("cancel this subscription")
+        || has("to report fraud call")
+        || has("to reverse this charge")
+        || has("to cancel this order")
+        || has("did not approve this")
+        || has("キャンセルするには電話")  // to cancel, call (JP)
+        || has("不正な請求")              // unauthorized charge (JP)
+        || has("ご解約はお電話")          // to cancel by phone (JP)
+        || has("解約の手続き")            // cancellation procedure (JP)
+        || has("請求に心当たりのない"); // unrecognized charge (JP)
+
+    charge_claim && cancel_cta
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3515,6 +3587,66 @@ mod tests {
         // Customs fee for real package
         assert!(!has_advance_fee_lure(
             "関税のお支払いは配達時にお願いします。"
+        ));
+    }
+
+    // ── has_tech_support_invoice_scam ────────────────────────────────────────
+
+    #[test]
+    fn invoice_scam_fires_on_charge_plus_cancel_cta() {
+        assert!(has_tech_support_invoice_scam(
+            "you have been charged $499.00 for microsoft support plan — call to cancel"
+        ));
+        assert!(has_tech_support_invoice_scam(
+            "a charge of $399 mcafee subscription renewal — if you did not authorize call now"
+        ));
+    }
+
+    #[test]
+    fn invoice_scam_fires_on_auto_renewal_dispute() {
+        assert!(has_tech_support_invoice_scam(
+            "billing confirmation — auto renewal of $349 — to cancel call 1-800-555-0100"
+        ));
+        assert!(has_tech_support_invoice_scam(
+            "subscription has been renewed — $549 — to report fraud call support"
+        ));
+    }
+
+    #[test]
+    fn invoice_scam_fires_jp() {
+        assert!(has_tech_support_invoice_scam(
+            "ご請求が完了しました。請求に心当たりのない場合はご解約はお電話でご連絡ください。"
+        ));
+        assert!(has_tech_support_invoice_scam(
+            "自動更新料金¥49800が課金されました。キャンセルするには電話してください。"
+        ));
+    }
+
+    #[test]
+    fn invoice_scam_does_not_fire_on_benign() {
+        // Charge claim without cancel instruction
+        assert!(!has_tech_support_invoice_scam(
+            "billing confirmation — your order has been charged — thank you!"
+        ));
+        // Cancel instruction without charge claim
+        assert!(!has_tech_support_invoice_scam(
+            "to cancel your subscription please call our support line"
+        ));
+        // Expired subscription without charge claim
+        assert!(!has_tech_support_invoice_scam(
+            "your subscription has expired — renew to restore access"
+        ));
+    }
+
+    #[test]
+    fn invoice_scam_does_not_fire_jp_benign() {
+        // Legitimate renewal confirmation without cancel cta
+        assert!(!has_tech_support_invoice_scam(
+            "ご請求が完了しました。ご利用ありがとうございます。"
+        ));
+        // Legitimate cancellation guidance without charge claim
+        assert!(!has_tech_support_invoice_scam(
+            "解約の手続きはマイページからお手続きください。"
         ));
     }
 }

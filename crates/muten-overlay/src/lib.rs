@@ -302,6 +302,9 @@ fn signal_phrase(signal: &str) -> &str {
         "advance_fee_lure" => {
             "claims the victim has inherited a large sum, won a lottery, or has unclaimed funds, then demands an advance fee (processing, customs, notary) to release those funds (419 fraud)"
         }
+        "tech_support_invoice_scam" => {
+            "displays a fake invoice claiming a large charge (e.g., Microsoft support plan, McAfee renewal) was processed and urges the victim to call to cancel or dispute"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -406,6 +409,7 @@ const W_BANK_ACCOUNT_ALARM: i32 = 25; // fake bank-fraud alert: bank/card noun +
 const W_FALSE_REG_BILLING: i32 = 25; // ワンクリック詐欺: false registration claim + payment ultimatum
 const W_FAKE_BSOD_LURE: i32 = 30; // fake BSOD / Windows-blocked overlay impersonating OS crash (T1036)
 const W_ADVANCE_FEE_LURE: i32 = 25; // 419/advance-fee: windfall claim + fee-extraction demand (FTC BCP 2024)
+const W_TECH_INVOICE_SCAM: i32 = 25; // fake tech-support invoice: charge claim + call-to-cancel (FTC 2025 impostor)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -467,6 +471,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "false_registration_billing" => Some(W_FALSE_REG_BILLING),
         "fake_bsod_lure" => Some(W_FAKE_BSOD_LURE),
         "advance_fee_lure" => Some(W_ADVANCE_FEE_LURE),
+        "tech_support_invoice_scam" => Some(W_TECH_INVOICE_SCAM),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -517,6 +522,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "false_registration_billing"
             | "fake_bsod_lure"
             | "advance_fee_lure"
+            | "tech_support_invoice_scam"
             | "remote_access_lure"
     )
 }
@@ -1264,6 +1270,23 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         signals.push("advance_fee_lure".into());
     }
 
+    // E33 — fake tech-support invoice / "you were charged" cancel-scam (FTC
+    // 2025 impostor-scam category; increasingly prevalent as a hybrid of tech-
+    // support fraud and billing fraud).  An overlay claims a large charge was
+    // already processed on the victim's account (charge_claim: "you have been
+    // charged $499", "a charge of $399", "subscription has been renewed",
+    // "auto-charged", ご請求が完了, 課金されました) AND instructs the victim to
+    // call to cancel or dispute (cancel_cta: "call to cancel", "if you did not
+    // authorize", "dispute this charge", キャンセルするには電話, 請求に心当たりのない).
+    // Distinct from subscription_lure (no charge), false_registration_billing
+    // (false registration + pay-or-face-consequences), and refund_scam_cue
+    // (owed a refund).  alert_shaped guard prevents legitimate invoice
+    // notifications (closable, user-initiated) from triggering.
+    if alert_shaped && confusables::has_tech_support_invoice_scam(&normalized_title) {
+        score += rules.weight_of("tech_support_invoice_scam", W_TECH_INVOICE_SCAM);
+        signals.push("tech_support_invoice_scam".into());
+    }
+
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
     // seize the machine. These tools are legitimate, so their name alone
@@ -1582,6 +1605,7 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasFalseRegistrationBilling => has_sig("false_registration_billing"),
         C::HasFakeBsodLure => has_sig("fake_bsod_lure"),
         C::HasAdvanceFeeLure => has_sig("advance_fee_lure"),
+        C::HasTechSupportInvoiceScam => has_sig("tech_support_invoice_scam"),
     }
 }
 
@@ -5135,6 +5159,60 @@ mod tests {
         assert_eq!(
             category_of("advance_fee_lure"),
             Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    // ── E33: tech_support_invoice_scam ───────────────────────────────────────
+
+    #[test]
+    fn tech_invoice_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "you have been charged $499 microsoft support plan — call to cancel".into(),
+            url: None,
+            coverage_percent: 94,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "tech_support_invoice_scam"),
+            "expected tech_support_invoice_scam; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_TECH_INVOICE_SCAM);
+    }
+
+    #[test]
+    fn tech_invoice_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "you have been charged $499 — if you did not authorize call to cancel".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "tech_support_invoice_scam"),
+            "tech_support_invoice_scam must not fire on closable page; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn tech_invoice_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("tech_support_invoice_scam"),
+            Some(DarkPatternCategory::InterfaceInterference)
         );
     }
 }

@@ -166,6 +166,21 @@ glob: * registered * outstanding fee *
 glob: * enrollment * legal action *
 
 # ─────────────────────────────────────────────────────────────────
+# FAKE TECH-SUPPORT INVOICE / cancel-scam (E33). Heuristic:
+# has_tech_support_invoice_scam. Sources: FTC 2025 impostor-scam data,
+# FBI IC3 2025 tech-support fraud sub-category.
+# ─────────────────────────────────────────────────────────────────
+title: you have been charged $499 microsoft support plan call to cancel
+title: a charge of $399 mcafee total protection if you did not authorize call
+title: billing confirmation subscription has been renewed call to cancel now
+title: auto renewal of $549 norton 360 to cancel call immediately
+title: your account has been charged contact billing to dispute this charge
+title: 自動更新料金が課金されましたキャンセルするには電話してください     # JP: auto-renewal charged, to cancel call
+title: ご請求が完了しました請求に心当たりのない場合はご連絡ください       # JP: billing complete, if unrecognized contact us
+glob: * charged * call to cancel *
+glob: * invoice * if you did not authorize *
+
+# ─────────────────────────────────────────────────────────────────
 # ADVANCE-FEE / "419" / INHERITANCE scam (E32). Heuristic:
 # has_advance_fee_lure. Sources: FTC BCP 2024 "Money you didn't expect",
 # FBI IC3 2025 impostor/BEC sub-category.
