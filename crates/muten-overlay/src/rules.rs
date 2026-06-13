@@ -142,6 +142,8 @@ pub enum CompositeCondition {
     HasGiftCardDemand,
     /// The `refund_scam_cue` signal fired (E27 — refund/overpayment scam lure).
     HasRefundScamCue,
+    /// The `national_id_alarm` signal fired (E28 — SSN/NIN/マイナンバー suspension scam).
+    HasNationalIdAlarm,
 }
 
 impl CompositeCondition {
@@ -172,6 +174,7 @@ impl CompositeCondition {
             "has_sextortion_lure" => Some(Self::HasSextortionLure),
             "has_gift_card_demand" => Some(Self::HasGiftCardDemand),
             "has_refund_scam_cue" => Some(Self::HasRefundScamCue),
+            "has_national_id_alarm" => Some(Self::HasNationalIdAlarm),
             _ => None,
         }
     }
@@ -1141,8 +1144,9 @@ mod tests {
             "composite: ip_alarm_phone 45 has_ip_alarm_lure has_phone_number",
             "composite: gift_card_phone 50 has_gift_card_demand has_phone_number",
             "composite: refund_phone 45 has_refund_scam_cue has_phone_number",
+            "composite: national_id_phone 50 has_national_id_alarm has_phone_number",
         ]);
-        assert_eq!(rs.composite_count(), 12);
+        assert_eq!(rs.composite_count(), 13);
         let names: Vec<&str> = rs
             .composite_rules()
             .iter()
@@ -1197,5 +1201,14 @@ mod tests {
         assert!(refund_rule
             .conditions
             .contains(&CompositeCondition::HasRefundScamCue));
+        // E28 condition parses correctly
+        let national_id_rule = rs
+            .composite_rules()
+            .iter()
+            .find(|r| r.name == "national_id_phone")
+            .unwrap();
+        assert!(national_id_rule
+            .conditions
+            .contains(&CompositeCondition::HasNationalIdAlarm));
     }
 }

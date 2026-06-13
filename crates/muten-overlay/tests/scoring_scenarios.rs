@@ -1091,3 +1091,72 @@ fn refund_scam_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E28: national_id_alarm ────────────────────────────────────────────────
+
+#[test]
+fn ssn_suspended_scam_reaches_suspicious() {
+    let v = classify(
+        &alert_window("your social security number has been suspended — call immediately"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "national_id_alarm"),
+        "expected national_id_alarm; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "national_id_alarm must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn legitimate_ssa_benefits_page_does_not_fire() {
+    let v = classify(
+        &closable_window("social security benefits overview — my ssa account"),
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "national_id_alarm"),
+        "national_id_alarm must not fire on legit SSA benefits page; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_my_number_scam_reaches_suspicious() {
+    let v = classify(
+        &alert_window("マイナンバーが不正使用されました。捜査中です。"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "national_id_alarm"),
+        "expected national_id_alarm for JP マイナンバー scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP national_id_alarm must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn ssn_scam_plus_phone_reaches_block() {
+    let v = classify(
+        &alert_window("ssn used in criminal activity call 1-800-555-0100 to reactivate"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "national_id_alarm"),
+        "expected national_id_alarm; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "national_id_alarm + phone must reach Block; score = {}",
+        v.score
+    );
+}

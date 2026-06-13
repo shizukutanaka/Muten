@@ -1398,6 +1398,73 @@ pub fn has_refund_scam_cue(s: &str) -> bool {
     refund_noun && refund_action
 }
 
+/// E28 — National ID / benefit-number alarm scam.
+///
+/// The US Social Security Administration (SSA) impersonation scam is the
+/// single most common government-impersonation variant per FTC 2024.
+/// Scammers call or display overlays claiming the victim's Social Security
+/// Number (SSN) has been "suspended" or "used in criminal activity" — then
+/// demand the victim call a number to "reactivate" it.  Analogous scams in
+/// other jurisdictions target the UK National Insurance Number (NIN) and
+/// Japan's My Number (マイナンバー) card and pension number.  No legitimate
+/// government service ever suspends a national ID number via a browser
+/// overlay or pop-up.
+///
+/// Two groups (AND-pair):
+/// - `id_noun`: names a national ID number or benefit program: "social
+///   security", "ssn", "national insurance number", "medicare", "medicaid",
+///   マイナンバー, 個人番号, 基礎年金番号, 年金番号.
+/// - `id_alarm`: suspension or criminal-use language unique to the scam:
+///   "has been suspended", "used in criminal", "criminal activity",
+///   "criminal charges", "fraudulent activity", "under federal investigation",
+///   "identity theft detected", "has been compromised", 凍結, 不正使用/不正利用,
+///   犯罪に使用, 捜査中, 停止されました.
+///
+/// The AND-pair prevents informational articles about "social security criminal
+/// activity statistics" from firing.  The alert_shaped guard at the call site
+/// prevents legitimate government-portal pages (user-initiated, closable) from
+/// triggering.
+#[must_use]
+pub fn has_national_id_alarm(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // id_noun: national ID numbers and benefit programs
+    let id_noun = has("social security number")
+        || has("social security")
+        || has("ssn")
+        || has("national insurance number") // UK NIN
+        || has("medicare")
+        || has("medicaid")
+        || has("マイナンバー")   // Japan My Number
+        || has("個人番号")       // Individual number (JP)
+        || has("基礎年金番号")   // Basic pension number (JP)
+        || has("年金番号"); // Pension number (JP)
+
+    // id_alarm: suspension/criminal-use language specific to the scam.
+    // Plain news or policy pages have the noun but not these alarm phrases.
+    let id_alarm = has("has been suspended")
+        || has("is suspended")
+        || has("was suspended")
+        || has("has been blocked")
+        || has("used in criminal")
+        || has("criminal activity")
+        || has("criminal charges")
+        || has("criminal case")
+        || has("fraudulent activity")
+        || has("associated with fraud")
+        || has("under federal investigation")
+        || has("identity theft")
+        || has("has been compromised")
+        || has("凍結")        // frozen (account/number)
+        || has("不正使用")    // fraudulent use
+        || has("不正利用")    // unauthorized use
+        || has("犯罪に使用")  // used in crime
+        || has("捜査中")      // under investigation
+        || has("停止されました"); // has been suspended (JP formal)
+
+    id_noun && id_alarm
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2769,5 +2836,70 @@ mod tests {
         assert!(!has_refund_scam_cue("返金は30日以内にお申し込みください"));
         // Legitimate cancellation confirmation
         assert!(!has_refund_scam_cue("キャンセルを承りました"));
+    }
+
+    // ── has_national_id_alarm ─────────────────────────────────────────────
+    #[test]
+    fn national_id_alarm_fires_on_ssn_suspended() {
+        assert!(has_national_id_alarm(
+            "your social security number has been suspended — call 1-800-555-0100"
+        ));
+        assert!(has_national_id_alarm(
+            "ssn used in criminal activity — immediate action required"
+        ));
+        assert!(has_national_id_alarm(
+            "your social security was used in criminal charges — call doj"
+        ));
+    }
+
+    #[test]
+    fn national_id_alarm_fires_on_medicare_fraud() {
+        assert!(has_national_id_alarm(
+            "medicare account has been compromised — verify your identity now"
+        ));
+        assert!(has_national_id_alarm(
+            "medicaid has been suspended due to fraudulent activity"
+        ));
+    }
+
+    #[test]
+    fn national_id_alarm_fires_jp() {
+        assert!(has_national_id_alarm(
+            "マイナンバーが不正使用されました。捜査中です。"
+        ));
+        assert!(has_national_id_alarm(
+            "年金番号が凍結されました。至急サポートにご連絡ください。"
+        ));
+        assert!(has_national_id_alarm(
+            "個人番号が犯罪に使用されています。警察に連絡済みです。"
+        ));
+    }
+
+    #[test]
+    fn national_id_alarm_does_not_fire_on_benign() {
+        // Policy article — has noun but no alarm
+        assert!(!has_national_id_alarm(
+            "social security benefits increased by 3.2% in 2025"
+        ));
+        // Medicare explanation page
+        assert!(!has_national_id_alarm(
+            "medicare covers hospital visits, doctor visits, and prescriptions"
+        ));
+        // Only alarm, no noun
+        assert!(!has_national_id_alarm(
+            "your account has been suspended — please verify"
+        ));
+        // Legitimate UK NIN page (no alarm)
+        assert!(!has_national_id_alarm(
+            "your national insurance number is on your payslip"
+        ));
+    }
+
+    #[test]
+    fn national_id_alarm_does_not_fire_jp_benign() {
+        // Legitimate JP pension info
+        assert!(!has_national_id_alarm("基礎年金番号の確認方法について"));
+        // Legitimate マイナンバー application guide
+        assert!(!has_national_id_alarm("マイナンバーカードの申請方法"));
     }
 }

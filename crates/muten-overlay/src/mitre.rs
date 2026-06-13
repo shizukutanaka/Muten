@@ -70,7 +70,8 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         | "package_fee_lure"
         | "sextortion_lure"
         | "gift_card_demand"
-        | "refund_scam_cue" => &["T1566"],
+        | "refund_scam_cue"
+        | "national_id_alarm" => &["T1566"],
         _ => &[],
     }
 }
@@ -144,6 +145,7 @@ mod tests {
         assert_eq!(techniques_of("ip_alarm_lure"), &["T1566"]);
         assert_eq!(techniques_of("gift_card_demand"), &["T1566"]);
         assert_eq!(techniques_of("refund_scam_cue"), &["T1566"]);
+        assert_eq!(techniques_of("national_id_alarm"), &["T1566"]);
         assert_eq!(techniques_of("sudden_fullscreen_takeover"), &["T1036"]);
     }
 

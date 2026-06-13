@@ -372,6 +372,23 @@ MSRV 1.75, 286 tests.
   `Sneaking` (Gray et al. 2018 — false information disguised as a benefit). MITRE:
   T1566. 9 confusables unit tests + 3 lib unit tests + 2 property tests + 4 scoring
   scenarios; 596 tests total. (E27.)
+- **National ID / benefit-number alarm scam** (`national_id_alarm`; E28).
+  `has_national_id_alarm(s)` fires when the normalized title contains an
+  *id_noun* ("social security number", "social security", "ssn", "national
+  insurance number", "medicare", "medicaid", マイナンバー, 個人番号, 基礎年金番号,
+  年金番号) AND an *id_alarm* ("has been suspended", "is/was suspended", "has
+  been blocked", "used in criminal", "criminal activity", "criminal charges",
+  "criminal case", "fraudulent activity", "associated with fraud", "under
+  federal investigation", "identity theft", "has been compromised", 凍結,
+  不正使用, 不正利用, 犯罪に使用, 捜査中, 停止されました). The US SSA impersonation
+  scam is the #1 government-impersonation variant per FTC 2024; scammers
+  claim the victim's SSN has been "suspended" or "used in criminal activity"
+  and demand an immediate call. No legitimate government service suspends a
+  national ID via a browser overlay. Full JP coverage (マイナンバー / 年金番号
+  scam patterns). Weight `W_NATIONAL_ID_ALARM = 30`. Category:
+  `InterfaceInterference`. MITRE: T1566. 9 confusables unit tests + 3 lib
+  unit tests + 2 property tests + 4 scoring scenarios + 10 blocklist titles +
+  2 glob patterns; 610 tests total. (E28.)
 - **Sextortion / webcam-recording extortion lure** (`sextortion_lure`; E25).
   `has_sextortion_lure(s)` fires when the normalized title contains a *camera_cue*
   ("your camera" / "your webcam" / "we have recorded" / "have been recording" /

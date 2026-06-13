@@ -131,6 +131,23 @@ glob: * refund of $* owed to you *       # "refund of $499 owed to you — call"
 glob: * overpayment * claim * refund *   # "overpayment detected, claim your refund"
 
 # ─────────────────────────────────────────────────────────────────
+# E28 — NATIONAL ID ALARM titles (FTC 2024 #1 government impersonation).
+# Scammers claim the victim's SSN, NIN, or マイナンバー has been
+# "suspended" or "used in criminal activity". No legitimate service
+# suspends a national ID via an overlay. Heuristic: has_national_id_alarm.
+# ─────────────────────────────────────────────────────────────────
+title: your social security number has been suspended
+title: ssn used in criminal activity call immediately
+title: social security account suspended due to fraud
+title: your social security number is compromised
+title: medicare account suspended verify your identity
+title: マイナンバーが不正使用されました捜査中です         # JP: My Number fraudulently used, under investigation
+title: 年金番号が凍結されました至急ご連絡ください          # JP: pension number frozen
+title: 個人番号が犯罪に使用されています                    # JP: individual number used in crime
+glob: * social security * suspended *    # "social security number suspended"
+glob: * ssn * criminal *                 # "ssn used in criminal activity"
+
+# ─────────────────────────────────────────────────────────────────
 # CRYPTO / REFUND / "RECOVERY" RE-VICTIMIZATION scams. FBI IC3 2024:
 # crypto-investment fraud drove the largest reported losses, and
 # "recovery" operators re-target prior victims promising to claw back

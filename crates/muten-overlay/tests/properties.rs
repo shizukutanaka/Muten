@@ -949,4 +949,31 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_refund_scam_cue(&s));
         }
     }
+
+    // ── E28: national_id_alarm ────────────────────────────────────────────
+
+    /// has_national_id_alarm never panics on arbitrary Unicode input.
+    #[test]
+    fn has_national_id_alarm_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_national_id_alarm(&s);
+    }
+
+    /// Plain ASCII without both an ID noun and an alarm never fires.
+    #[test]
+    fn plain_ascii_never_fires_national_id_alarm(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let id_noun = has("social security number") || has("social security")
+            || has("ssn") || has("national insurance number")
+            || has("medicare") || has("medicaid");
+        let id_alarm = has("has been suspended") || has("is suspended")
+            || has("was suspended") || has("has been blocked")
+            || has("used in criminal") || has("criminal activity")
+            || has("criminal charges") || has("criminal case")
+            || has("fraudulent activity") || has("associated with fraud")
+            || has("under federal investigation") || has("identity theft")
+            || has("has been compromised");
+        if !(id_noun && id_alarm) {
+            prop_assert!(!muten_overlay::confusables::has_national_id_alarm(&s));
+        }
+    }
 }
