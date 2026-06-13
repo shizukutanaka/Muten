@@ -1545,6 +1545,76 @@ pub fn has_bank_account_alarm(s: &str) -> bool {
     bank_noun && bank_alarm
 }
 
+/// E30 — ワンクリック詐欺 / false-registration billing scam.
+///
+/// Detects overlays that falsely claim the user has **registered** for a paid
+/// service and demand immediate payment or face legal action — the classic
+/// JP "one-click fraud" (ワンクリック詐欺) template.  Distinct from
+/// `has_subscription_lure` (which targets *expired* subscriptions) in that
+/// E30 targets *false creation* of a new obligation.
+///
+/// AND-pair design:
+/// - `reg_claim`: language asserting registration happened —
+///   "you have been registered", "your registration", "membership confirmed",
+///   "you signed up", "registration complete", "your subscription has been
+///   activated", 登録が完了, 会員登録が完了, ご入会, ご登録.
+/// - `payment_ultimatum`: urgency / coercion language demanding payment —
+///   "pay within", "outstanding fee", "registration fee", "legal action",
+///   "failure to pay", "penalty fee", "collection agency",
+///   法的措置, お支払い期限, 期限内, 未払い, 延滞, ご入金.
+///
+/// The AND-pair prevents legitimate "thanks for registering!" confirmation
+/// pages (no payment ultimatum) from firing.  The alert_shaped guard at the
+/// call site prevents user-initiated, closable confirmations from triggering.
+#[must_use]
+pub fn has_false_registration_billing(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // reg_claim: language asserting a new registration/membership was created
+    let reg_claim = has("you have been registered")
+        || has("your registration")
+        || has("membership confirmed")
+        || has("you signed up")
+        || has("registration complete")
+        || has("your subscription has been activated")
+        || has("registration is complete")
+        || has("your account has been created")
+        || has("successfully registered")
+        || has("enrollment confirmed")
+        || has("enrollment is complete")
+        || has("登録が完了")      // registration is complete (JP)
+        || has("会員登録が完了") // member registration complete (JP)
+        || has("ご入会")          // membership enrollment (JP)
+        || has("ご登録")          // your registration (JP)
+        || has("登録されました")  // you have been registered (JP)
+        || has("会員登録されました"); // member registration done (JP)
+
+    // payment_ultimatum: urgency / legal coercion demanding payment
+    let payment_ultimatum = has("pay within")
+        || has("outstanding fee")
+        || has("registration fee")
+        || has("legal action")
+        || has("failure to pay")
+        || has("penalty fee")
+        || has("collection agency")
+        || has("sent to collections")
+        || has("debt collection")
+        || has("overdue balance")
+        || has("amount due")
+        || has("settle your balance")
+        || has("法的措置")  // legal action (JP)
+        || has("お支払い期限") // payment deadline (JP)
+        || has("期限内にお支払い") // pay within deadline (JP)
+        || has("未払い")    // unpaid / outstanding (JP)
+        || has("延滞")      // overdue / delinquency (JP)
+        || has("ご入金")    // please remit payment (JP)
+        || has("ご請求金額") // billed amount (JP)
+        || has("請求書")    // invoice / bill (JP)
+        || has("督促"); // payment reminder / dunning notice (JP)
+
+    reg_claim && payment_ultimatum
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3100,6 +3170,73 @@ mod tests {
         // Generic suspended without fraud alarm
         assert!(!has_bank_account_alarm(
             "クレジットカードの請求書が届きました"
+        ));
+    }
+
+    // ── has_false_registration_billing ───────────────────────────────────────
+
+    #[test]
+    fn false_reg_billing_fires_on_pay_within() {
+        assert!(has_false_registration_billing(
+            "your registration is complete — pay within 72 hours to avoid legal action"
+        ));
+        assert!(has_false_registration_billing(
+            "you have been registered for our premium service. outstanding fee: $149. pay within 24 hours."
+        ));
+    }
+
+    #[test]
+    fn false_reg_billing_fires_on_legal_action() {
+        assert!(has_false_registration_billing(
+            "membership confirmed. failure to pay will result in legal action and penalty fee."
+        ));
+        assert!(has_false_registration_billing(
+            "you signed up for our adult content service. amount due: $299. legal action will follow."
+        ));
+    }
+
+    #[test]
+    fn false_reg_billing_fires_jp() {
+        assert!(has_false_registration_billing(
+            "ご登録が完了しました。未払いの場合は法的措置を取ります。"
+        ));
+        assert!(has_false_registration_billing(
+            "会員登録が完了しました。ご請求金額：¥29800。お支払い期限内にご入金ください。"
+        ));
+        assert!(has_false_registration_billing(
+            "登録が完了しました。督促状を発送する前にご入金ください。"
+        ));
+    }
+
+    #[test]
+    fn false_reg_billing_does_not_fire_on_benign() {
+        // Legitimate "thanks for registering" with no payment demand
+        assert!(!has_false_registration_billing(
+            "registration complete — welcome to our community!"
+        ));
+        // Payment page without registration claim
+        assert!(!has_false_registration_billing(
+            "outstanding fee: $29.99 — please pay within 30 days"
+        ));
+        // Subscription lure without false registration
+        assert!(!has_false_registration_billing(
+            "your subscription has expired. renew to restore access."
+        ));
+        // Legal notice without registration claim
+        assert!(!has_false_registration_billing(
+            "failure to pay may result in legal action"
+        ));
+    }
+
+    #[test]
+    fn false_reg_billing_does_not_fire_jp_benign() {
+        // Legitimate e-commerce order confirmation
+        assert!(!has_false_registration_billing(
+            "ご注文が完了しました。ご利用ありがとうございます。"
+        ));
+        // Invoice without registration claim
+        assert!(!has_false_registration_billing(
+            "請求書を送付いたします。お支払い期限をご確認ください。"
         ));
     }
 }

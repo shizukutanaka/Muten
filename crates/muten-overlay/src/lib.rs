@@ -293,6 +293,9 @@ fn signal_phrase(signal: &str) -> &str {
         "bank_account_alarm" => {
             "impersonates a bank fraud alert claiming an account or card has been frozen or has fraudulent transactions"
         }
+        "false_registration_billing" => {
+            "falsely claims the user registered for a paid service and demands immediate payment under threat of legal action (ワンクリック詐欺)"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -394,6 +397,7 @@ const W_GIFT_CARD_DEMAND: i32 = 30; // gift-card payment demand: card_noun + buy
 const W_REFUND_SCAM: i32 = 25; // refund/overpayment lure: claim-oriented action + refund noun (FTC/IC3 2024 elderly-targeting)
 const W_NATIONAL_ID_ALARM: i32 = 30; // SSN/NIN/マイナンバー suspension alarm (FTC #1 government impersonation subcategory)
 const W_BANK_ACCOUNT_ALARM: i32 = 25; // fake bank-fraud alert: bank/card noun + freeze/fraud alarm (distinct from credential_harvest)
+const W_FALSE_REG_BILLING: i32 = 25; // ワンクリック詐欺: false registration claim + payment ultimatum
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -452,6 +456,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "refund_scam_cue" => Some(W_REFUND_SCAM),
         "national_id_alarm" => Some(W_NATIONAL_ID_ALARM),
         "bank_account_alarm" => Some(W_BANK_ACCOUNT_ALARM),
+        "false_registration_billing" => Some(W_FALSE_REG_BILLING),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -499,6 +504,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "refund_scam_cue"
             | "national_id_alarm"
             | "bank_account_alarm"
+            | "false_registration_billing"
             | "remote_access_lure"
     )
 }
@@ -1202,6 +1208,19 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         signals.push("bank_account_alarm".into());
     }
 
+    // E30 — ワンクリック詐欺 / false-registration billing scam (JP IC3 / 消費者庁).
+    // Falsely claims the user *registered* for a paid service and demands
+    // immediate payment or legal action will follow.  Distinct from
+    // subscription_lure (expired subscription) — this fires on *false creation*
+    // of a new obligation.  Two groups: reg_claim ("you have been registered",
+    // 登録が完了, ご登録) AND payment_ultimatum ("pay within", 法的措置, 未払い).
+    // alert_shaped guard: legitimate order-confirmation pages are user-initiated
+    // and closable — they never appear as unsolicited full-screen overlays.
+    if alert_shaped && confusables::has_false_registration_billing(&normalized_title) {
+        score += rules.weight_of("false_registration_billing", W_FALSE_REG_BILLING);
+        signals.push("false_registration_billing".into());
+    }
+
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
     // seize the machine. These tools are legitimate, so their name alone
@@ -1517,6 +1536,7 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasRefundScamCue => has_sig("refund_scam_cue"),
         C::HasNationalIdAlarm => has_sig("national_id_alarm"),
         C::HasBankAccountAlarm => has_sig("bank_account_alarm"),
+        C::HasFalseRegistrationBilling => has_sig("false_registration_billing"),
     }
 }
 
@@ -4904,6 +4924,61 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("bank_account_alarm"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E30: false_registration_billing ──────────────────────────────────────
+
+    #[test]
+    fn false_reg_billing_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "your registration is complete — pay within 72 hours or legal action follows"
+                .into(),
+            url: None,
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "false_registration_billing"),
+            "expected false_registration_billing; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_FALSE_REG_BILLING);
+    }
+
+    #[test]
+    fn false_reg_billing_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "your registration is complete — pay within 30 days".into(),
+            url: None,
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "false_registration_billing"),
+            "false_registration_billing must not fire on user-initiated page; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn false_reg_billing_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("false_registration_billing"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }

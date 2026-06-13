@@ -146,6 +146,8 @@ pub enum CompositeCondition {
     HasNationalIdAlarm,
     /// The `bank_account_alarm` signal fired (E29 — fake bank-fraud alert overlay).
     HasBankAccountAlarm,
+    /// The `false_registration_billing` signal fired (E30 — ワンクリック詐欺 fake billing).
+    HasFalseRegistrationBilling,
 }
 
 impl CompositeCondition {
@@ -178,6 +180,7 @@ impl CompositeCondition {
             "has_refund_scam_cue" => Some(Self::HasRefundScamCue),
             "has_national_id_alarm" => Some(Self::HasNationalIdAlarm),
             "has_bank_account_alarm" => Some(Self::HasBankAccountAlarm),
+            "has_false_registration_billing" => Some(Self::HasFalseRegistrationBilling),
             _ => None,
         }
     }

@@ -1001,4 +1001,32 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_bank_account_alarm(&s));
         }
     }
+
+    // ── E30: false_registration_billing ──────────────────────────────────────
+
+    /// has_false_registration_billing never panics on arbitrary Unicode input.
+    #[test]
+    fn has_false_registration_billing_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_false_registration_billing(&s);
+    }
+
+    /// Plain ASCII without both a reg claim and a payment ultimatum never fires.
+    #[test]
+    fn plain_ascii_never_fires_false_registration_billing(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let reg_claim = has("you have been registered") || has("your registration")
+            || has("membership confirmed") || has("you signed up")
+            || has("registration complete") || has("your subscription has been activated")
+            || has("registration is complete") || has("successfully registered")
+            || has("enrollment confirmed") || has("enrollment is complete");
+        let payment_ultimatum = has("pay within") || has("outstanding fee")
+            || has("registration fee") || has("legal action")
+            || has("failure to pay") || has("penalty fee")
+            || has("collection agency") || has("sent to collections")
+            || has("debt collection") || has("overdue balance")
+            || has("amount due") || has("settle your balance");
+        if !(reg_claim && payment_ultimatum) {
+            prop_assert!(!muten_overlay::confusables::has_false_registration_billing(&s));
+        }
+    }
 }

@@ -148,6 +148,24 @@ glob: * social security * suspended *    # "social security number suspended"
 glob: * ssn * criminal *                 # "ssn used in criminal activity"
 
 # ─────────────────────────────────────────────────────────────────
+# FALSE-REGISTRATION BILLING / ワンクリック詐欺 (JP one-click fraud).
+# Overlay falsely claims the user registered for a paid service and
+# demands immediate payment or threatens legal action.  Heuristic:
+# has_false_registration_billing (E30).  Documented by 消費者庁 (JPN
+# Consumer Affairs Agency) and confirmed in IC3 2024 impostor category.
+# ─────────────────────────────────────────────────────────────────
+title: your registration is complete please pay the outstanding fee
+title: membership confirmed payment is now due
+title: you have been registered pay within 24 hours
+title: enrollment complete outstanding balance due legal action
+title: registration fee required to continue
+title: 会員登録が完了しました未払い料金をお支払いください       # JP: membership registered, pay outstanding fee
+title: ご登録が完了しました法的措置を取ります                   # JP: registration complete, legal action
+title: 登録が完了しました督促状を送付します                     # JP: registration complete, dunning notice
+glob: * registered * outstanding fee *
+glob: * enrollment * legal action *
+
+# ─────────────────────────────────────────────────────────────────
 # CRYPTO / REFUND / "RECOVERY" RE-VICTIMIZATION scams. FBI IC3 2024:
 # crypto-investment fraud drove the largest reported losses, and
 # "recovery" operators re-target prior victims promising to claw back

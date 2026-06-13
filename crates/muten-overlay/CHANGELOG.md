@@ -425,6 +425,25 @@ MSRV 1.75, 286 tests.
   `W_BANK_ACCOUNT_ALARM = 25`. Category: `InterfaceInterference`. MITRE: T1566.
   9 confusables unit tests + 3 lib unit tests + 2 property tests + 4 scoring
   scenarios; 624 tests total. (E29.)
+- **False-registration billing / ワンクリック詐欺** (`false_registration_billing`;
+  E30). `has_false_registration_billing(s)` fires when the normalized title
+  contains a *reg_claim* ("you have been registered", "membership confirmed",
+  "registration complete", "your subscription has been activated", 登録が完了,
+  会員登録が完了, ご入会, ご登録, 登録されました, 会員登録されました) AND a
+  *payment_ultimatum* ("pay within", "outstanding fee", "legal action",
+  "failure to pay", "penalty fee", "collection agency", "amount due", 法的措置,
+  お支払い期限, 未払い, 延滞, ご入金, 督促). Targets the Japanese ワンクリック詐欺
+  (one-click fraud) pattern and its English counterparts — overlays that
+  *falsely claim* the user registered for a paid service and demand immediate
+  payment or threaten legal consequences.  Distinct from `subscription_lure`
+  (which targets *expired* subscriptions): E30 fires on *false creation* of a
+  new payment obligation regardless of prior history.  Grounded in 消費者庁
+  (Japan Consumer Affairs Agency) ワンクリック詐欺 guidance and IC3 2024 impostor
+  category data.  Weight `W_FALSE_REG_BILLING = 25`. Category:
+  `InterfaceInterference`. MITRE: T1566. alert_shaped guard prevents legitimate
+  e-commerce order confirmations (user-initiated, closable) from triggering.
+  9 confusables unit tests + 3 lib unit tests + 2 property tests + 4 scoring
+  scenarios; 641 tests total. (E30.)
 - **Sextortion / webcam-recording extortion lure** (`sextortion_lure`; E25).
   `has_sextortion_lure(s)` fires when the normalized title contains a *camera_cue*
   ("your camera" / "your webcam" / "we have recorded" / "have been recording" /

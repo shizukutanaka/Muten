@@ -1231,3 +1231,89 @@ fn bank_alarm_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E30: false_registration_billing ──────────────────────────────────────────
+
+#[test]
+fn false_reg_billing_reaches_suspicious() {
+    let v = classify(
+        &alert_window(
+            "your registration is complete — pay within 72 hours or legal action will follow",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "false_registration_billing"),
+        "expected false_registration_billing; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "false_registration_billing must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn legitimate_order_confirmation_does_not_fire_false_reg_billing() {
+    // Legitimate e-commerce: closable, user-initiated, low coverage
+    let v = classify(
+        &OverlayWindow {
+            title: "order confirmed — thanks for your purchase! your registration is complete"
+                .into(),
+            url: None,
+            coverage_percent: 15,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 3_000,
+        },
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "false_registration_billing"),
+        "false_registration_billing must not fire on closable order confirmation; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_false_reg_billing_reaches_suspicious() {
+    let v = classify(
+        &alert_window(
+            "会員登録が完了しました。未払いの場合は法的措置を取ります。ご請求金額：¥29800",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "false_registration_billing"),
+        "expected false_registration_billing for JP ワンクリック詐欺; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP false_registration_billing must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn false_reg_billing_plus_phone_reaches_block() {
+    let v = classify(
+        &alert_window(
+            "membership confirmed — outstanding fee $199 — failure to pay — call 1-800-555-0100",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "false_registration_billing"),
+        "expected false_registration_billing; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "false_registration_billing + phone must reach Block; score = {}",
+        v.score
+    );
+}
