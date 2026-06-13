@@ -76,7 +76,8 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         | "false_registration_billing"
         | "advance_fee_lure"
         | "tech_support_invoice_scam"
-        | "utility_cutoff_threat" => &["T1566"],
+        | "utility_cutoff_threat"
+        | "healthcare_scam" => &["T1566"],
         _ => &[],
     }
 }
@@ -158,6 +159,7 @@ mod tests {
         assert_eq!(techniques_of("advance_fee_lure"), &["T1566"]);
         assert_eq!(techniques_of("tech_support_invoice_scam"), &["T1566"]);
         assert_eq!(techniques_of("utility_cutoff_threat"), &["T1566"]);
+        assert_eq!(techniques_of("healthcare_scam"), &["T1566"]);
     }
 
     #[test]

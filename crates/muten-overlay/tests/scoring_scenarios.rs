@@ -1652,3 +1652,85 @@ fn utility_cutoff_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E35: healthcare_scam ──────────────────────────────────────────────────────
+
+#[test]
+fn healthcare_scam_reaches_suspicious() {
+    let v = classify(
+        &alert_window(
+            "your medicare benefits will expire — call to claim your free medical device",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "healthcare_scam"),
+        "expected healthcare_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "healthcare_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn legitimate_insurance_portal_does_not_fire_healthcare() {
+    let v = classify(
+        &OverlayWindow {
+            title: "your medicare account — view benefits and claims summary".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 4_000,
+        },
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "healthcare_scam"),
+        "healthcare_scam must not fire on legitimate Medicare portal; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_healthcare_scam_reaches_suspicious() {
+    let v = classify(
+        &alert_window("健康保険の受給期限が近づいています。無料で受け取るにはお電話ください。"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "healthcare_scam"),
+        "expected healthcare_scam for JP healthcare scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP healthcare_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn healthcare_scam_plus_phone_reaches_block() {
+    let v = classify(
+        &alert_window(
+            "medicare enrollment period ends soon you have been approved free of charge call 1-800-555-0100",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "healthcare_scam"),
+        "expected healthcare_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "healthcare_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}

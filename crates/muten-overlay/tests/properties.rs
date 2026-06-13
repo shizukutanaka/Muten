@@ -1138,4 +1138,31 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_utility_cutoff_threat(&s));
         }
     }
+
+    // ── E35: healthcare_scam ──────────────────────────────────────────────────
+
+    /// has_healthcare_scam never panics on arbitrary Unicode input.
+    #[test]
+    fn has_healthcare_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_healthcare_scam(&s);
+    }
+
+    /// Plain ASCII without both a health benefit noun and urgency never fires.
+    #[test]
+    fn plain_ascii_never_fires_healthcare_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let health_benefit = has("medicare") || has("medicaid") || has("health insurance")
+            || has("medical coverage") || has("prescription benefit") || has("health plan")
+            || has("your benefits") || has("medical device") || has("insurance plan")
+            || has("healthcare plan") || has("health coverage");
+        let benefit_urgency = has("will expire") || has("expiring soon")
+            || has("is about to expire") || has("claim your free")
+            || has("you have been approved") || has("qualify for free")
+            || has("enrollment period ends") || has("limited time offer")
+            || has("call to claim") || has("at no cost to you")
+            || has("free of charge") || has("no cost to you");
+        if !(health_benefit && benefit_urgency) {
+            prop_assert!(!muten_overlay::confusables::has_healthcare_scam(&s));
+        }
+    }
 }

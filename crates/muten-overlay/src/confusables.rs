@@ -1904,6 +1904,79 @@ pub fn has_utility_cutoff_threat(s: &str) -> bool {
     utility_service && cutoff_threat
 }
 
+/// E35 — healthcare / Medicare benefit scam.
+///
+/// Detects overlays that impersonate Medicare, Medicaid, or insurance
+/// providers and lure victims (typically elderly) into calling a fake
+/// number by claiming a benefit is expiring, a "free" medical device is
+/// available, or that they have been "approved" for a benefit.  Medicare
+/// fraud is the #1 IC3 2025 elder-fraud category; FTC 2024 reports it as
+/// the leading impostor-scam type by dollar loss for victims over 60.
+///
+/// AND-pair design:
+/// - `health_benefit`: names the healthcare/insurance program being targeted —
+///   "medicare", "medicaid", "health insurance", "medical coverage",
+///   "prescription benefit", "health plan", "your benefits", "medical device",
+///   "insurance plan", 健康保険, 医療保険, 介護保険, 保険証, 国民健康保険.
+/// - `benefit_urgency`: expiry, approval, or "free" urgency language —
+///   "will expire", "expiring soon", "is about to expire", "claim your free",
+///   "you have been approved", "qualify for free", "enrollment period ends",
+///   "your benefits have been approved", "limited time offer", "call to claim",
+///   "at no cost", "free of charge", "受給期限", "期限切れ", "無料で受け取る",
+///   "申請期限", "給付が承認".
+///
+/// The AND-pair prevents legitimate insurance company sites (health_benefit,
+/// no urgency) and generic "limited time offer" popups (no health term) from
+/// firing.  The alert_shaped guard at the call site ensures user-initiated
+/// Medicare portal sessions never trigger.
+#[must_use]
+pub fn has_healthcare_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // health_benefit: names the healthcare/insurance program targeted
+    let health_benefit = has("medicare")
+        || has("medicaid")
+        || has("health insurance")
+        || has("medical coverage")
+        || has("prescription benefit")
+        || has("health plan")
+        || has("your benefits")
+        || has("medical device")
+        || has("insurance plan")
+        || has("dental coverage")
+        || has("vision coverage")
+        || has("healthcare plan")
+        || has("health coverage")
+        || has("健康保険")   // health insurance (JP)
+        || has("医療保険")   // medical insurance (JP)
+        || has("介護保険")   // nursing-care insurance (JP)
+        || has("保険証")     // insurance card (JP)
+        || has("国民健康保険"); // national health insurance (JP)
+
+    // benefit_urgency: expiry, approval, or "free" claim urgency
+    let benefit_urgency = has("will expire")
+        || has("expiring soon")
+        || has("is about to expire")
+        || has("claim your free")
+        || has("you have been approved")
+        || has("qualify for free")
+        || has("enrollment period ends")
+        || has("your benefits have been approved")
+        || has("limited time offer")
+        || has("call to claim")
+        || has("at no cost to you")
+        || has("free of charge")
+        || has("no cost to you")
+        || has("receive at no cost")
+        || has("受給期限")   // benefit-claim deadline (JP)
+        || has("期限切れ")   // expired / about to expire (JP)
+        || has("無料で受け取る") // receive for free (JP)
+        || has("申請期限")   // application deadline (JP)
+        || has("給付が承認"); // benefit has been approved (JP)
+
+    health_benefit && benefit_urgency
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3775,5 +3848,63 @@ mod tests {
         ));
         // Maintenance notice
         assert!(!has_utility_cutoff_threat("ガスの点検のお知らせ"));
+    }
+
+    // ── has_healthcare_scam ──────────────────────────────────────────────────
+
+    #[test]
+    fn healthcare_scam_fires_on_medicare_expiring() {
+        assert!(has_healthcare_scam(
+            "your medicare benefits will expire — call to claim your free medical device"
+        ));
+        assert!(has_healthcare_scam(
+            "medicare enrollment period ends soon — you have been approved at no cost to you"
+        ));
+    }
+
+    #[test]
+    fn healthcare_scam_fires_on_health_insurance_free_offer() {
+        assert!(has_healthcare_scam(
+            "your health insurance plan expiring soon — claim your free benefits today"
+        ));
+        assert!(has_healthcare_scam(
+            "health coverage limited time offer — qualify for free at no cost to you"
+        ));
+    }
+
+    #[test]
+    fn healthcare_scam_fires_jp() {
+        assert!(has_healthcare_scam(
+            "健康保険の受給期限が近づいています。無料で受け取るにはお電話ください。"
+        ));
+        assert!(has_healthcare_scam(
+            "介護保険の給付が承認されました。申請期限内にお手続きください。"
+        ));
+    }
+
+    #[test]
+    fn healthcare_scam_does_not_fire_on_benign() {
+        // Health plan mention without urgency
+        assert!(!has_healthcare_scam(
+            "your medicare account summary — view your benefits"
+        ));
+        // Urgency without health term
+        assert!(!has_healthcare_scam(
+            "limited time offer — claim your free gift today"
+        ));
+        // Legitimate annual benefits renewal (no scam framing)
+        assert!(!has_healthcare_scam(
+            "dental coverage is available for review — contact hr"
+        ));
+    }
+
+    #[test]
+    fn healthcare_scam_does_not_fire_jp_benign() {
+        // Legitimate insurance card renewal
+        assert!(!has_healthcare_scam(
+            "保険証の更新についてのお知らせです。手続き方法をご確認ください。"
+        ));
+        // Health plan information page
+        assert!(!has_healthcare_scam("国民健康保険の加入手続きのご案内"));
     }
 }

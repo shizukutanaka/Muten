@@ -181,6 +181,21 @@ glob: * electricity * will be disconnected *
 glob: * gas service * shut off *
 
 # ─────────────────────────────────────────────────────────────────
+# MEDICARE / HEALTHCARE BENEFIT SCAM (E35). Heuristic: has_healthcare_scam.
+# Sources: IC3 2025 #1 elder-fraud category, FTC 2024 leading impostor-scam
+# type by dollar loss for victims 60+ (Medicare/insurance benefit lure).
+# ─────────────────────────────────────────────────────────────────
+title: your medicare benefits will expire call to claim your free medical device
+title: medicare enrollment period ends soon you have been approved at no cost
+title: your health insurance plan expiring soon claim your free benefits
+title: medicaid coverage limited time offer qualify for free call now
+title: prescription benefits expiring call to claim your free medication
+title: 健康保険の受給期限が近づいています無料で受け取るにはお電話ください   # JP: health insurance benefit deadline
+title: 介護保険の給付が承認されました申請期限内にお手続きください           # JP: nursing-care benefit approved
+glob: * medicare * will expire *
+glob: * health * benefits * claim your free *
+
+# ─────────────────────────────────────────────────────────────────
 # FAKE TECH-SUPPORT INVOICE / cancel-scam (E33). Heuristic:
 # has_tech_support_invoice_scam. Sources: FTC 2025 impostor-scam data,
 # FBI IC3 2025 tech-support fraud sub-category.

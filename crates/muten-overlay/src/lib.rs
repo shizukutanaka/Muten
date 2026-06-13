@@ -308,6 +308,9 @@ fn signal_phrase(signal: &str) -> &str {
         "utility_cutoff_threat" => {
             "impersonates a utility company (electric, gas, water) and threatens immediate service disconnection unless payment is made right away"
         }
+        "healthcare_scam" => {
+            "impersonates Medicare, Medicaid, or an insurance provider, claiming a benefit is expiring or a free medical device is available, to coerce the victim into calling a scam number"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -414,6 +417,7 @@ const W_FAKE_BSOD_LURE: i32 = 30; // fake BSOD / Windows-blocked overlay imperso
 const W_ADVANCE_FEE_LURE: i32 = 25; // 419/advance-fee: windfall claim + fee-extraction demand (FTC BCP 2024)
 const W_TECH_INVOICE_SCAM: i32 = 25; // fake tech-support invoice: charge claim + call-to-cancel (FTC 2025 impostor)
 const W_UTILITY_CUTOFF: i32 = 25; // fake utility disconnection threat: utility_service + cutoff_threat (FTC #3 impostor)
+const W_HEALTHCARE_SCAM: i32 = 25; // Medicare/benefit expiry + free-offer lure (IC3 2025 #1 elder-fraud)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -477,6 +481,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "advance_fee_lure" => Some(W_ADVANCE_FEE_LURE),
         "tech_support_invoice_scam" => Some(W_TECH_INVOICE_SCAM),
         "utility_cutoff_threat" => Some(W_UTILITY_CUTOFF),
+        "healthcare_scam" => Some(W_HEALTHCARE_SCAM),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -529,6 +534,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "advance_fee_lure"
             | "tech_support_invoice_scam"
             | "utility_cutoff_threat"
+            | "healthcare_scam"
             | "remote_access_lure"
     )
 }
@@ -1309,6 +1315,23 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         signals.push("utility_cutoff_threat".into());
     }
 
+    // E35 — Medicare/healthcare benefit scam (IC3 2025 #1 elder-fraud category,
+    // FTC 2024 leading impostor-scam type by dollar loss for victims 60+).
+    // An overlay impersonates Medicare, Medicaid, or an insurance provider and
+    // lures the victim into calling by claiming a benefit is expiring or a free
+    // medical device is available.  Two groups: health_benefit (medicare /
+    // medicaid / health insurance / medical device / 健康保険 / 介護保険) AND
+    // benefit_urgency ("will expire", "expiring soon", "claim your free",
+    // "you have been approved", "at no cost to you", 受給期限, 無料で受け取る).
+    // Distinct from national_id_alarm (SSN/マイナンバー suspension) and
+    // authority_lure (government-agency impersonation): E35 specifically targets
+    // healthcare benefit scams.  alert_shaped guard prevents legitimate insurance
+    // portal sessions from triggering.
+    if alert_shaped && confusables::has_healthcare_scam(&normalized_title) {
+        score += rules.weight_of("healthcare_scam", W_HEALTHCARE_SCAM);
+        signals.push("healthcare_scam".into());
+    }
+
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
     // seize the machine. These tools are legitimate, so their name alone
@@ -1629,6 +1652,7 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasAdvanceFeeLure => has_sig("advance_fee_lure"),
         C::HasTechSupportInvoiceScam => has_sig("tech_support_invoice_scam"),
         C::HasUtilityCutoffThreat => has_sig("utility_cutoff_threat"),
+        C::HasHealthcareScam => has_sig("healthcare_scam"),
     }
 }
 
@@ -5292,6 +5316,62 @@ mod tests {
         assert_eq!(
             category_of("utility_cutoff_threat"),
             Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E35: healthcare_scam ─────────────────────────────────────────────────
+
+    #[test]
+    fn healthcare_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title:
+                "your medicare benefits will expire — call to claim your free medical device now"
+                    .into(),
+            url: None,
+            coverage_percent: 93,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 300,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "healthcare_scam"),
+            "expected healthcare_scam; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_HEALTHCARE_SCAM);
+    }
+
+    #[test]
+    fn healthcare_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "medicare benefits will expire — call to claim your free device".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "healthcare_scam"),
+            "healthcare_scam must not fire on user-initiated page; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn healthcare_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("healthcare_scam"),
+            Some(DarkPatternCategory::Sneaking)
         );
     }
 }

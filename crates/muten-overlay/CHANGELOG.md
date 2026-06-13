@@ -523,6 +523,26 @@ MSRV 1.75, 286 tests.
   alert_shaped guard prevents legitimate utility account portals (user-initiated,
   closable) from triggering.  10 confusables unit tests + 3 lib unit tests +
   2 property tests + 4 scoring scenarios; 698 tests total.  (E34.)
+- **Medicare / healthcare benefit scam** (`healthcare_scam`; E35).
+  `has_healthcare_scam(s)` fires when the normalized title contains a
+  *health_benefit* noun ("medicare", "medicaid", "health insurance",
+  "medical coverage", "prescription benefit", "health plan", "your benefits",
+  "medical device", "healthcare plan", 健康保険, 医療保険, 介護保険, 保険証,
+  国民健康保険) AND a *benefit_urgency* phrase ("will expire", "expiring soon",
+  "claim your free", "you have been approved", "at no cost to you",
+  "enrollment period ends", "limited time offer", "call to claim",
+  受給期限, 無料で受け取る, 給付が承認).  Targets the #1 IC3 2025 elder-fraud
+  category and FTC 2024 leading impostor-scam type by dollar loss for victims
+  over 60 — overlays that impersonate Medicare, Medicaid, or an insurance
+  provider and lure victims into calling a scam line by claiming a benefit is
+  expiring or a free medical device is available.  Distinct from
+  `national_id_alarm` (SSN suspension) and `authority_lure` (government-agency
+  impersonation): E35 specifically targets healthcare benefit false-urgency.
+  Weight `W_HEALTHCARE_SCAM = 25`.  Category: `Sneaking`.  MITRE: T1566.
+  alert_shaped guard prevents legitimate Medicare portal sessions
+  (user-initiated, closable) from triggering.  10 confusables unit tests +
+  3 lib unit tests + 2 property tests + 4 scoring scenarios; 712 tests total.
+  (E35.)
 - **Sextortion / webcam-recording extortion lure** (`sextortion_lure`; E25).
   `has_sextortion_lure(s)` fires when the normalized title contains a *camera_cue*
   ("your camera" / "your webcam" / "we have recorded" / "have been recording" /
