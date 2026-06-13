@@ -559,8 +559,62 @@ MSRV 1.75, 286 tests.
   the AND-pair extremely high specificity.  Weight `W_JOB_SCAM = 25`.  Category:
   `Sneaking`.  MITRE: T1566.  alert_shaped guard prevents legitimate job-board
   pages (user-initiated, closable) from triggering.  10 confusables unit tests
-  + 3 lib unit tests + 2 property tests + 4 scoring scenarios; 726 tests total.
-  (E36.)
+  + 3 lib unit tests + 2 property tests + 4 scoring scenarios.  (E36.)
+- **Tax authority impersonation scam** (`tax_authority_scam`; E37).
+  `has_tax_authority_scam(s)` fires when the normalized title contains a
+  *tax_authority* phrase ("irs notice", "internal revenue service", "unpaid
+  taxes", "tax debt", "back taxes", "hmrc notice", "delinquent taxes",
+  "tax warrant", "tax lien", 国税庁, 税務署, 延滞税, 税金未納, 税金滞納) AND
+  an *arrest_threat* ("arrest warrant", "warrant for your arrest", "face arrest",
+  "you will be arrested", "criminal charges have been filed", "your assets will
+  be seized", "wage garnishment", "bank levy", 逮捕状, 差し押さえ, 刑事訴追,
+  逮捕されます, 法的手続き).  Targets IRS/HMRC/国税庁 impersonators who threaten
+  arrest or asset seizure over fabricated tax debts and demand immediate wire
+  transfer or gift-card payment; FTC 2025 government-impostor fraud #2 category.
+  Real tax authorities communicate exclusively by certified mail and online portal
+  — no legitimate tax authority delivers an arrest-warrant threat via a browser
+  overlay.  Weight `W_TAX_AUTHORITY_SCAM = 30` (elevated: arrest-threat +
+  tax-authority AND-pair is near-zero-FP).  Category: `InterfaceInterference`.
+  MITRE: T1566.  10 confusables unit tests + 3 lib unit tests + 2 property tests
+  + 4 scoring scenarios.  (E37.)
+- **Social media / email account hijacking alarm** (`social_media_account_alarm`; E38).
+  `has_social_media_account_alarm(s)` fires when the normalized title contains
+  a *social_platform* ("facebook account", "instagram account", "twitter account",
+  "gmail account", "google account", "apple id", "icloud account", "discord
+  account", "whatsapp account", "telegram account", フェイスブック, インスタグラム,
+  ツイッター, ライン, ユーチューブ, グーグルアカウント, アップルid, アイクラウド) AND
+  an *account_jeopardy* phrase ("has been hacked", "has been hijacked", "has been
+  suspended", "account terminated", "unauthorized login", "suspicious login
+  detected", "unusual login", "verify to recover", "regain access", "click to
+  restore", "account will be permanently deleted", アカウントが停止, 不正ログイン,
+  アカウントを回復するには, 本人確認が必要).  Social-platform credential-phishing
+  overlays that impersonate Facebook, Instagram, Gmail, LINE or Google account
+  notices to coerce victims into a fake "account recovery" flow, where they enter
+  credentials into a phishing form; APWG Q1 2025 social-media credential phishing
+  surge; FBI IC3 2025 social-media fraud reporting.  Distinct from
+  `national_id_alarm` (national ID numbers) and `bank_account_alarm` (financial
+  accounts) — this signal keys on named social or email platform brands.  Weight
+  `W_SOCIAL_MEDIA_ACCOUNT_ALARM = 25`.  Category: `InterfaceInterference`.  MITRE:
+  T1566.  10 confusables unit tests + 3 lib unit tests + 2 property tests + 4
+  scoring scenarios.  (E38.)
+- **Immigration / visa authority scam** (`immigration_visa_scam`; E39).
+  `has_immigration_visa_scam(s)` fires when the normalized title contains an
+  *immigration_doc* phrase ("your visa", "your work permit", "your green card",
+  "your residence permit", "immigration notice", "visa application", "visa
+  status", "customs and border", "department of homeland", "immigration and
+  customs", ビザ, 在留資格, 在留カード, 永住許可, 就労ビザ, 入国管理, 外国人登録)
+  AND a *status_threat* ("has been revoked", "has been cancelled", "deportation",
+  "will be deported", "illegal overstay", "out of status", "renewal fee required",
+  "pay the renewal fee", "face deportation", "removal proceedings", 取り消し,
+  不法滞在, 強制送還, 在留資格の失効, 更新料, オーバーステイ).  Targets immigrant
+  populations by impersonating USCIS, ICE, CBP, or 出入国在留管理庁 (MOJI), threatening
+  visa revocation, deportation, or illegal-overstay prosecution unless the victim
+  pays an immediate renewal or settlement fee; FTC 2024 government-impostor
+  campaigns targeting immigrant communities; MOJI scam advisories for the JP market.
+  No legitimate immigration authority delivers enforcement notices via unsolicited
+  browser overlays.  Weight `W_IMMIGRATION_VISA_SCAM = 25`.  Category:
+  `InterfaceInterference`.  MITRE: T1566.  10 confusables unit tests + 3 lib unit
+  tests + 2 property tests + 4 scoring scenarios; 769 tests total.  (E39.)
 - **Sextortion / webcam-recording extortion lure** (`sextortion_lure`; E25).
   `has_sextortion_lure(s)` fires when the normalized title contains a *camera_cue*
   ("your camera" / "your webcam" / "we have recorded" / "have been recording" /

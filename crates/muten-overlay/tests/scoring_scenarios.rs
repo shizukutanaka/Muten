@@ -1816,3 +1816,336 @@ fn job_scam_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E37: tax_authority_scam ──────────────────────────────────────────────────
+
+#[test]
+fn tax_authority_scam_fires_on_alert_shaped_window() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "irs notice: unpaid taxes — arrest warrant issued — call immediately".into(),
+            url: None,
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "tax_authority_scam"),
+        "expected tax_authority_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 30,
+        "tax_authority_scam must contribute at least W=30; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn tax_authority_scam_fp_guard_no_alert_shape() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "irs notice: back taxes overdue — arrest warrant issued for suspect".into(),
+            url: None,
+            coverage_percent: 15,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 8_000,
+        },
+        &rules,
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "tax_authority_scam"),
+        "tax_authority_scam must not fire without alert_shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_tax_authority_scam_reaches_suspicious() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "国税庁通知：延滞税未払い。逮捕状が発行されました。即座にお支払いください。"
+                .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "tax_authority_scam"),
+        "expected tax_authority_scam for JP IRS impostor; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP tax_authority_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn tax_authority_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "irs notice: tax debt — arrest warrant — call 1-800-555-0191 immediately".into(),
+            url: None,
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "tax_authority_scam"),
+        "expected tax_authority_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "tax_authority_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}
+
+// ── E38: social_media_account_alarm ─────────────────────────────────────────
+
+#[test]
+fn social_media_account_alarm_fires_on_alert_shaped_window() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "your facebook account has been hacked — verify to recover access immediately"
+                .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "social_media_account_alarm"),
+        "expected social_media_account_alarm; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 25,
+        "social_media_account_alarm must contribute at least W=25; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn social_media_account_alarm_fp_guard_no_alert_shape() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "instagram account has been suspended — click to restore".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        },
+        &rules,
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "social_media_account_alarm"),
+        "social_media_account_alarm must not fire without alert_shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_social_media_account_alarm_reaches_suspicious() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "ラインアカウントが乗っ取られました。アカウントを回復するにはこちらをクリック。"
+                .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "social_media_account_alarm"),
+        "expected social_media_account_alarm for JP LINE hijacking; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP social_media_account_alarm must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn social_media_account_alarm_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "google account unusual login — someone accessed your account — call 1-800-555-0192 to regain access".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "social_media_account_alarm"),
+        "expected social_media_account_alarm; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "social_media_account_alarm + phone must reach Block; score = {}",
+        v.score
+    );
+}
+
+// ── E39: immigration_visa_scam ───────────────────────────────────────────────
+
+#[test]
+fn immigration_visa_scam_fires_on_alert_shaped_window() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "immigration notice: your visa has been revoked — face deportation — pay renewal fee now".into(),
+            url: None,
+            coverage_percent: 92,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 180,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "immigration_visa_scam"),
+        "expected immigration_visa_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 25,
+        "immigration_visa_scam must contribute at least W=25; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn immigration_visa_scam_fp_guard_no_alert_shape() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "your work permit has been cancelled — illegal overstay — renewal fee required"
+                .into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        },
+        &rules,
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "immigration_visa_scam"),
+        "immigration_visa_scam must not fire without alert_shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_immigration_visa_scam_reaches_suspicious() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title:
+                "入国管理局：在留資格が取り消しになりました。強制送還を避けるには更新料が必要です。"
+                    .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "immigration_visa_scam"),
+        "expected immigration_visa_scam for JP visa impostor; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP immigration_visa_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn immigration_visa_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "customs and border protection: your green card has expired — illegal overstay — call 1-800-555-0193 for renewal fee".into(),
+            url: None,
+            coverage_percent: 92,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "immigration_visa_scam"),
+        "expected immigration_visa_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "immigration_visa_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}

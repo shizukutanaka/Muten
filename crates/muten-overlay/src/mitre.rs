@@ -78,7 +78,10 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         | "tech_support_invoice_scam"
         | "utility_cutoff_threat"
         | "healthcare_scam"
-        | "job_scam" => &["T1566"],
+        | "job_scam"
+        | "tax_authority_scam"
+        | "social_media_account_alarm"
+        | "immigration_visa_scam" => &["T1566"],
         _ => &[],
     }
 }
@@ -162,6 +165,9 @@ mod tests {
         assert_eq!(techniques_of("utility_cutoff_threat"), &["T1566"]);
         assert_eq!(techniques_of("healthcare_scam"), &["T1566"]);
         assert_eq!(techniques_of("job_scam"), &["T1566"]);
+        assert_eq!(techniques_of("tax_authority_scam"), &["T1566"]);
+        assert_eq!(techniques_of("social_media_account_alarm"), &["T1566"]);
+        assert_eq!(techniques_of("immigration_visa_scam"), &["T1566"]);
     }
 
     #[test]

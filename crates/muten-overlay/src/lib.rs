@@ -314,6 +314,15 @@ fn signal_phrase(signal: &str) -> &str {
         "job_scam" => {
             "advertises a fake work-from-home or remote job opportunity but requires an upfront fee (registration, equipment deposit, starter kit, background check) to start"
         }
+        "tax_authority_scam" => {
+            "impersonates a tax authority (IRS, HMRC, 国税庁) and threatens arrest, asset seizure, or criminal charges unless the victim pays an alleged tax debt immediately"
+        }
+        "social_media_account_alarm" => {
+            "claims a specific social media or email account (Facebook, Instagram, Gmail, LINE) has been hacked or suspended, coercing the victim into a fake recovery flow to harvest credentials"
+        }
+        "immigration_visa_scam" => {
+            "impersonates an immigration authority and threatens visa revocation, deportation, or illegal-overstay charges unless the victim pays a renewal or settlement fee immediately"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -422,6 +431,9 @@ const W_TECH_INVOICE_SCAM: i32 = 25; // fake tech-support invoice: charge claim 
 const W_UTILITY_CUTOFF: i32 = 25; // fake utility disconnection threat: utility_service + cutoff_threat (FTC #3 impostor)
 const W_HEALTHCARE_SCAM: i32 = 25; // Medicare/benefit expiry + free-offer lure (IC3 2025 #1 elder-fraud)
 const W_JOB_SCAM: i32 = 25; // employment fraud: job offer + advance-fee gate (IC3 2025 top-5, FTC #1 biz-opp)
+const W_TAX_AUTHORITY_SCAM: i32 = 30; // IRS/HMRC/国税庁 impersonation + arrest/seizure threat (FTC 2025 gov impostor #2)
+const W_SOCIAL_MEDIA_ACCOUNT_ALARM: i32 = 25; // social platform named + hacked/suspended (phishing overlay)
+const W_IMMIGRATION_VISA_SCAM: i32 = 25; // visa/work-permit named + revocation/deportation threat (targets immigrants)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -487,6 +499,9 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "utility_cutoff_threat" => Some(W_UTILITY_CUTOFF),
         "healthcare_scam" => Some(W_HEALTHCARE_SCAM),
         "job_scam" => Some(W_JOB_SCAM),
+        "tax_authority_scam" => Some(W_TAX_AUTHORITY_SCAM),
+        "social_media_account_alarm" => Some(W_SOCIAL_MEDIA_ACCOUNT_ALARM),
+        "immigration_visa_scam" => Some(W_IMMIGRATION_VISA_SCAM),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -541,6 +556,9 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "utility_cutoff_threat"
             | "healthcare_scam"
             | "job_scam"
+            | "tax_authority_scam"
+            | "social_media_account_alarm"
+            | "immigration_visa_scam"
             | "remote_access_lure"
     )
 }
@@ -1353,6 +1371,52 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         signals.push("job_scam".into());
     }
 
+    // Tax-authority impersonation scam (E37).  IRS/HMRC/国税庁 impersonators
+    // threaten arrest or asset seizure over alleged unpaid taxes and demand
+    // immediate payment.  Real tax authorities never communicate via
+    // unsolicited browser overlays — they send certified mail.
+    // tax_authority: "irs notice", "internal revenue service", "unpaid taxes",
+    //   "tax debt", "hmrc notice", 国税庁, 税務署, 延滞税, 税金未納.
+    // arrest_threat: "arrest warrant", "face arrest", "assets seized",
+    //   "criminal charges filed", 逮捕状, 差し押さえ, 刑事訴追.
+    // Weight +30 (higher than standard 25): tax-authority + arrest-threat
+    // AND-pair is near-zero-FP — a legitimate IRS page never displays an
+    // arrest warrant threat as an alert-shaped overlay.
+    if alert_shaped && confusables::has_tax_authority_scam(&normalized_title) {
+        score += rules.weight_of("tax_authority_scam", W_TAX_AUTHORITY_SCAM);
+        signals.push("tax_authority_scam".into());
+    }
+
+    // Social media / email account hijacking alarm (E38).  Phishing overlays
+    // claim a named social platform account (Facebook, Instagram, Gmail,
+    // LINE) has been hacked or suspended and push the victim into a fake
+    // credential-recovery flow.  Distinct from national_id_alarm (ID numbers)
+    // and bank_account_alarm (financial accounts).
+    // social_platform: "facebook account", "instagram account", "gmail
+    //   account", "google account", "apple id", フェイスブック, ライン, etc.
+    // account_jeopardy: "has been hacked", "has been suspended",
+    //   "unauthorized login", "verify to recover", "regain access",
+    //   アカウントが停止, 不正ログイン, アカウントを回復するには.
+    if alert_shaped && confusables::has_social_media_account_alarm(&normalized_title) {
+        score += rules.weight_of("social_media_account_alarm", W_SOCIAL_MEDIA_ACCOUNT_ALARM);
+        signals.push("social_media_account_alarm".into());
+    }
+
+    // Immigration / visa authority scam (E39).  Overlays impersonating
+    // immigration authorities (USCIS, ICE, 入国管理局) threaten visa
+    // revocation, deportation, or illegal-overstay prosecution unless the
+    // victim pays an immediate renewal or settlement fee.  Targets immigrant
+    // populations who may be unfamiliar with how official notices are
+    // delivered (always by mail/official portal, never a browser overlay).
+    // immigration_doc: "your visa", "your work permit", "your green card",
+    //   "residence permit", "immigration notice", ビザ, 在留資格, 在留カード.
+    // status_threat: "has been revoked", "deportation", "illegal overstay",
+    //   "renewal fee required", 取り消し, 不法滞在, 強制送還, 更新料.
+    if alert_shaped && confusables::has_immigration_visa_scam(&normalized_title) {
+        score += rules.weight_of("immigration_visa_scam", W_IMMIGRATION_VISA_SCAM);
+        signals.push("immigration_visa_scam".into());
+    }
+
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
     // seize the machine. These tools are legitimate, so their name alone
@@ -1675,6 +1739,9 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasUtilityCutoffThreat => has_sig("utility_cutoff_threat"),
         C::HasHealthcareScam => has_sig("healthcare_scam"),
         C::HasJobScam => has_sig("job_scam"),
+        C::HasTaxAuthorityScam => has_sig("tax_authority_scam"),
+        C::HasSocialMediaAccountAlarm => has_sig("social_media_account_alarm"),
+        C::HasImmigrationVisaScam => has_sig("immigration_visa_scam"),
     }
 }
 
@@ -5447,5 +5514,171 @@ mod tests {
     fn job_scam_category_is_sneaking() {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(category_of("job_scam"), Some(DarkPatternCategory::Sneaking));
+    }
+
+    // ── E37: tax_authority_scam ──────────────────────────────────────────────
+
+    #[test]
+    fn tax_authority_scam_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "irs notice: unpaid taxes — arrest warrant issued — call now to avoid arrest"
+                .into(),
+            url: None,
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "tax_authority_scam"),
+            "expected tax_authority_scam; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_TAX_AUTHORITY_SCAM);
+    }
+
+    #[test]
+    fn tax_authority_scam_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "irs notice: back taxes overdue — arrest warrant — face criminal charges".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "tax_authority_scam"),
+            "tax_authority_scam must not fire on user-initiated page; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn tax_authority_scam_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("tax_authority_scam"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E38: social_media_account_alarm ─────────────────────────────────────
+
+    #[test]
+    fn social_media_account_alarm_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "your facebook account has been hacked — verify to recover access now".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "social_media_account_alarm"),
+            "expected social_media_account_alarm; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_SOCIAL_MEDIA_ACCOUNT_ALARM);
+    }
+
+    #[test]
+    fn social_media_account_alarm_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "gmail account unusual login — someone accessed your account — regain access"
+                .into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "social_media_account_alarm"),
+            "social_media_account_alarm must not fire on user-initiated page; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn social_media_account_alarm_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("social_media_account_alarm"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E39: immigration_visa_scam ───────────────────────────────────────────
+
+    #[test]
+    fn immigration_visa_scam_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "immigration notice: your visa has been revoked — face deportation — pay renewal fee"
+                .into(),
+            url: None,
+            coverage_percent: 92,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 180,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "immigration_visa_scam"),
+            "expected immigration_visa_scam; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_IMMIGRATION_VISA_SCAM);
+    }
+
+    #[test]
+    fn immigration_visa_scam_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "your work permit has been cancelled — illegal overstay — renewal fee required"
+                .into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "immigration_visa_scam"),
+            "immigration_visa_scam must not fire on user-initiated page; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn immigration_visa_scam_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("immigration_visa_scam"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
     }
 }

@@ -641,3 +641,49 @@ process: vista antivirus
 process: ms antispyware
 process: best malware protection
 process: malwarebell
+
+# ─────────────────────────────────────────────────────────────────
+# TAX AUTHORITY IMPERSONATION scam (E37). Heuristic: has_tax_authority_scam.
+# Sources: FTC 2025 government-impostor #2 category; FBI IC3 2025 IRS
+# impersonation; NTA/国税庁 scam advisories for JP market.
+# ─────────────────────────────────────────────────────────────────
+title: irs notice unpaid taxes arrest warrant issued call immediately to avoid arrest
+title: internal revenue service tax debt outstanding you will be arrested face criminal charges
+title: hmrc notice back taxes overdue assets will be seized immediate payment avoid arrest
+title: irs tax warrant issued delinquent taxes law enforcement criminal charges filed
+title: canada revenue overdue taxes face arrest wage garnishment bank levy immediate payment
+title: 国税庁通知延滞税未払い逮捕状が発行されました即座にお支払いください    # JP: NTA notice, delinquent tax, arrest warrant
+title: 税務署お知らせ税金滞納法的手続き差し押さえを避けるためお支払いを       # JP: tax office, tax arrears, legal proceedings, seizure
+glob: * irs notice * arrest warrant *
+glob: * unpaid taxes * criminal charges *
+
+# ─────────────────────────────────────────────────────────────────
+# SOCIAL MEDIA / EMAIL ACCOUNT HIJACKING ALARM (E38). Heuristic:
+# has_social_media_account_alarm. Sources: APWG Q1 2025 — social-media
+# credential phishing overlays; FBI IC3 2025 social-media fraud.
+# ─────────────────────────────────────────────────────────────────
+title: your facebook account has been hacked verify to recover access now
+title: instagram account has been suspended click to restore your account immediately
+title: gmail account unauthorized login detected verify your account to restore
+title: google account unusual login someone accessed your account regain access now
+title: apple id has been suspended verify your account will be permanently deleted
+title: フェイスブックアカウントが停止されました本人確認が必要です今すぐご確認を  # JP: FB account suspended, identity verification needed
+title: ラインアカウントが乗っ取られましたアカウントを回復するにはこちら         # JP: LINE account hijacked, click to recover
+glob: * facebook account * has been hacked *
+glob: * google account * unauthorized login *
+
+# ─────────────────────────────────────────────────────────────────
+# IMMIGRATION / VISA AUTHORITY SCAM (E39). Heuristic:
+# has_immigration_visa_scam. Sources: FTC 2024 government-impostor
+# targeting immigrant communities; USCIS scam alert advisories;
+# 出入国在留管理庁 (MOJI) scam advisories for JP market.
+# ─────────────────────────────────────────────────────────────────
+title: immigration notice your visa has been revoked face deportation pay renewal fee
+title: your work permit has been cancelled illegal overstay removal proceedings pay settlement fee
+title: your green card has expired illegal overstay renewal fee required pay immediately
+title: customs and border protection your immigration status is invalid face deportation pay now
+title: department of homeland security your entry permit is invalid deportation settlement fee
+title: 入国管理局在留資格が取り消しになりました強制送還を避けるには更新料が必要    # JP: immigration, residence cancelled, deportation, fee
+title: 在留カード不法滞在オーバーステイ在留資格の失効更新料お支払いください        # JP: residence card, overstay, fee required
+glob: * your visa * has been revoked * deportation *
+glob: * immigration * illegal overstay * renewal fee *

@@ -160,6 +160,12 @@ pub enum CompositeCondition {
     HasHealthcareScam,
     /// The `job_scam` signal fired (E36 — fake job offer with advance-fee gate).
     HasJobScam,
+    /// The `tax_authority_scam` signal fired (E37 — IRS/HMRC/国税庁 + arrest threat).
+    HasTaxAuthorityScam,
+    /// The `social_media_account_alarm` signal fired (E38 — social platform + hacked/suspended).
+    HasSocialMediaAccountAlarm,
+    /// The `immigration_visa_scam` signal fired (E39 — visa/work-permit + revocation threat).
+    HasImmigrationVisaScam,
 }
 
 impl CompositeCondition {
@@ -199,6 +205,9 @@ impl CompositeCondition {
             "has_utility_cutoff_threat" => Some(Self::HasUtilityCutoffThreat),
             "has_healthcare_scam" => Some(Self::HasHealthcareScam),
             "has_job_scam" => Some(Self::HasJobScam),
+            "has_tax_authority_scam" => Some(Self::HasTaxAuthorityScam),
+            "has_social_media_account_alarm" => Some(Self::HasSocialMediaAccountAlarm),
+            "has_immigration_visa_scam" => Some(Self::HasImmigrationVisaScam),
             _ => None,
         }
     }

@@ -1194,4 +1194,89 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_job_scam(&s));
         }
     }
+
+    /// has_tax_authority_scam never panics on arbitrary Unicode.
+    #[test]
+    fn has_tax_authority_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_tax_authority_scam(&s);
+    }
+
+    /// Plain ASCII without both a tax-authority phrase and an arrest/seizure
+    /// threat never fires.
+    #[test]
+    fn plain_ascii_never_fires_tax_authority_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let tax_authority = has("irs notice") || has("internal revenue service")
+            || has("you owe taxes") || has("unpaid taxes") || has("tax debt")
+            || has("back taxes") || has("overdue taxes") || has("tax authority")
+            || has("hmrc notice") || has("canada revenue") || has("ato notice")
+            || has("tax warrant") || has("tax lien") || has("delinquent taxes");
+        let arrest_threat = has("arrest warrant") || has("warrant issued")
+            || has("warrant for your arrest") || has("federal arrest")
+            || has("face arrest") || has("you will be arrested")
+            || has("criminal charges have been filed") || has("law enforcement")
+            || has("your assets will be seized") || has("assets seized")
+            || has("wage garnishment") || has("bank levy")
+            || has("face criminal charges") || has("immediate payment to avoid");
+        if !(tax_authority && arrest_threat) {
+            prop_assert!(!muten_overlay::confusables::has_tax_authority_scam(&s));
+        }
+    }
+
+    /// has_social_media_account_alarm never panics on arbitrary Unicode.
+    #[test]
+    fn has_social_media_account_alarm_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_social_media_account_alarm(&s);
+    }
+
+    /// Plain ASCII without both a social platform and account-jeopardy phrase
+    /// never fires.
+    #[test]
+    fn plain_ascii_never_fires_social_media_account_alarm(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let social_platform = has("facebook account") || has("instagram account")
+            || has("twitter account") || has("linkedin account") || has("snapchat account")
+            || has("tiktok account") || has("youtube account") || has("gmail account")
+            || has("google account") || has("apple id") || has("icloud account")
+            || has("discord account") || has("whatsapp account") || has("telegram account");
+        let account_jeopardy = has("has been hacked") || has("has been hijacked")
+            || has("has been suspended") || has("has been terminated")
+            || has("account suspended") || has("account terminated")
+            || has("unauthorized login") || has("suspicious login detected")
+            || has("unusual login") || has("someone accessed your")
+            || has("verify to recover") || has("click to restore") || has("regain access")
+            || has("account will be deleted") || has("account will be permanently deleted");
+        if !(social_platform && account_jeopardy) {
+            prop_assert!(!muten_overlay::confusables::has_social_media_account_alarm(&s));
+        }
+    }
+
+    /// has_immigration_visa_scam never panics on arbitrary Unicode.
+    #[test]
+    fn has_immigration_visa_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_immigration_visa_scam(&s);
+    }
+
+    /// Plain ASCII without both an immigration-document phrase and a
+    /// status-threat or fee phrase never fires.
+    #[test]
+    fn plain_ascii_never_fires_immigration_visa_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let immigration_doc = has("your visa") || has("your work permit")
+            || has("your green card") || has("your residence permit")
+            || has("your immigration status") || has("immigration notice")
+            || has("visa application") || has("visa status") || has("entry permit")
+            || has("border crossing") || has("immigration authority")
+            || has("customs and border") || has("department of homeland")
+            || has("immigration and customs");
+        let status_threat = has("has been revoked") || has("has been cancelled")
+            || has("is invalid") || has("has expired") || has("deportation")
+            || has("will be deported") || has("illegal overstay") || has("illegal status")
+            || has("overstayed") || has("out of status") || has("renewal fee required")
+            || has("pay the renewal fee") || has("settlement fee") || has("status violation")
+            || has("face deportation") || has("removal proceedings");
+        if !(immigration_doc && status_threat) {
+            prop_assert!(!muten_overlay::confusables::has_immigration_visa_scam(&s));
+        }
+    }
 }

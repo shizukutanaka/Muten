@@ -2048,6 +2048,173 @@ pub fn has_job_scam(s: &str) -> bool {
     job_offer && fee_gate
 }
 
+/// E37 — Tax authority impersonation scam.
+///
+/// AND-pair: tax-authority claim (IRS/HMRC/国税庁 language) with an
+/// arrest-or-seizure threat.  Legitimate tax notices are never delivered
+/// as alert-shaped browser overlays — a real IRS notice arrives by mail.
+pub fn has_tax_authority_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let tax_authority = has("irs notice")
+        || has("internal revenue service")
+        || has("you owe taxes")
+        || has("unpaid taxes")
+        || has("tax debt")
+        || has("back taxes")
+        || has("overdue taxes")
+        || has("tax authority")
+        || has("tax office notice")
+        || has("hmrc notice")
+        || has("canada revenue")
+        || has("ato notice")
+        || has("tax warrant")
+        || has("tax lien")
+        || has("delinquent taxes")
+        || has("国税庁") // National Tax Agency (JP)
+        || has("税務署") // tax office (JP)
+        || has("国税") // national tax (JP)
+        || has("延滞税") // delinquent tax (JP)
+        || has("税金未納") // unpaid tax (JP)
+        || has("税金滞納"); // tax arrears (JP)
+    let arrest_threat = has("arrest warrant")
+        || has("warrant issued")
+        || has("warrant for your arrest")
+        || has("federal arrest")
+        || has("face arrest")
+        || has("you will be arrested")
+        || has("criminal charges have been filed")
+        || has("law enforcement")
+        || has("sheriff's office")
+        || has("your assets will be seized")
+        || has("assets seized")
+        || has("wage garnishment")
+        || has("bank levy")
+        || has("criminal charges filed")
+        || has("face criminal charges")
+        || has("immediate payment to avoid")
+        || has("逮捕状") // arrest warrant (JP)
+        || has("差し押さえ") // asset seizure (JP)
+        || has("告訴") // criminal complaint (JP)
+        || has("刑事訴追") // criminal prosecution (JP)
+        || has("逮捕されます") // you will be arrested (JP)
+        || has("法的手続き"); // legal proceedings (JP)
+    tax_authority && arrest_threat
+}
+
+/// E38 — Social media / email account hijacking alarm.
+///
+/// AND-pair: specific social platform or email service named AND account
+/// is reported hacked/suspended.  Distinct from `national_id_alarm`
+/// (ID numbers) and `bank_account_alarm` (financial accounts).
+/// Social-platform phishing overlays coerce victims into entering
+/// credentials or clicking a malicious "recovery" link.
+pub fn has_social_media_account_alarm(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let social_platform = has("facebook account")
+        || has("instagram account")
+        || has("twitter account")
+        || has("linkedin account")
+        || has("snapchat account")
+        || has("tiktok account")
+        || has("youtube account")
+        || has("gmail account")
+        || has("google account")
+        || has("apple id")
+        || has("your apple account")
+        || has("icloud account")
+        || has("discord account")
+        || has("whatsapp account")
+        || has("telegram account")
+        || has("フェイスブック") // Facebook (JP)
+        || has("インスタグラム") // Instagram (JP)
+        || has("ツイッター") // Twitter (JP)
+        || has("エックス(旧ツイッター)") // X/Twitter (JP)
+        || has("ライン") // LINE (JP dominant messaging)
+        || has("ユーチューブ") // YouTube (JP)
+        || has("グーグルアカウント") // Google Account (JP)
+        || has("アップルid") // Apple ID (JP)
+        || has("アイクラウド"); // iCloud (JP)
+    let account_jeopardy = has("has been hacked")
+        || has("has been hijacked")
+        || has("has been suspended")
+        || has("has been terminated")
+        || has("account suspended")
+        || has("account terminated")
+        || has("unauthorized login")
+        || has("suspicious login detected")
+        || has("unusual login")
+        || has("someone accessed your")
+        || has("login from unknown")
+        || has("verify to recover")
+        || has("click to restore")
+        || has("regain access")
+        || has("account will be deleted")
+        || has("account will be permanently deleted")
+        || has("verify your account to restore")
+        || has("アカウントが停止") // account suspended (JP)
+        || has("アカウントが乗っ取られ") // account hijacked (JP)
+        || has("不審なログイン") // suspicious login (JP)
+        || has("不正ログイン") // unauthorized login (JP)
+        || has("アカウントを回復するには") // to recover your account (JP)
+        || has("アカウントが削除") // account deleted (JP)
+        || has("本人確認が必要"); // identity verification required (JP)
+    social_platform && account_jeopardy
+}
+
+/// E39 — Immigration / visa authority scam.
+///
+/// AND-pair: immigration document noun (visa / work permit / residence
+/// card) AND a status-threat or fee demand.  Targets immigrant populations
+/// by impersonating immigration authorities.  No legitimate immigration
+/// enforcement notice is delivered as an unsolicited browser overlay.
+pub fn has_immigration_visa_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let immigration_doc = has("your visa")
+        || has("your work permit")
+        || has("your green card")
+        || has("your residence permit")
+        || has("your immigration status")
+        || has("immigration notice")
+        || has("visa application")
+        || has("visa status")
+        || has("entry permit")
+        || has("border crossing")
+        || has("immigration authority")
+        || has("customs and border")
+        || has("department of homeland")
+        || has("immigration and customs")
+        || has("ビザ") // visa (JP)
+        || has("在留資格") // residence status (JP)
+        || has("在留カード") // residence card (JP)
+        || has("永住許可") // permanent residence permit (JP)
+        || has("就労ビザ") // work visa (JP)
+        || has("入国管理") // immigration control (JP)
+        || has("外国人登録"); // alien registration (JP)
+    let status_threat = has("has been revoked")
+        || has("has been cancelled")
+        || has("is invalid")
+        || has("has expired")
+        || has("deportation")
+        || has("will be deported")
+        || has("illegal overstay")
+        || has("illegal status")
+        || has("overstayed")
+        || has("out of status")
+        || has("renewal fee required")
+        || has("pay the renewal fee")
+        || has("settlement fee")
+        || has("status violation")
+        || has("face deportation")
+        || has("removal proceedings")
+        || has("取り消し") // revoked (JP)
+        || has("不法滞在") // illegal overstay (JP)
+        || has("強制送還") // deportation / forced repatriation (JP)
+        || has("在留資格の失効") // residence status expired (JP)
+        || has("更新料") // renewal fee (JP)
+        || has("オーバーステイ"); // overstay (JP)
+    immigration_doc && status_threat
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4033,5 +4200,185 @@ mod tests {
         ));
         // Legitimate membership fee without job offer
         assert!(!has_job_scam("入会金は初回のみ5000円です。月会費は無料。"));
+    }
+
+    // ── has_tax_authority_scam ───────────────────────────────────────────────
+
+    #[test]
+    fn tax_authority_scam_fires_on_irs_plus_arrest() {
+        assert!(has_tax_authority_scam(
+            "irs notice: unpaid taxes detected — arrest warrant has been issued — call immediately"
+        ));
+        assert!(has_tax_authority_scam(
+            "internal revenue service: tax debt outstanding — you will be arrested if you do not pay"
+        ));
+    }
+
+    #[test]
+    fn tax_authority_scam_fires_on_hmrc_plus_seizure() {
+        assert!(has_tax_authority_scam(
+            "hmrc notice: back taxes overdue — your assets will be seized — immediate payment required"
+        ));
+        assert!(has_tax_authority_scam(
+            "tax authority: delinquent taxes — criminal charges have been filed — face criminal charges now"
+        ));
+    }
+
+    #[test]
+    fn tax_authority_scam_fires_jp() {
+        assert!(has_tax_authority_scam(
+            "国税庁よりお知らせ：税金未納のため逮捕状が発行されました。即座にお支払いください。"
+        ));
+        assert!(has_tax_authority_scam(
+            "税務署通知：延滞税未払い。法的手続きを開始します。差し押さえの前にお支払いを。"
+        ));
+    }
+
+    #[test]
+    fn tax_authority_scam_does_not_fire_on_benign() {
+        // Tax authority without threat
+        assert!(!has_tax_authority_scam(
+            "irs notice: your tax refund has been processed — expect it within 21 days"
+        ));
+        // Arrest warrant without tax authority
+        assert!(!has_tax_authority_scam(
+            "arrest warrant issued for suspect in downtown robbery case"
+        ));
+        // Legitimate financial news
+        assert!(!has_tax_authority_scam(
+            "back taxes: how to set up a payment plan with the irs"
+        ));
+    }
+
+    #[test]
+    fn tax_authority_scam_does_not_fire_jp_benign() {
+        // Legitimate tax info without threat
+        assert!(!has_tax_authority_scam(
+            "国税庁：確定申告の期限は3月15日です。電子申告をご利用ください。"
+        ));
+        // Seizure without tax authority
+        assert!(!has_tax_authority_scam(
+            "差し押さえ手続きについての法律解説。"
+        ));
+    }
+
+    // ── has_social_media_account_alarm ──────────────────────────────────────
+
+    #[test]
+    fn social_media_account_alarm_fires_on_facebook_hacked() {
+        assert!(has_social_media_account_alarm(
+            "your facebook account has been hacked — verify to recover access immediately"
+        ));
+        assert!(has_social_media_account_alarm(
+            "instagram account has been suspended — click to restore your account now"
+        ));
+    }
+
+    #[test]
+    fn social_media_account_alarm_fires_on_gmail_unauthorized() {
+        assert!(has_social_media_account_alarm(
+            "gmail account: unauthorized login detected — verify your account to restore access"
+        ));
+        assert!(has_social_media_account_alarm(
+            "google account unusual login — someone accessed your account — regain access now"
+        ));
+    }
+
+    #[test]
+    fn social_media_account_alarm_fires_jp() {
+        assert!(has_social_media_account_alarm(
+            "フェイスブックアカウントが停止されました。本人確認が必要です。すぐにご確認ください。"
+        ));
+        assert!(has_social_media_account_alarm(
+            "ラインアカウントが乗っ取られました。アカウントを回復するにはこちらをクリック。"
+        ));
+    }
+
+    #[test]
+    fn social_media_account_alarm_does_not_fire_on_benign() {
+        // Platform name without any account-jeopardy phrase
+        assert!(!has_social_media_account_alarm(
+            "facebook account settings: update your profile information"
+        ));
+        // Jeopardy phrase without any social platform name
+        assert!(!has_social_media_account_alarm(
+            "your account has been hacked — please change your password"
+        ));
+        // Generic brand notification — no platform name, no jeopardy
+        assert!(!has_social_media_account_alarm(
+            "new message: you have 3 unread notifications waiting"
+        ));
+    }
+
+    #[test]
+    fn social_media_account_alarm_does_not_fire_jp_benign() {
+        // Platform without alarm
+        assert!(!has_social_media_account_alarm(
+            "インスタグラムのプロフィール設定を変更する方法"
+        ));
+        // Alarm without platform name
+        assert!(!has_social_media_account_alarm(
+            "アカウントが停止された場合の対処法について解説します。"
+        ));
+    }
+
+    // ── has_immigration_visa_scam ────────────────────────────────────────────
+
+    #[test]
+    fn immigration_visa_scam_fires_on_visa_revoked_deportation() {
+        assert!(has_immigration_visa_scam(
+            "your visa has been revoked — deportation proceedings have started — pay renewal fee now"
+        ));
+        assert!(has_immigration_visa_scam(
+            "immigration notice: your work permit has been cancelled — will be deported — renewal fee required"
+        ));
+    }
+
+    #[test]
+    fn immigration_visa_scam_fires_on_green_card_overstay() {
+        assert!(has_immigration_visa_scam(
+            "your green card has expired — illegal overstay detected — settlement fee to avoid removal proceedings"
+        ));
+        assert!(has_immigration_visa_scam(
+            "customs and border protection: your immigration status is invalid — face deportation — pay immediately"
+        ));
+    }
+
+    #[test]
+    fn immigration_visa_scam_fires_jp() {
+        assert!(has_immigration_visa_scam(
+            "入国管理局：在留資格が取り消しになりました。更新料をお支払いください。強制送還を避けるために。"
+        ));
+        assert!(has_immigration_visa_scam(
+            "在留カードの有効期限が切れています。不法滞在とみなされます。オーバーステイを解消するには手続きが必要。"
+        ));
+    }
+
+    #[test]
+    fn immigration_visa_scam_does_not_fire_on_benign() {
+        // Immigration doc without any status-threat phrase
+        assert!(!has_immigration_visa_scam(
+            "your visa application has been approved — welcome to the country"
+        ));
+        // Status-threat without any immigration doc noun
+        assert!(!has_immigration_visa_scam(
+            "this explainer covers removal proceedings and how they are initiated"
+        ));
+        // Generic travel reminder — no status threat
+        assert!(!has_immigration_visa_scam(
+            "visa application fee: $185 — schedule your embassy appointment online"
+        ));
+    }
+
+    #[test]
+    fn immigration_visa_scam_does_not_fire_jp_benign() {
+        // Immigration info without threat
+        assert!(!has_immigration_visa_scam(
+            "在留資格の更新手続きについては出入国在留管理庁にお問い合わせください。"
+        ));
+        // Overstay info without immigration doc
+        assert!(!has_immigration_visa_scam(
+            "不法滞在の定義と日本の法律についての解説。"
+        ));
     }
 }
