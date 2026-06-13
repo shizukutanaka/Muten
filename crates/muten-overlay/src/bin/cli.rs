@@ -8,6 +8,8 @@
 //!   logic is identical.
 //! - `monitor` — run N sweeps over a JSON window list, writing a
 //!   tamper-evident chained audit log to disk and printing a summary.
+//! - `verify` — verify the tamper-evident hash chain of an audit log.
+//! - `signals` — list every built-in detection signal with metadata.
 
 #![forbid(unsafe_code)]
 
@@ -153,6 +155,17 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Verify the tamper-evident integrity of an audit log produced by
+    /// the `monitor` subcommand. Replays the hash chain and reports the
+    /// event count and final Merkle root. Exit: 0 if the log is intact,
+    /// 1 if tampered, truncated, or structurally invalid.
+    Verify {
+        /// Path to the NDJSON audit log file to verify.
+        log: PathBuf,
+        /// Emit the result as JSON instead of human-readable text.
+        #[arg(long)]
+        json: bool,
+    },
     /// List every built-in detection signal with its default weight,
     /// dark-pattern category, MITRE ATT&CK technique IDs, and
     /// plain-language description. Useful for MDM operators building
@@ -217,6 +230,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             }
         }
         Cmd::Rules { file } => cmd_rules(&file),
+        Cmd::Verify { log, json } => cmd_verify(&log, json),
         Cmd::Signals { json } => cmd_signals(json),
         Cmd::Scareware {
             repeats,
@@ -440,6 +454,56 @@ fn cmd_rules(file: &std::path::Path) -> Result<ExitCode, String> {
         return Ok(ExitCode::from(1));
     }
     Ok(ExitCode::from(0))
+}
+
+fn cmd_verify(log: &std::path::Path, json: bool) -> Result<ExitCode, String> {
+    let text =
+        std::fs::read_to_string(log).map_err(|e| format!("reading {}: {e}", log.display()))?;
+    match verify_chain(&text) {
+        Ok((count, head)) => {
+            if json {
+                let root = merkle_root_of_log(&text).ok();
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "status": "ok",
+                        "event_count": count,
+                        "chain_head": head,
+                        "merkle_root": root,
+                        "log": log.display().to_string(),
+                    }))
+                    .map_err(|e| format!("serializing: {e}"))?
+                );
+            } else {
+                let on = color_enabled();
+                println!("chain: {}", paint("OK", C_GREEN, on));
+                println!("events:     {count}");
+                println!("chain_head: {head}");
+                if let Ok(root) = merkle_root_of_log(&text) {
+                    println!("merkle_root: {root}");
+                }
+                println!("log:        {}", log.display());
+            }
+            Ok(ExitCode::from(0))
+        }
+        Err(e) => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "status": "tampered",
+                        "error": e.to_string(),
+                        "log": log.display().to_string(),
+                    }))
+                    .map_err(|e2| format!("serializing: {e2}"))?
+                );
+            } else {
+                let on = color_enabled();
+                eprintln!("chain: {} — {e}", paint("TAMPERED", C_RED, on));
+            }
+            Ok(ExitCode::from(1))
+        }
+    }
 }
 
 fn cmd_signals(json: bool) -> Result<ExitCode, String> {

@@ -699,6 +699,16 @@ MSRV 1.75, 286 tests.
   FasTrak smishing alert.  Weight `W_TRAFFIC_FINE_SCAM = 25`.  Category:
   `InterfaceInterference`.  MITRE: T1566.  10 confusables unit tests + 3 lib unit
   tests + 2 property tests + 4 scoring scenarios; 824 tests total.  (E43.)
+- **`verify` CLI subcommand** (H6). `muten-overlay verify <log> [--json]`
+  replays the SHA-256 hash chain of an audit log produced by `monitor`,
+  verifies every link's `prev_hash` and `hash` field, and reports the event
+  count + Merkle root. Text output shows `chain: OK` (green) or
+  `chain: TAMPERED` (red) with the specific broken-link details. `--json`
+  emits a structured object with `status`, `event_count`, `chain_head`, and
+  `merkle_root`. Exit code 0 for intact logs, 1 for tampered or invalid ones.
+  Operators can now verify log integrity from the CLI without writing Rust
+  code — previously `verify_chain()` was public API but had no CLI entry
+  point. (H6; GAP_ANALYSIS_2026H2 area H.)
 - **Data-URI / file-scheme page detection** (`data_uri_page`; A9). An
   alert-shaped window whose `url` field starts with `data:` or `file://` /
   `file:///` is flagged as a tech-support-scam blocklist-bypass technique.
