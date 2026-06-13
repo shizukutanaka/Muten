@@ -922,6 +922,20 @@ MSRV 1.75, 286 tests.
   how the survey/charity/AV trigger phrases were refined to single-firing
   variants). Covers 12 representative content signals across E44–E59. 1149
   tests total.
+- **Operator-override coverage guard** (Socratic round 4). The existing
+  `weight:` override tests proved the mechanism — but only for `fullscreen`, a
+  geometry signal. The product's configurability promise is that operators can
+  retune *any* signal, including the 59 content signals and the negative
+  `user_initiated` relief (−40). A content block changed to add a hardcoded
+  `W_X` instead of routing through `rules.weight_of("x", W_X)` would silently
+  ignore the operator override, and no test would notice. Two new tests close
+  this: `weight_override_honored_for_content_signals` asserts that overriding a
+  representative content signal's weight to a sentinel moves the score by
+  exactly `sentinel − default` (covers pet_sale / windows_activation / recovery
+  / veterans / fake_copyright), and `weight_override_honored_for_negative_user_initiated`
+  proves the override flows through for the negative relief weight too (with the
+  window kept above the `score.max(0)` clamp so the delta is exact). 1151
+  tests total.
 - **`verify` CLI subcommand** (H6). `muten-overlay verify <log> [--json]`
   replays the SHA-256 hash chain of an audit log produced by `monitor`,
   verifies every link's `prev_hash` and `hash` field, and reports the event

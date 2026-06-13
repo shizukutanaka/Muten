@@ -4047,6 +4047,103 @@ mod tests {
         assert_eq!(v.decision, Decision::Allow);
     }
 
+    /// Operator-override coverage guard (Socratic round 4). The two
+    /// override tests above prove the `weight:` mechanism works — but only
+    /// for `fullscreen`, a geometry signal. The product's configurability
+    /// promise is that operators can retune *any* signal, including the 59
+    /// content signals and the negative `user_initiated` relief. If a
+    /// content block were ever changed to add a hardcoded `W_X` instead of
+    /// routing through `rules.weight_of("x", W_X)`, the operator override
+    /// would be silently ignored for that signal and only this test would
+    /// catch it. For each content signal, overriding its weight to a sentinel
+    /// must move the score by exactly `sentinel - default`.
+    #[test]
+    fn weight_override_honored_for_content_signals() {
+        const SENTINEL: i32 = 11;
+        let geom = |title: &str| OverlayWindow {
+            title: title.into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        // Single-firing trigger titles (same as the additive-contract test).
+        let cases: &[(&str, &str)] = &[
+            (
+                "pet_sale_scam",
+                "french bulldog pup for sale — pay crate deposit before shipping",
+            ),
+            (
+                "windows_activation_scam",
+                "windows is not activated — call microsoft support to activate your copy",
+            ),
+            (
+                "recovery_scam",
+                "recover your lost funds — 100% guaranteed — contact our certified recovery expert",
+            ),
+            (
+                "veterans_benefit_scam",
+                "va disability claim — processing fee — expedite your claim today",
+            ),
+            (
+                "fake_copyright_scam",
+                "dmca violation — pay settlement — click to settle immediately",
+            ),
+        ];
+        for (name, title) in cases {
+            let default_w =
+                signal_weight(name).unwrap_or_else(|| panic!("{name} has no signal_weight()"));
+            let v_def = classify(&geom(title), &Ruleset::default());
+            let v_ovr = classify(
+                &geom(title),
+                &Ruleset::from_lines(&[&format!("weight: {name} {SENTINEL}")]),
+            );
+            assert_eq!(
+                v_ovr.score - v_def.score,
+                SENTINEL - default_w,
+                "{name}: operator weight override not honored in classify() — \
+                 the block likely adds a hardcoded weight instead of routing \
+                 through rules.weight_of()"
+            );
+        }
+    }
+
+    /// Operator-override of the **negative** relief weight (Socratic round 4).
+    /// `user_initiated` contributes −40 (relief: the user opened the window,
+    /// so trust it more). An operator may want to soften or disable that
+    /// relief. This proves the override flows through for a negative weight
+    /// too, with the window kept comfortably above zero so the `score.max(0)`
+    /// clamp does not mask the delta.
+    #[test]
+    fn weight_override_honored_for_negative_user_initiated() {
+        let w = OverlayWindow {
+            // topmost + no-close keep the raw score positive even with −40,
+            // so neither classify result is clamped at 0.
+            title: "plain window".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            origin: Origin::UserInitiated,
+            ..Default::default()
+        };
+        let v_def = classify(&w, &Ruleset::default());
+        let v_ovr = classify(&w, &Ruleset::from_lines(&["weight: user_initiated 0"]));
+        assert!(
+            v_def.score > 0,
+            "baseline must be unclamped; got {}",
+            v_def.score
+        );
+        assert_eq!(
+            v_ovr.score - v_def.score,
+            0 - W_USER_INITIATED_RELIEF,
+            "disabling the user_initiated relief override must raise the score \
+             by exactly 40 (0 − (−40))"
+        );
+    }
+
     // ── E7: urgency_countdown signal ─────────────────────────────────
 
     #[test]
