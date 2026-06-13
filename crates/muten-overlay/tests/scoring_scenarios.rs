@@ -1402,3 +1402,86 @@ fn fake_bsod_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E32: advance_fee_lure ─────────────────────────────────────────────────────
+
+#[test]
+fn advance_fee_reaches_suspicious() {
+    let v = classify(
+        &alert_window(
+            "you are a beneficiary of the estate of a deceased customer advance fee required to release the funds",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "advance_fee_lure"),
+        "expected advance_fee_lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "advance_fee_lure must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn legitimate_estate_notice_does_not_fire_advance_fee() {
+    // Legitimate estate attorney page: closable, user-initiated
+    let v = classify(
+        &OverlayWindow {
+            title: "you are listed as a beneficiary of the estate — contact our office".into(),
+            url: None,
+            coverage_percent: 12,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 4_000,
+        },
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "advance_fee_lure"),
+        "advance_fee_lure must not fire on legitimate estate page; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_advance_fee_reaches_suspicious() {
+    let v = classify(
+        &alert_window("遺産の受益者に選ばれました。受け取るには手数料をお支払いください。"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "advance_fee_lure"),
+        "expected advance_fee_lure for JP 419 scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP advance_fee_lure must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn advance_fee_plus_phone_reaches_block() {
+    let v = classify(
+        &alert_window(
+            "unclaimed inheritance processing fee to unlock your funds call 1-800-555-0100",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "advance_fee_lure"),
+        "expected advance_fee_lure; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "advance_fee_lure + phone must reach Block; score = {}",
+        v.score
+    );
+}

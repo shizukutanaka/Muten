@@ -1058,4 +1058,30 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_fake_bsod_lure(&s));
         }
     }
+
+    // ── E32: advance_fee_lure ─────────────────────────────────────────────────
+
+    /// has_advance_fee_lure never panics on arbitrary Unicode input.
+    #[test]
+    fn has_advance_fee_lure_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_advance_fee_lure(&s);
+    }
+
+    /// Plain ASCII without both a fund claim and a release fee never fires.
+    #[test]
+    fn plain_ascii_never_fires_advance_fee_lure(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let fund_claim = has("inheritance") || has("inherited") || has("beneficiary")
+            || has("estate of") || has("deceased") || has("unclaimed funds")
+            || has("unclaimed inheritance") || has("lottery winning")
+            || has("won the lottery") || has("trust fund") || has("next of kin");
+        let release_fee = has("processing fee") || has("transfer fee") || has("customs fee")
+            || has("release fee") || has("administration fee") || has("advance fee")
+            || has("notary fee") || has("legal fee") || has("handling fee")
+            || has("to release the funds") || has("to receive your funds")
+            || has("to claim your inheritance");
+        if !(fund_claim && release_fee) {
+            prop_assert!(!muten_overlay::confusables::has_advance_fee_lure(&s));
+        }
+    }
 }

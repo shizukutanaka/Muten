@@ -1690,6 +1690,79 @@ pub fn has_fake_bsod_lure(s: &str) -> bool {
     bsod_marker && call_barrier
 }
 
+/// E32 — advance-fee fraud / "419" / inheritance / unclaimed-funds scam.
+///
+/// Detects overlays that falsely claim the victim has inherited a large sum,
+/// won a lottery, or has unclaimed funds, then require payment of an "advance
+/// fee" (processing, transfer, customs, notary) to release those funds.
+/// Distinct from `has_prize_lure` (which targets click-to-claim prize lures)
+/// because E32 specifically requires the *fee extraction* component alongside
+/// the windfall claim — a hallmark of the advance-fee fraud taxonomy
+/// (FTC BCP 2024 "Money you didn't expect" category, FBI IC3 2025).
+///
+/// AND-pair design:
+/// - `fund_claim`: windfall framing — "inheritance", "inherited", "beneficiary",
+///   "estate of", "deceased", "unclaimed funds", "unclaimed inheritance",
+///   "lottery winning", "won the lottery", "trust fund", "prize fund",
+///   遺産, 受益者, 未請求の資産, 宝くじ当選.
+/// - `release_fee`: fee-extraction demand — "processing fee", "transfer fee",
+///   "customs fee", "release fee", "administration fee", "advance fee",
+///   "notary fee", "legal fee required", "to release the funds",
+///   "to receive your funds", "to claim your inheritance",
+///   手数料, 振込手数料, 関税, リリース手数料.
+///
+/// The AND-pair prevents legitimate estate-attorney sites (fund_claim, no fee)
+/// and legitimate customs pages (release_fee, no windfall claim) from firing.
+/// The alert_shaped guard at the call site ensures user-initiated legitimate
+/// notifications never trigger.
+#[must_use]
+pub fn has_advance_fee_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // fund_claim: windfall assertion — inheritance, lottery, unclaimed funds
+    let fund_claim = has("inheritance")
+        || has("inherited")
+        || has("beneficiary")
+        || has("estate of")
+        || has("deceased")
+        || has("unclaimed funds")
+        || has("unclaimed inheritance")
+        || has("unclaimed assets")
+        || has("lottery winning")
+        || has("won the lottery")
+        || has("trust fund")
+        || has("prize fund")
+        || has("next of kin")
+        || has("遺産")          // inheritance (JP)
+        || has("受益者")        // beneficiary (JP)
+        || has("未請求の資産") // unclaimed assets (JP)
+        || has("宝くじ当選")   // lottery win (JP)
+        || has("相続財産"); // inherited estate (JP)
+
+    // release_fee: advance-fee extraction demand
+    let release_fee = has("processing fee")
+        || has("transfer fee")
+        || has("customs fee")
+        || has("release fee")
+        || has("administration fee")
+        || has("advance fee")
+        || has("notary fee")
+        || has("legal fee")
+        || has("handling fee")
+        || has("to release the funds")
+        || has("to receive your funds")
+        || has("to claim your inheritance")
+        || has("to claim your prize")
+        || has("to unlock your funds")
+        || has("手数料")        // fee / handling charge (JP)
+        || has("振込手数料")   // wire transfer fee (JP)
+        || has("関税")          // customs fee (JP)
+        || has("リリース手数料") // release fee (JP)
+        || has("受け取るには手数料"); // fee to receive (JP)
+
+    fund_claim && release_fee
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3381,5 +3454,67 @@ mod tests {
         ));
         // BSOD article without call instruction
         assert!(!has_fake_bsod_lure("ブルースクリーンエラーの原因と対処法"));
+    }
+
+    // ── has_advance_fee_lure ─────────────────────────────────────────────────
+
+    #[test]
+    fn advance_fee_fires_on_inheritance_plus_processing_fee() {
+        assert!(has_advance_fee_lure(
+            "you are a beneficiary of the estate of a deceased customer — processing fee required to release the funds"
+        ));
+        assert!(has_advance_fee_lure(
+            "unclaimed funds of $4.5 million — advance fee of $250 to unlock your funds"
+        ));
+    }
+
+    #[test]
+    fn advance_fee_fires_on_lottery_plus_transfer_fee() {
+        assert!(has_advance_fee_lure(
+            "congratulations! you won the lottery — pay customs fee to claim your prize"
+        ));
+        assert!(has_advance_fee_lure(
+            "you have inherited a trust fund — legal fee required to release the funds to you"
+        ));
+    }
+
+    #[test]
+    fn advance_fee_fires_jp() {
+        assert!(has_advance_fee_lure(
+            "遺産の受益者として選ばれました。手数料をお支払いください。"
+        ));
+        assert!(has_advance_fee_lure(
+            "宝くじ当選のお知らせ。振込手数料をお支払いいただくと受け取り可能です。"
+        ));
+    }
+
+    #[test]
+    fn advance_fee_does_not_fire_on_benign() {
+        // Windfall claim without fee — legitimate estate notification
+        assert!(!has_advance_fee_lure(
+            "you are listed as a beneficiary in the estate of john smith"
+        ));
+        // Fee without windfall claim
+        assert!(!has_advance_fee_lure(
+            "processing fee: $5 for account opening"
+        ));
+        // Prize lure without advance fee
+        assert!(!has_advance_fee_lure(
+            "you won the lottery — click here to claim"
+        ));
+        // Customs fee for legitimate package
+        assert!(!has_advance_fee_lure(
+            "customs fee required for your international parcel delivery"
+        ));
+    }
+
+    #[test]
+    fn advance_fee_does_not_fire_jp_benign() {
+        // Legitimate estate law office page
+        assert!(!has_advance_fee_lure("遺産相続の手続きについてのご案内"));
+        // Customs fee for real package
+        assert!(!has_advance_fee_lure(
+            "関税のお支払いは配達時にお願いします。"
+        ));
     }
 }

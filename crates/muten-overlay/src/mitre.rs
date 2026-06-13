@@ -73,7 +73,8 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         | "refund_scam_cue"
         | "national_id_alarm"
         | "bank_account_alarm"
-        | "false_registration_billing" => &["T1566"],
+        | "false_registration_billing"
+        | "advance_fee_lure" => &["T1566"],
         _ => &[],
     }
 }
@@ -152,6 +153,7 @@ mod tests {
         assert_eq!(techniques_of("false_registration_billing"), &["T1566"]);
         assert_eq!(techniques_of("sudden_fullscreen_takeover"), &["T1036"]);
         assert_eq!(techniques_of("fake_bsod_lure"), &["T1036"]);
+        assert_eq!(techniques_of("advance_fee_lure"), &["T1566"]);
     }
 
     #[test]

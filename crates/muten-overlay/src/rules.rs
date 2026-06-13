@@ -150,6 +150,8 @@ pub enum CompositeCondition {
     HasFalseRegistrationBilling,
     /// The `fake_bsod_lure` signal fired (E31 — fake BSOD / Windows-blocked overlay).
     HasFakeBsodLure,
+    /// The `advance_fee_lure` signal fired (E32 — 419/inheritance advance-fee fraud).
+    HasAdvanceFeeLure,
 }
 
 impl CompositeCondition {
@@ -184,6 +186,7 @@ impl CompositeCondition {
             "has_bank_account_alarm" => Some(Self::HasBankAccountAlarm),
             "has_false_registration_billing" => Some(Self::HasFalseRegistrationBilling),
             "has_fake_bsod_lure" => Some(Self::HasFakeBsodLure),
+            "has_advance_fee_lure" => Some(Self::HasAdvanceFeeLure),
             _ => None,
         }
     }

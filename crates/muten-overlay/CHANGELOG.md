@@ -467,6 +467,24 @@ MSRV 1.75, 286 tests.
   IT troubleshooting browser tabs from triggering. 10 confusables unit tests
   + 3 lib unit tests + 2 property tests + 4 scoring scenarios; 656 tests total.
   (E31.)
+- **Advance-fee fraud / "419" / inheritance / unclaimed-funds scam**
+  (`advance_fee_lure`; E32). `has_advance_fee_lure(s)` fires when the
+  normalized title contains a *fund_claim* ("inheritance", "inherited",
+  "beneficiary", "estate of", "deceased", "unclaimed funds", "won the lottery",
+  "trust fund", "next of kin", 遺産, 受益者, 未請求の資産, 宝くじ当選, 相続財産)
+  AND a *release_fee* ("processing fee", "transfer fee", "customs fee",
+  "release fee", "advance fee", "notary fee", "legal fee", "to release the
+  funds", "to claim your inheritance", "to unlock your funds", 手数料, 振込手数料,
+  関税, リリース手数料, 受け取るには手数料).  Distinct from `has_prize_lure`
+  (click-to-claim, no payment demand): E32 requires the *fee-extraction* step
+  alongside the windfall claim — the defining characteristic of advance-fee
+  fraud (FTC BCP 2024 "Money you didn't expect" category, FBI IC3 2025
+  impostor/BEC sub-category).  Weight `W_ADVANCE_FEE_LURE = 25`.  Category:
+  `Sneaking` (creating false expectations of a windfall benefit).  MITRE: T1566.
+  alert_shaped guard prevents legitimate estate-attorney notifications
+  (user-initiated, closable) from triggering.  10 confusables unit tests +
+  3 lib unit tests + 2 property tests + 4 scoring scenarios; 670 tests total.
+  (E32.)
 - **Sextortion / webcam-recording extortion lure** (`sextortion_lure`; E25).
   `has_sextortion_lure(s)` fires when the normalized title contains a *camera_cue*
   ("your camera" / "your webcam" / "we have recorded" / "have been recording" /

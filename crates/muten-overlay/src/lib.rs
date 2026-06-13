@@ -299,6 +299,9 @@ fn signal_phrase(signal: &str) -> &str {
         "fake_bsod_lure" => {
             "impersonates a Windows Blue Screen of Death or OS kernel panic to trick the victim into calling a fake Microsoft or Apple support number"
         }
+        "advance_fee_lure" => {
+            "claims the victim has inherited a large sum, won a lottery, or has unclaimed funds, then demands an advance fee (processing, customs, notary) to release those funds (419 fraud)"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -402,6 +405,7 @@ const W_NATIONAL_ID_ALARM: i32 = 30; // SSN/NIN/マイナンバー suspension al
 const W_BANK_ACCOUNT_ALARM: i32 = 25; // fake bank-fraud alert: bank/card noun + freeze/fraud alarm (distinct from credential_harvest)
 const W_FALSE_REG_BILLING: i32 = 25; // ワンクリック詐欺: false registration claim + payment ultimatum
 const W_FAKE_BSOD_LURE: i32 = 30; // fake BSOD / Windows-blocked overlay impersonating OS crash (T1036)
+const W_ADVANCE_FEE_LURE: i32 = 25; // 419/advance-fee: windfall claim + fee-extraction demand (FTC BCP 2024)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -462,6 +466,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "bank_account_alarm" => Some(W_BANK_ACCOUNT_ALARM),
         "false_registration_billing" => Some(W_FALSE_REG_BILLING),
         "fake_bsod_lure" => Some(W_FAKE_BSOD_LURE),
+        "advance_fee_lure" => Some(W_ADVANCE_FEE_LURE),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -511,6 +516,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "bank_account_alarm"
             | "false_registration_billing"
             | "fake_bsod_lure"
+            | "advance_fee_lure"
             | "remote_access_lure"
     )
 }
@@ -1243,6 +1249,21 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         signals.push("fake_bsod_lure".into());
     }
 
+    // E32 — advance-fee fraud / "419" / inheritance / unclaimed-funds scam
+    // (FTC BCP 2024 "Money you didn't expect", FBI IC3 2025 BEC/impostor).
+    // Overlay claims the victim inherited a sum or has unclaimed funds
+    // (fund_claim: "beneficiary", "estate of", "unclaimed funds", "won the
+    // lottery", 遺産, 受益者, 宝くじ当選) AND demands an advance fee to release
+    // those funds (release_fee: "processing fee", "advance fee", "customs fee",
+    // "notary fee", "to release the funds", 手数料, 関税, 振込手数料).
+    // Distinct from has_prize_lure (click-to-claim, no payment): E32 requires
+    // the fee-extraction step.  alert_shaped guard prevents legitimate estate
+    // attorney notifications (closable, user-initiated) from triggering.
+    if alert_shaped && confusables::has_advance_fee_lure(&normalized_title) {
+        score += rules.weight_of("advance_fee_lure", W_ADVANCE_FEE_LURE);
+        signals.push("advance_fee_lure".into());
+    }
+
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
     // seize the machine. These tools are legitimate, so their name alone
@@ -1560,6 +1581,7 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasBankAccountAlarm => has_sig("bank_account_alarm"),
         C::HasFalseRegistrationBilling => has_sig("false_registration_billing"),
         C::HasFakeBsodLure => has_sig("fake_bsod_lure"),
+        C::HasAdvanceFeeLure => has_sig("advance_fee_lure"),
     }
 }
 
@@ -5057,6 +5079,62 @@ mod tests {
         assert_eq!(
             category_of("fake_bsod_lure"),
             Some(DarkPatternCategory::Obstruction)
+        );
+    }
+
+    // ── E32: advance_fee_lure ────────────────────────────────────────────────
+
+    #[test]
+    fn advance_fee_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "you are a beneficiary of the deceased estate advance fee required to release the funds".into(),
+            url: None,
+            coverage_percent: 92,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 300,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "advance_fee_lure"),
+            "expected advance_fee_lure; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_ADVANCE_FEE_LURE);
+    }
+
+    #[test]
+    fn advance_fee_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title:
+                "you are a beneficiary of the estate — processing fee required to release the funds"
+                    .into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "advance_fee_lure"),
+            "advance_fee_lure must not fire on user-initiated page; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn advance_fee_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("advance_fee_lure"),
+            Some(DarkPatternCategory::Sneaking)
         );
     }
 }

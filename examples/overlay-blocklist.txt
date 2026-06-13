@@ -166,6 +166,21 @@ glob: * registered * outstanding fee *
 glob: * enrollment * legal action *
 
 # ─────────────────────────────────────────────────────────────────
+# ADVANCE-FEE / "419" / INHERITANCE scam (E32). Heuristic:
+# has_advance_fee_lure. Sources: FTC BCP 2024 "Money you didn't expect",
+# FBI IC3 2025 impostor/BEC sub-category.
+# ─────────────────────────────────────────────────────────────────
+title: you are a beneficiary of the estate advance fee to release the funds
+title: unclaimed funds in your name processing fee required
+title: you won the lottery customs fee to claim your prize
+title: your inheritance awaits legal fee required to release
+title: next of kin to deceased account advance fee to receive funds
+title: 遺産の受益者に選ばれました手数料をお支払いください                   # JP: beneficiary of estate, pay fee
+title: 宝くじ当選おめでとうございます振込手数料が必要です                   # JP: congrats lottery winner, wire fee needed
+glob: * beneficiary * estate * processing fee *
+glob: * unclaimed * funds * advance fee *
+
+# ─────────────────────────────────────────────────────────────────
 # FAKE BSOD / "Windows has been blocked" tech-support scam (E31).
 # Overlay impersonates a Windows Blue Screen of Death or macOS kernel
 # panic to coerce the victim into calling a fake Microsoft/Apple support
