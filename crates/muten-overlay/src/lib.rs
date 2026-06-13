@@ -6499,6 +6499,110 @@ mod tests {
         }
     }
 
+    /// Additive-scoring contract guard (Socratic round 3). The 106
+    /// `reaches_suspicious` / `reaches_block` scenario tests assert only a
+    /// score threshold, which the window geometry (+ phone) already clears
+    /// regardless of any content signal's contribution — so a missing
+    /// `score += rules.weight_of(...)` next to a `signals.push(...)` would
+    /// make the signal appear in `Verdict.signals` (passing the
+    /// `fires_on_alert_shaped_window` tests) yet contribute **zero** to the
+    /// score, and no existing test would notice. This holds window geometry
+    /// constant and asserts that introducing each content signal's trigger
+    /// phrase raises the score by *exactly* that signal's weight — proving
+    /// both that the weight is applied and that the phrase fires that one
+    /// signal alone (a co-firing second content signal would inflate the
+    /// delta and fail here).
+    #[test]
+    fn content_signal_contributes_exactly_its_weight() {
+        let geom = |title: &str| OverlayWindow {
+            title: title.into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        // Empty title fires no content signal; geometry is title-independent,
+        // so this is the pure-geometry baseline the deltas are measured from.
+        let base = classify(&geom(""), &Ruleset::default()).score;
+
+        // (signal, a title that fires exactly that one content signal)
+        let cases: &[(&str, &str)] = &[
+            (
+                "pet_sale_scam",
+                "french bulldog pup for sale — pay crate deposit before shipping",
+            ),
+            (
+                "timeshare_travel_scam",
+                "complimentary vacation offer — pay activation fee to claim your resort membership",
+            ),
+            (
+                "windows_activation_scam",
+                "windows is not activated — call microsoft support to activate your copy",
+            ),
+            (
+                // reward bait "free iphone" avoids prize_lure's prize-word set
+                "survey_reward_scam",
+                "take our survey — free iphone for every participant",
+            ),
+            (
+                // "device is unprotected" avoids subscription_lure's expiry/renew cue
+                "av_brand_renewal_scam",
+                "mcafee — your device is unprotected — device is no longer protected",
+            ),
+            (
+                "recovery_scam",
+                "recover your lost funds — 100% guaranteed — contact our certified recovery expert",
+            ),
+            (
+                "student_loan_scam",
+                "student loan forgiveness — apply now to qualify — processing fee required",
+            ),
+            (
+                "secret_shopper_scam",
+                "secret shopper position — deposit a check — wire the funds to our agent",
+            ),
+            (
+                "mlm_pyramid_recruitment",
+                "earn per referral — unlimited earning potential — join now",
+            ),
+            (
+                "veterans_benefit_scam",
+                "va disability claim — processing fee — expedite your claim today",
+            ),
+            (
+                "fake_copyright_scam",
+                "dmca violation — pay settlement — click to settle immediately",
+            ),
+            (
+                // "wire transfer" avoids gift_card_demand's gift-card cue
+                "charity_scam_lure",
+                "donate to disaster relief fund — wire transfer your donation to help victims now",
+            ),
+        ];
+
+        for (name, title) in cases {
+            let v = classify(&geom(title), &Ruleset::default());
+            assert!(
+                v.signals.iter().any(|s| s == name),
+                "{name} did not fire on its own trigger title {title:?}; got {:?}",
+                v.signals
+            );
+            let expected =
+                signal_weight(name).unwrap_or_else(|| panic!("{name} has no signal_weight()"));
+            let delta = v.score - base;
+            assert_eq!(
+                delta, expected,
+                "{name}: score rose by {delta}, expected exactly its weight {expected} \
+                 — either `score += weight_of(...)` is missing/mismatched, or a second \
+                 content signal co-fired on {title:?} (signals: {:?})",
+                v.signals
+            );
+        }
+    }
+
     #[test]
     fn all_signals_contains_key_signals() {
         let sigs = all_signals();

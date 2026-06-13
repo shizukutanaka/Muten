@@ -907,6 +907,21 @@ MSRV 1.75, 286 tests.
   `strip_symbols_and_emoji` into a Kana range, or a `fold_confusables` entry
   remapping a CJK codepoint) silently killing Japanese-market detection —
   which the raw-string unit tests could not catch. 1148 tests total.
+- **Additive-scoring contract guard** (Socratic round 3). A third self-review
+  found the same false-confidence pattern in the English scenarios: the 106
+  `reaches_suspicious` / `reaches_block` tests assert only a score threshold,
+  which the window geometry (≈95) plus an optional phone number (35) already
+  clears — so a content signal whose `score += rules.weight_of(...)` was
+  dropped (leaving only `signals.push(...)`) would still appear in
+  `Verdict.signals` and contribute **zero** to the score without any test
+  noticing. New `content_signal_contributes_exactly_its_weight` holds the
+  window geometry constant and asserts that adding each content signal's
+  trigger phrase raises the score by *exactly* that signal's weight — proving
+  both that the weight is applied and that the phrase fires that one signal
+  alone (a co-firing sibling inflates the delta and fails the test, which is
+  how the survey/charity/AV trigger phrases were refined to single-firing
+  variants). Covers 12 representative content signals across E44–E59. 1149
+  tests total.
 - **`verify` CLI subcommand** (H6). `muten-overlay verify <log> [--json]`
   replays the SHA-256 hash chain of an audit log produced by `monitor`,
   verifies every link's `prev_hash` and `hash` field, and reports the event
