@@ -2588,6 +2588,39 @@ mod tests {
         assert!(!contains_phone_number("no digits here"));
     }
 
+    /// Digit-count boundary guard (Socratic round 8). `contains_phone_number`
+    /// fires on a run of `(7..=15)` digits — inclusive at both ends. Every
+    /// existing test uses 10–11-digit numbers (comfortably inside) or a
+    /// 4-digit year (comfortably below), so flipping the range to `(8..=15)`,
+    /// `(7..15)`, or `(7..=16)` would pass CI while silently missing a real
+    /// 7-digit local scam number / 15-digit international number, or
+    /// false-firing on a 16-digit card/serial. `phone_number` is a weight-35
+    /// high-fidelity signal, so a boundary regression can drop a scam verdict
+    /// below threshold. This pins all four edges with exact digit counts.
+    #[test]
+    fn phone_digit_count_boundaries_are_inclusive() {
+        // 6 digits → below the lower bound → not a phone.
+        assert!(
+            !contains_phone_number("call 123456 now"),
+            "6 digits → false"
+        );
+        // 7 digits → exactly the lower bound → phone (bare local number).
+        assert!(
+            contains_phone_number("call 123-4567 now"),
+            "7 digits → true"
+        );
+        // 15 digits → exactly the upper bound → phone (max E.164).
+        assert!(
+            contains_phone_number("call 123456789012345 now"),
+            "15 digits → true"
+        );
+        // 16 digits → above the upper bound → card/serial, not a phone.
+        assert!(
+            !contains_phone_number("call 1234567890123456 now"),
+            "16 digits → false"
+        );
+    }
+
     #[test]
     fn phone_number_scores_only_when_alert_shaped() {
         // Fullscreen alert with a number → phone_number fires.

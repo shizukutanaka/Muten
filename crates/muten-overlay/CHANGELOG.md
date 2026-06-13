@@ -42,6 +42,19 @@ MSRV 1.75, 286 tests.
   to `.git/HEAD` and `.git/refs/heads/` so the version re-embeds on every
   commit. (M6.)
 
+- **Phone-number digit-count boundary guard** (Socratic round 8).
+  `contains_phone_number` fires on a run of `(7..=15)` digits, inclusive at both
+  ends — but every existing test used 10–11-digit numbers (well inside) or a
+  4-digit year (well below), so flipping the range to `(8..=15)`, `(7..15)`, or
+  `(7..=16)` would pass CI while silently missing a real 7-digit local or
+  15-digit international scam number, or false-firing on a 16-digit card/serial.
+  Since `phone_number` is a weight-35 high-fidelity signal, such a regression
+  can drop a scam verdict below threshold. New
+  `phone_digit_count_boundaries_are_inclusive` pins all four edges with exact
+  digit counts (6→false, 7→true, 15→true, 16→false). No bug today; this is a
+  regression guard completing the boundary-coverage theme (round 5 decision
+  thresholds, round 6 confidence cutoffs). 1158 tests total.
+
 ### Fixed
 - **Additive score could overflow under extreme operator weights** (Socratic
   round 7). The `i32` score is accumulated with plain `score += rules.weight_of(...)`,
