@@ -189,8 +189,15 @@ impl Verdict {
     /// [`Verdict::signals`].  Composite rule signals (operator-named, with
     /// weights set in the blocklist) and unknown names return a weight of
     /// `0`; see [`signal_weight`] for the authoritative per-name lookup.
-    /// The sum may not equal [`Verdict::score`] when composite rules or
-    /// score clamping apply.
+    ///
+    /// The reported weights are the built-in **defaults**: a [`Verdict`] does
+    /// not carry the [`Ruleset`] it was produced with, so this cannot reflect
+    /// operator `weight:` overrides. Consequently the sum may not equal
+    /// [`Verdict::score`] when (a) an operator overrode a signal's weight,
+    /// (b) a composite rule contributed (operator-named weight, reported as
+    /// `0`), or (c) the score was clamped at `0`. Treat the breakdown as the
+    /// default-weight attribution of *which* signals fired, not an exact
+    /// reconstruction of the final score under a customized ruleset.
     #[must_use]
     pub fn score_breakdown(&self) -> Vec<(String, i32)> {
         self.signals
@@ -3800,6 +3807,36 @@ mod tests {
                 assert_eq!(*w_val, expected, "weight mismatch for {sig}");
             }
         }
+    }
+
+    /// Pins the *documented* limitation of `score_breakdown` (Socratic round
+    /// 11): it reports built-in **default** weights, not operator `weight:`
+    /// overrides, because a `Verdict` does not carry the `Ruleset`. Under an
+    /// override the breakdown weight (and thus its sum) deliberately differs
+    /// from `Verdict::score`. This makes that contract explicit so a future
+    /// change either updates the doc or this guard.
+    #[test]
+    fn score_breakdown_reports_default_weights_not_overrides() {
+        let rules = Ruleset::from_lines(&["weight: fullscreen 60"]);
+        let w = OverlayWindow {
+            title: "plain window".into(),
+            coverage_percent: 100,
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &rules);
+        // classify() used the override → score 60.
+        assert_eq!(v.score, 60);
+        // …but the breakdown reports the built-in default (30), and its sum
+        // therefore differs from the actual score, exactly as documented.
+        let bd = v.score_breakdown();
+        let fullscreen = bd
+            .iter()
+            .find(|(s, _)| s == "fullscreen")
+            .expect("fullscreen in breakdown");
+        assert_eq!(fullscreen.1, 30, "breakdown reports the default weight");
+        let sum: i32 = bd.iter().map(|(_, w)| *w).sum();
+        assert_ne!(sum, v.score, "sum differs from score under an override");
     }
 
     #[test]

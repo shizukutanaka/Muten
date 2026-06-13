@@ -42,6 +42,18 @@ MSRV 1.75, 286 tests.
   to `.git/HEAD` and `.git/refs/heads/` so the version re-embeds on every
   commit. (M6.)
 
+- **`score_breakdown()` doc accuracy + behavior guard** (Socratic round 11).
+  A hot-path panic hunt (untrusted window titles, `forbid(unsafe_code)`) and the
+  existing `*_never_panics` property tests confirmed the detection/normalization/
+  host-parsing paths are panic-safe and adequately fuzzed — no change needed
+  there. But `score_breakdown()`'s doc listed only "composite rules or score
+  clamping" as reasons its sum may differ from `Verdict::score`, omitting
+  operator `weight:` overrides: the method reports built-in **default** weights
+  (a `Verdict` carries no `Ruleset`), so under an override the breakdown
+  deliberately differs from the actual score. The doc now states this, and
+  `score_breakdown_reports_default_weights_not_overrides` pins the contract
+  (override fullscreen→60, breakdown still reports 30, sum ≠ score). 1161 tests
+  total.
 - **Scareware sliding-window boundary guard** (Socratic round 10).
   `RepeatTracker` prunes appearances with `t >= cutoff` (`cutoff = now −
   window_ms`), so an appearance *exactly* `window_ms` old is still inside the
