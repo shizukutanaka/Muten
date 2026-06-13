@@ -3070,3 +3070,177 @@ fn rental_scam_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E48: pet_sale_scam ────────────────────────────────────────────
+
+#[test]
+fn pet_sale_scam_fires_on_alert_shaped_window() {
+    let w = OverlayWindow {
+        title: "french bulldog pup for sale — pay crate deposit before shipping".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "pet_sale_scam"),
+        "expected pet_sale_scam; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn pet_sale_scam_fp_guard_no_alert_shape() {
+    let w = OverlayWindow {
+        title: "french bulldog pup for sale — pay crate deposit before shipping".into(),
+        url: None,
+        coverage_percent: 10,
+        topmost: false,
+        has_close_button: true,
+        blocks_input: false,
+        origin: Origin::UserInitiated,
+        age_ms: 5_000,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        !v.signals.iter().any(|s| s == "pet_sale_scam"),
+        "pet_sale_scam must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn pet_sale_scam_jp_reaches_suspicious() {
+    let w = OverlayWindow {
+        title: "子犬販売 — 配送前に入金 — 今すぐ支払いを完了してください".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.score >= 50,
+        "JP pet_sale_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn pet_sale_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "golden retriever pup for sale — pay shipping deposit — call 1-800-555-0190"
+                .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "pet_sale_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}
+
+// ── E49: timeshare_travel_scam ────────────────────────────────────
+
+#[test]
+fn timeshare_travel_scam_fires_on_alert_shaped_window() {
+    let w = OverlayWindow {
+        title: "complimentary vacation offer — pay activation fee to claim your resort membership"
+            .into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "timeshare_travel_scam"),
+        "expected timeshare_travel_scam; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn timeshare_travel_scam_fp_guard_no_alert_shape() {
+    let w = OverlayWindow {
+        title: "complimentary vacation offer — pay activation fee to claim your resort membership"
+            .into(),
+        url: None,
+        coverage_percent: 10,
+        topmost: false,
+        has_close_button: true,
+        blocks_input: false,
+        origin: Origin::UserInitiated,
+        age_ms: 5_000,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        !v.signals.iter().any(|s| s == "timeshare_travel_scam"),
+        "timeshare_travel_scam must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn timeshare_travel_scam_jp_reaches_suspicious() {
+    let w = OverlayWindow {
+        title: "タイムシェア — 会員費のお支払いをお願いします — 今すぐクレジットカードで支払い"
+            .into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.score >= 50,
+        "JP timeshare_travel_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn timeshare_travel_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "vacation club — resort activation fee required — call 1-800-555-0191".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "timeshare_travel_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}

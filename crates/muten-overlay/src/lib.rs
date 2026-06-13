@@ -350,6 +350,12 @@ fn signal_phrase(signal: &str) -> &str {
         "rental_scam_lure" => {
             "posts a fake rental or housing listing (apartment, room, or house for rent) and demands an advance deposit via wire transfer, gift card, or money order before the victim can view the property, which does not exist or is not owned by the scammer"
         }
+        "pet_sale_scam" => {
+            "advertises a non-existent pet (puppy, kitten, or exotic animal) and demands a shipping deposit, crate fee, or insurance payment before delivery — a transport-advance-fee fraud that accounts for a significant share of FTC online-shopping complaints"
+        }
+        "timeshare_travel_scam" => {
+            "offers a complimentary vacation or resort membership and demands an activation fee, certificate fee, or closing cost before the prize can be claimed — a travel-prize advance-fee fraud commonly targeting timeshare owners (FTC travel fraud)"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -470,6 +476,8 @@ const W_LOAN_FEE_SCAM: i32 = 30; // pre-approved loan + upfront-fee gate (FTC ad
 const W_DATA_URI_PAGE: i32 = 25; // alert-shaped window served from data: or file:// URL (blocklist-bypass technique)
 const W_CHARITY_SCAM_LURE: i32 = 25; // fake charity + irreversible payment (gift card/wire/crypto) after disaster
 const W_RENTAL_SCAM_LURE: i32 = 25; // fake rental listing + advance deposit demand (FTC 2024 housing fraud)
+const W_PET_SALE_SCAM: i32 = 25; // fake pet listing + transport/crate deposit demand (FTC 2024 online shopping fraud)
+const W_TIMESHARE_TRAVEL_SCAM: i32 = 25; // vacation club / timeshare + activation fee demand (FTC travel prize fraud)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -547,6 +555,8 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "data_uri_page" => Some(W_DATA_URI_PAGE),
         "charity_scam_lure" => Some(W_CHARITY_SCAM_LURE),
         "rental_scam_lure" => Some(W_RENTAL_SCAM_LURE),
+        "pet_sale_scam" => Some(W_PET_SALE_SCAM),
+        "timeshare_travel_scam" => Some(W_TIMESHARE_TRAVEL_SCAM),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -613,6 +623,8 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "data_uri_page"
             | "charity_scam_lure"
             | "rental_scam_lure"
+            | "pet_sale_scam"
+            | "timeshare_travel_scam"
             | "remote_access_lure"
     )
 }
@@ -722,6 +734,8 @@ pub fn all_signals() -> Vec<SignalInfo> {
         "data_uri_page",
         "charity_scam_lure",
         "rental_scam_lure",
+        "pet_sale_scam",
+        "timeshare_travel_scam",
         "remote_access_lure",
     ];
     NAMES
@@ -1672,6 +1686,14 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         score += rules.weight_of("rental_scam_lure", W_RENTAL_SCAM_LURE);
         signals.push("rental_scam_lure".into());
     }
+    if alert_shaped && confusables::has_pet_sale_scam(&normalized_title) {
+        score += rules.weight_of("pet_sale_scam", W_PET_SALE_SCAM);
+        signals.push("pet_sale_scam".into());
+    }
+    if alert_shaped && confusables::has_timeshare_travel_scam(&normalized_title) {
+        score += rules.weight_of("timeshare_travel_scam", W_TIMESHARE_TRAVEL_SCAM);
+        signals.push("timeshare_travel_scam".into());
+    }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
@@ -2026,6 +2048,8 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasDataUriPage => has_sig("data_uri_page"),
         C::HasCharityScamLure => has_sig("charity_scam_lure"),
         C::HasRentalScamLure => has_sig("rental_scam_lure"),
+        C::HasPetSaleScam => has_sig("pet_sale_scam"),
+        C::HasTimeshareScam => has_sig("timeshare_travel_scam"),
     }
 }
 
@@ -6543,6 +6567,112 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("rental_scam_lure"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    // ── E48: pet_sale_scam (lib.rs unit tests) ─────────────────────
+
+    #[test]
+    fn pet_sale_scam_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "french bulldog pup for sale — pay crate deposit before shipping".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "pet_sale_scam"),
+            "pet_sale_scam must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn pet_sale_scam_does_not_fire_without_alert_shape() {
+        let w = OverlayWindow {
+            title: "french bulldog pup for sale — pay crate deposit before shipping".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "pet_sale_scam"),
+            "pet_sale_scam must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn pet_sale_scam_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("pet_sale_scam"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    // ── E49: timeshare_travel_scam (lib.rs unit tests) ─────────────
+
+    #[test]
+    fn timeshare_travel_scam_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title:
+                "complimentary vacation offer — pay activation fee to claim your resort membership"
+                    .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "timeshare_travel_scam"),
+            "timeshare_travel_scam must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn timeshare_travel_scam_does_not_fire_without_alert_shape() {
+        let w = OverlayWindow {
+            title:
+                "complimentary vacation offer — pay activation fee to claim your resort membership"
+                    .into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "timeshare_travel_scam"),
+            "timeshare_travel_scam must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn timeshare_travel_scam_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("timeshare_travel_scam"),
             Some(DarkPatternCategory::Sneaking)
         );
     }

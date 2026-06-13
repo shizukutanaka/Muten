@@ -725,6 +725,32 @@ MSRV 1.75, 286 tests.
   Weight `W_RENTAL_SCAM_LURE = 25`. Category: Sneaking. MITRE: T1566. 10
   confusables unit tests + 3 lib unit tests + 2 property tests + 4 scoring
   scenarios. (E47.)
+- **Pet-sale transport advance-fee scam** (`pet_sale_scam`; E48).
+  `has_pet_sale_scam(s)` fires when the normalized title contains both a
+  *pet-listing cue* (puppy for sale, puppies for sale, kitten for sale, akc
+  registered, purebred puppy, french bulldog pup, golden retriever pup, maltese
+  puppy, 子犬販売, 子猫販売, ペット販売, etc.) AND an *advance-demand cue* (shipping
+  deposit, transport fee required, crate deposit, insurance deposit, pay before
+  delivery, deposit to reserve, reserve your puppy, 配送前に入金, ペット輸送費,
+  etc.). A legitimate pet seller does not demand irreversible advance payment
+  for transport before delivery. FTC Consumer Sentinel 2024 (online-shopping
+  fraud, pet-transport scheme in top-10 by complaint count); BBB 2024 pet-scam
+  advisory; IC3 2024 cyber crime report. Weight `W_PET_SALE_SCAM = 25`.
+  Category: Sneaking. MITRE: T1566. 10 confusables unit tests + 3 lib unit
+  tests + 2 property tests + 4 scoring scenarios; 951 tests total. (E48.)
+- **Timeshare / vacation-prize advance-fee scam** (`timeshare_travel_scam`; E49).
+  `has_timeshare_travel_scam(s)` fires when the normalized title contains both a
+  *timeshare/vacation cue* (vacation club, timeshare, resort membership,
+  complimentary vacation, free vacation offer, タイムシェア, リゾート会員,
+  etc.) AND an *advance-fee demand* (activation fee, membership fee to activate,
+  certificate fee, closing fee, pay to claim your vacation, resort activation
+  fee, 会員費のお支払い, タイムシェア費用, etc.). Attackers target timeshare owners
+  by offering to "resell" the timeshare or award a complimentary stay, then
+  demand closing fees that never result in a transaction. FTC travel-prize fraud
+  advisory 2024; FTC timeshare resale fraud advisory; IC3 2024 complaint data.
+  Weight `W_TIMESHARE_TRAVEL_SCAM = 25`. Category: Sneaking. MITRE: T1566.
+  10 confusables unit tests + 3 lib unit tests + 2 property tests + 4 scoring
+  scenarios. (E49.)
 - **`verify` CLI subcommand** (H6). `muten-overlay verify <log> [--json]`
   replays the SHA-256 hash chain of an audit log produced by `monitor`,
   verifies every link's `prev_hash` and `hash` field, and reports the event

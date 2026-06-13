@@ -184,6 +184,10 @@ pub enum CompositeCondition {
     HasCharityScamLure,
     /// The `rental_scam_lure` signal fired (E47 — fake rental listing + advance deposit demand).
     HasRentalScamLure,
+    /// The `pet_sale_scam` signal fired (E48 — fake pet listing + transport/crate deposit demand).
+    HasPetSaleScam,
+    /// The `timeshare_travel_scam` signal fired (E49 — vacation club + activation fee demand).
+    HasTimeshareScam,
 }
 
 impl CompositeCondition {
@@ -235,6 +239,8 @@ impl CompositeCondition {
             "has_data_uri_page" => Some(Self::HasDataUriPage),
             "has_charity_scam_lure" => Some(Self::HasCharityScamLure),
             "has_rental_scam_lure" => Some(Self::HasRentalScamLure),
+            "has_pet_sale_scam" => Some(Self::HasPetSaleScam),
+            "has_timeshare_scam" => Some(Self::HasTimeshareScam),
             _ => None,
         }
     }

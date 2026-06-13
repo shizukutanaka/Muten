@@ -2691,6 +2691,127 @@ pub fn has_rental_scam_lure(s: &str) -> bool {
     rental_cue && advance_demand
 }
 
+/// E48 — Pet sale / puppy mill scam.
+///
+/// Fires when the normalized title contains BOTH a *pet-listing cue*
+/// (puppy, kitten, or specific breed for sale) AND an *advance-shipping
+/// demand* (shipping deposit, transport fee, crate fee, insurance deposit
+/// required before the pet is delivered — the defining tell of pet-sale
+/// fraud: legitimate pet sellers do not demand irreversible advance
+/// payments before the buyer inspects the animal).
+///
+/// Source: BBB Scam Tracker 2024 (#1 in online purchase scams by median
+/// victim loss at $750); FTC 2023 online shopping fraud; ASPCA pet-scam
+/// advisory. T1566 Phishing (fake pet listing).
+pub fn has_pet_sale_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let pet_cue = has("puppy for sale")
+        || has("puppies for sale")
+        || has("kitten for sale")
+        || has("kittens for sale")
+        || has("puppies available")
+        || has("kittens available")
+        || has("dog for sale")
+        || has("cat for sale")
+        || has("registered puppies")
+        || has("akc registered")
+        || has("purebred puppy")
+        || has("purebred kitten")
+        || has("french bulldog pup")
+        || has("golden retriever pup")
+        || has("maltese puppy")
+        || has("yorkie puppy")
+        || has("dachshund puppy")
+        || has("husky puppy")
+        || has("shih tzu puppy")
+        || has("miniature schnauzer")
+        || has("adopt a puppy")
+        || has("adopt a kitten")
+        || has("子犬販売")
+        || has("子猫販売")
+        || has("ペット販売")
+        || has("純血種の子犬")
+        || has("トイプードル販売");
+    let advance_demand = has("shipping deposit")
+        || has("shipping fee required")
+        || has("transport deposit")
+        || has("transport fee required")
+        || has("crate deposit")
+        || has("insurance deposit")
+        || has("vaccination deposit")
+        || has("delivery deposit")
+        || has("send deposit for puppy")
+        || has("send deposit for kitten")
+        || has("wire for the dog")
+        || has("wire for the cat")
+        || has("deposit to reserve the puppy")
+        || has("deposit to reserve the kitten")
+        || has("pay before delivery")
+        || has("payment before delivery")
+        || has("配送前に入金")
+        || has("ペット輸送費")
+        || has("子犬の輸送料")
+        || has("先に送金して")
+        || has("デポジットが必要");
+    pet_cue && advance_demand
+}
+
+/// E49 — Timeshare / vacation-club advance-fee scam.
+///
+/// Fires when the normalized title contains BOTH a *timeshare/vacation-club
+/// cue* (vacation ownership, resort membership, holiday club, travel club)
+/// AND an *advance-fee activation* (activation fee, membership fee, booking
+/// deposit, certificate fee required to unlock or claim vacation benefits).
+/// Timeshare resale scams and fake vacation-club overlays demand an upfront
+/// fee with promises of exclusive resort access or resale proceeds; the fee
+/// is collected and the benefit is never delivered.
+///
+/// Source: FTC Consumer Information "Timeshare and Vacation Club Scams"
+/// 2024; IC3 2024 travel-fraud category; BBB Wise Giving Alliance
+/// timeshare advisory; ARDA (American Resort Development Association)
+/// fraud alert. T1566 Phishing (fake vacation offer).
+pub fn has_timeshare_travel_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let timeshare_cue = has("vacation club")
+        || has("timeshare")
+        || has("resort membership")
+        || has("travel club membership")
+        || has("vacation ownership")
+        || has("holiday club")
+        || has("vacation package deal")
+        || has("exclusive resort access")
+        || has("resort points")
+        || has("vacation certificate")
+        || has("complimentary vacation")
+        || has("free vacation offer")
+        || has("resort stay offer")
+        || has("タイムシェア")
+        || has("リゾート会員")
+        || has("バケーションクラブ")
+        || has("旅行権利")
+        || has("会員制リゾート");
+    let advance_fee = has("activation fee")
+        || has("membership fee to activate")
+        || has("membership fee to claim")
+        || has("booking deposit required")
+        || has("reservation fee")
+        || has("certificate fee")
+        || has("administration fee to release")
+        || has("processing fee to activate")
+        || has("transfer fee to claim")
+        || has("closing fee")
+        || has("small fee to unlock")
+        || has("upfront fee to access")
+        || has("pay to claim your vacation")
+        || has("pay to access resort")
+        || has("タイムシェア費用")
+        || has("会員費のお支払い")
+        || has("リゾート会員費")
+        || has("権利確認料")
+        || has("利用権取得費");
+    timeshare_cue && advance_fee
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5463,6 +5584,188 @@ mod tests {
     fn rental_scam_fires_upfront_deposit() {
         assert!(has_rental_scam_lure(
             "no credit check rental — deposit upfront to secure the room for rent"
+        ));
+    }
+
+    // ── E48: pet_sale_scam ────────────────────────────────────────
+
+    #[test]
+    fn pet_sale_scam_fires_shipping_deposit() {
+        assert!(has_pet_sale_scam(
+            "golden retriever pup for sale — shipping deposit required — puppies available"
+        ));
+    }
+
+    #[test]
+    fn pet_sale_scam_fires_transport_fee() {
+        assert!(has_pet_sale_scam(
+            "french bulldog pup — transport fee required — puppy for sale"
+        ));
+    }
+
+    #[test]
+    fn pet_sale_scam_fires_akc_registered() {
+        assert!(has_pet_sale_scam(
+            "akc registered puppies for sale — insurance deposit — pay before delivery"
+        ));
+    }
+
+    #[test]
+    fn pet_sale_scam_fires_jp() {
+        assert!(has_pet_sale_scam(
+            "子犬販売 — 配送前に入金をお願いします — トイプードル販売"
+        ));
+        assert!(has_pet_sale_scam("子猫販売 — ペット輸送費 — 純血種の子犬"));
+    }
+
+    #[test]
+    fn pet_sale_scam_does_not_fire_pet_only() {
+        // Only pet cue — no shipping/advance demand
+        assert!(!has_pet_sale_scam(
+            "puppies for sale — registered with akc — contact us to schedule a visit"
+        ));
+        assert!(!has_pet_sale_scam(
+            "kitten for sale — healthy and vaccinated — local pickup"
+        ));
+    }
+
+    #[test]
+    fn pet_sale_scam_does_not_fire_shipping_only() {
+        // Only shipping demand — no pet cue
+        assert!(!has_pet_sale_scam(
+            "shipping deposit required — product will ship within 3-5 days"
+        ));
+        assert!(!has_pet_sale_scam(
+            "transport fee required — heavy item — contact us for details"
+        ));
+    }
+
+    #[test]
+    fn pet_sale_scam_does_not_fire_benign() {
+        // Legitimate pet listing without advance shipping demand
+        assert!(!has_pet_sale_scam(
+            "maltese puppy for sale — meet the parents — local pickup only"
+        ));
+        assert!(!has_pet_sale_scam(
+            "adopt a puppy from our shelter — no fee — visit us today"
+        ));
+    }
+
+    #[test]
+    fn pet_sale_scam_does_not_fire_jp_benign() {
+        // Pet without advance payment demand
+        assert!(!has_pet_sale_scam(
+            "子犬販売中。ブリーダー直売。見学ご予約ください。"
+        ));
+        // Shipping without pet
+        assert!(!has_pet_sale_scam(
+            "配送前に入金をお願いします。商品の発送について。"
+        ));
+    }
+
+    #[test]
+    fn pet_sale_scam_fires_crate_deposit() {
+        assert!(has_pet_sale_scam(
+            "purebred puppy — crate deposit and shipping fee required — maltese puppy"
+        ));
+    }
+
+    #[test]
+    fn pet_sale_scam_fires_deposit_to_reserve() {
+        assert!(has_pet_sale_scam(
+            "husky puppy — deposit to reserve the puppy — vaccination deposit also required"
+        ));
+    }
+
+    // ── E49: timeshare_travel_scam ────────────────────────────────
+
+    #[test]
+    fn timeshare_scam_fires_activation_fee() {
+        assert!(has_timeshare_travel_scam(
+            "vacation club — activation fee to activate your membership — exclusive resort access"
+        ));
+    }
+
+    #[test]
+    fn timeshare_scam_fires_certificate_fee() {
+        assert!(has_timeshare_travel_scam(
+            "complimentary vacation — certificate fee to claim — timeshare"
+        ));
+    }
+
+    #[test]
+    fn timeshare_scam_fires_closing_fee() {
+        assert!(has_timeshare_travel_scam(
+            "timeshare resale — closing fee to transfer your vacation ownership"
+        ));
+    }
+
+    #[test]
+    fn timeshare_scam_fires_jp() {
+        assert!(has_timeshare_travel_scam(
+            "タイムシェア — タイムシェア費用 — リゾート会員の権利"
+        ));
+        assert!(has_timeshare_travel_scam(
+            "会員制リゾート — 会員費のお支払い — バケーションクラブ"
+        ));
+    }
+
+    #[test]
+    fn timeshare_scam_does_not_fire_vacation_only() {
+        // Only vacation cue — no advance fee
+        assert!(!has_timeshare_travel_scam(
+            "vacation club membership — contact us to learn more about resort points"
+        ));
+        assert!(!has_timeshare_travel_scam(
+            "timeshare for sale — no upfront costs — meet with our team"
+        ));
+    }
+
+    #[test]
+    fn timeshare_scam_does_not_fire_fee_only() {
+        // Only fee mention — no vacation club cue
+        assert!(!has_timeshare_travel_scam(
+            "activation fee required — subscription plan renewal"
+        ));
+        assert!(!has_timeshare_travel_scam(
+            "membership fee to activate your account — click here"
+        ));
+    }
+
+    #[test]
+    fn timeshare_scam_does_not_fire_benign() {
+        // Legitimate timeshare content without advance fee
+        assert!(!has_timeshare_travel_scam(
+            "vacation club — see our resorts — no purchase required to attend"
+        ));
+        assert!(!has_timeshare_travel_scam(
+            "timeshare exit services — free consultation — no advance fees"
+        ));
+    }
+
+    #[test]
+    fn timeshare_scam_does_not_fire_jp_benign() {
+        // Resort without fee demand
+        assert!(!has_timeshare_travel_scam(
+            "リゾート会員の特典について。詳しくはお電話でお問い合わせください。"
+        ));
+        // Fee without timeshare cue
+        assert!(!has_timeshare_travel_scam(
+            "会員費のお支払い方法について。各種クレジットカードが使えます。"
+        ));
+    }
+
+    #[test]
+    fn timeshare_scam_fires_small_fee_unlock() {
+        assert!(has_timeshare_travel_scam(
+            "resort membership — small fee to unlock your free vacation certificate"
+        ));
+    }
+
+    #[test]
+    fn timeshare_scam_fires_pay_to_claim() {
+        assert!(has_timeshare_travel_scam(
+            "holiday club — pay to claim your vacation — transfer fee to claim ownership"
         ));
     }
 }

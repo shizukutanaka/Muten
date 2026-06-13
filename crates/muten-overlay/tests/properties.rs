@@ -1482,4 +1482,51 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_loan_fee_scam(&s));
         }
     }
+
+    /// has_pet_sale_scam never panics on arbitrary Unicode.
+    #[test]
+    fn pet_sale_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_pet_sale_scam(&s);
+    }
+
+    /// Plain ASCII without both a pet-listing cue and an advance-demand cue
+    /// never fires has_pet_sale_scam.
+    #[test]
+    fn plain_ascii_never_fires_pet_sale_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let pet_cue = has("puppy for sale") || has("puppies for sale")
+            || has("kitten for sale") || has("kittens for sale")
+            || has("akc registered") || has("purebred puppy")
+            || has("french bulldog pup") || has("golden retriever pup")
+            || has("maltese puppy");
+        let advance_demand = has("shipping deposit") || has("transport fee required")
+            || has("crate deposit") || has("insurance deposit")
+            || has("pay before delivery") || has("deposit to reserve")
+            || has("reserve your puppy") || has("reserve your kitten");
+        if !(pet_cue && advance_demand) {
+            prop_assert!(!muten_overlay::confusables::has_pet_sale_scam(&s));
+        }
+    }
+
+    /// has_timeshare_travel_scam never panics on arbitrary Unicode.
+    #[test]
+    fn timeshare_travel_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_timeshare_travel_scam(&s);
+    }
+
+    /// Plain ASCII without both a timeshare/vacation cue and a fee demand
+    /// never fires has_timeshare_travel_scam.
+    #[test]
+    fn plain_ascii_never_fires_timeshare_travel_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let timeshare_cue = has("vacation club") || has("timeshare")
+            || has("resort membership") || has("complimentary vacation")
+            || has("free vacation offer");
+        let advance_fee = has("activation fee") || has("membership fee to activate")
+            || has("certificate fee") || has("closing fee")
+            || has("pay to claim your vacation") || has("resort activation fee");
+        if !(timeshare_cue && advance_fee) {
+            prop_assert!(!muten_overlay::confusables::has_timeshare_travel_scam(&s));
+        }
+    }
 }
