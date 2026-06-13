@@ -4144,6 +4144,54 @@ mod tests {
         );
     }
 
+    /// Decision-threshold boundary guard (Socratic round 5). The product's
+    /// single most important output is the Allow / Suspicious / Block
+    /// verdict, decided by `score >= BLOCK_THRESHOLD` / `>= SUSPICIOUS_THRESHOLD`.
+    /// That `>=` (inclusive) semantics at the *exact* threshold value is the
+    /// classic off-by-one: flipping a `>=` to `>` would silently downgrade a
+    /// score of exactly 50 to Allow or exactly 100 to Suspicious — a severity
+    /// regression on the core contract that none of the existing decision
+    /// tests (which use scores like 90 or 125, comfortably away from the
+    /// edges) would catch. This pins all four boundary points by using a
+    /// `weight:` override to drive a fullscreen-only window to an exact score.
+    #[test]
+    fn decision_thresholds_are_inclusive_at_exact_boundaries() {
+        // A fullscreen-only window scores exactly its fullscreen weight
+        // (proven by weight_override_changes_score: coverage 100 + closable
+        // + neutral origin → score == fullscreen weight, no other signal).
+        let w = || OverlayWindow {
+            title: "plain window".into(),
+            coverage_percent: 100,
+            has_close_button: true,
+            ..Default::default()
+        };
+        let at = |score: i32| {
+            let rules = Ruleset::from_lines(&[&format!("weight: fullscreen {score}")]);
+            let v = classify(&w(), &rules);
+            assert_eq!(
+                v.score, score,
+                "override should set score to exactly {score}"
+            );
+            v.decision
+        };
+        // Just below / at the Suspicious threshold (50).
+        assert_eq!(at(SUSPICIOUS_THRESHOLD - 1), Decision::Allow, "49 → Allow");
+        assert_eq!(
+            at(SUSPICIOUS_THRESHOLD),
+            Decision::Suspicious,
+            "50 → Suspicious"
+        );
+        // Just below / at the Block threshold (100).
+        assert_eq!(
+            at(BLOCK_THRESHOLD - 1),
+            Decision::Suspicious,
+            "99 → Suspicious"
+        );
+        assert_eq!(at(BLOCK_THRESHOLD), Decision::Block, "100 → Block");
+        // Zero stays Allow (lower edge).
+        assert_eq!(at(0), Decision::Allow, "0 → Allow");
+    }
+
     // ── E7: urgency_countdown signal ─────────────────────────────────
 
     #[test]

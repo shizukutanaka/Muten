@@ -936,6 +936,17 @@ MSRV 1.75, 286 tests.
   proves the override flows through for the negative relief weight too (with the
   window kept above the `score.max(0)` clamp so the delta is exact). 1151
   tests total.
+- **Decision-threshold boundary guard** (Socratic round 5). The product's most
+  important output — the Allow / Suspicious / Block verdict — is decided by
+  `score >= BLOCK_THRESHOLD` / `>= SUSPICIOUS_THRESHOLD`. That inclusive `>=`
+  semantics at the *exact* threshold value was untested: every existing
+  decision test uses scores like 90 or 125, comfortably away from the edges,
+  so flipping a `>=` to `>` (downgrading a score of exactly 50 to Allow, or
+  exactly 100 to Suspicious) would pass CI silently. New
+  `decision_thresholds_are_inclusive_at_exact_boundaries` drives a
+  fullscreen-only window to exact scores via a `weight:` override and pins all
+  four edges: 49→Allow, 50→Suspicious, 99→Suspicious, 100→Block (plus 0→Allow).
+  1152 tests total.
 - **`verify` CLI subcommand** (H6). `muten-overlay verify <log> [--json]`
   replays the SHA-256 hash chain of an audit log produced by `monitor`,
   verifies every link's `prev_hash` and `hash` field, and reports the event
