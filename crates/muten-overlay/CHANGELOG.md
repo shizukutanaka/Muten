@@ -658,6 +658,47 @@ MSRV 1.75, 286 tests.
   = 25`.  Category: `Sneaking`.  MITRE: T1566.  10 confusables unit tests +
   3 lib unit tests + 2 property tests + 4 scoring scenarios; 797 tests total.
   (E41.)
+- **Streaming / subscription service billing scam** (`streaming_billing_scam`; E42).
+  `has_streaming_billing_scam(s)` fires when the normalized title contains a
+  *streaming_platform* ("netflix", "spotify", "disney+", "disney plus", "hulu",
+  "amazon prime", "hbo max", "youtube premium", "paramount+", "peacock
+  subscription", "crunchyroll", ネットフリックス, スポティファイ, アマゾンプライム,
+  ディズニープラス, ユーチューブプレミアム, アップルtv) AND a *payment_problem*
+  ("payment failed", "payment declined", "payment method expired", "payment
+  method failed", "credit card declined", "billing issue", "billing problem",
+  "failed to process payment", "unable to charge", "update your payment",
+  "verify your payment", "payment information required", "reactivate your
+  account", "account on hold", "membership suspended due to billing",
+  お支払いが失敗, 決済が失敗, 支払い方法が無効, 支払い情報の更新,
+  お支払い情報をご確認).  Phishing overlays impersonate Netflix, Spotify,
+  Disney+, Amazon Prime, and similar services to steal payment credentials or
+  account logins.  Distinct from `subscription_lure` (generic subscription-expiry
+  language): this signal keys on named streaming brands combined with
+  payment-failure framing rather than expiry language.  APWG Q4 2024 streaming-
+  service phishing surge; Netflix/Spotify official scam advisories.  Weight
+  `W_STREAMING_BILLING_SCAM = 25`.  Category: `InterfaceInterference`.  MITRE:
+  T1566.  10 confusables unit tests + 3 lib unit tests + 2 property tests + 4
+  scoring scenarios.  (E42.)
+- **Fake traffic / parking / toll violation scam** (`traffic_fine_scam`; E43).
+  `has_traffic_fine_scam(s)` fires when the normalized title contains a
+  *violation_type* ("parking violation", "parking ticket", "traffic fine",
+  "speeding ticket", "red light violation", "traffic citation", "toll violation",
+  "unpaid toll", "toll balance", "toll due", "outstanding toll", "road tax
+  notice", "vehicle fine", "ezpass", "fastrak", "i-pass", 駐車違反, 交通違反,
+  スピード違反, 信号無視, 反則金, 高速料金, 未払い料金) AND a *payment_urgency*
+  ("pay within", "pay immediately", "final notice to pay", "overdue fine",
+  "failure to pay", "warrant for non-payment", "immediate payment required",
+  "pay online now", "penalty will increase", "your fine has increased", "vehicle
+  registration hold", "license suspension", "license will be suspended", "avoid
+  additional fees", すぐにお支払い, 至急お支払い, 期限内にお支払い, 未払いの場合,
+  罰則金の支払い, 車両登録停止).  Scammers impersonate parking enforcement, traffic
+  courts, and toll authorities (EZPass, FasTrak, 高速料金) to extract immediate
+  payment for fabricated fines.  Distinct from `authority_lure` (requires a named
+  law-enforcement agency) and `tax_authority_scam` (tax debt + arrest threat).
+  FTC 2025 top-3 impersonator smishing/phishing category; FBI IC3 2025 EZPass/
+  FasTrak smishing alert.  Weight `W_TRAFFIC_FINE_SCAM = 25`.  Category:
+  `InterfaceInterference`.  MITRE: T1566.  10 confusables unit tests + 3 lib unit
+  tests + 2 property tests + 4 scoring scenarios; 824 tests total.  (E43.)
 - **Sextortion / webcam-recording extortion lure** (`sextortion_lure`; E25).
   `has_sextortion_lure(s)` fires when the normalized title contains a *camera_cue*
   ("your camera" / "your webcam" / "we have recorded" / "have been recording" /

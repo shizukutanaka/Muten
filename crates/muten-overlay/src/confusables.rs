@@ -2327,6 +2327,127 @@ pub fn has_debt_relief_scam(s: &str) -> bool {
     debt_claim && scam_cta
 }
 
+/// E42 — Streaming / subscription service billing scam.
+///
+/// AND-pair: named streaming or subscription platform AND a payment-failure
+/// or billing-problem phrase.  Phishing overlays impersonate Netflix, Spotify,
+/// Disney+, Amazon Prime, and similar services to steal payment credentials.
+/// Distinct from `subscription_lure` (generic subscription-expiry language):
+/// this signal keys on named streaming brands combined with payment-failure
+/// framing rather than expiry language.
+pub fn has_streaming_billing_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let streaming_platform = has("netflix")
+        || has("spotify")
+        || has("disney+")
+        || has("disney plus")
+        || has("hulu")
+        || has("amazon prime")
+        || has("apple tv+")
+        || has("apple tv plus")
+        || has("max subscription")
+        || has("hbo max")
+        || has("youtube premium")
+        || has("youtube music")
+        || has("peacock subscription")
+        || has("paramount+")
+        || has("paramount plus")
+        || has("sling tv")
+        || has("fubo tv")
+        || has("crunchyroll")
+        || has("ネットフリックス") // Netflix (JP)
+        || has("スポティファイ") // Spotify (JP)
+        || has("アマゾンプライム") // Amazon Prime (JP)
+        || has("ディズニープラス") // Disney+ (JP)
+        || has("ユーチューブプレミアム") // YouTube Premium (JP)
+        || has("アップルtv"); // Apple TV (JP)
+    let payment_problem = has("payment failed")
+        || has("payment declined")
+        || has("payment method expired")
+        || has("payment method failed")
+        || has("payment method invalid")
+        || has("credit card declined")
+        || has("billing issue")
+        || has("billing problem")
+        || has("failed to process payment")
+        || has("unable to charge")
+        || has("update your payment")
+        || has("verify your payment")
+        || has("payment information required")
+        || has("reactivate your account")
+        || has("account on hold")
+        || has("membership suspended due to billing")
+        || has("subscription paused")
+        || has("お支払いが失敗") // payment failed (JP)
+        || has("決済が失敗") // transaction failed (JP)
+        || has("支払い方法が無効") // payment method invalid (JP)
+        || has("支払い情報の更新") // payment info update (JP)
+        || has("お支払い情報をご確認") // please verify payment info (JP)
+        || has("アカウントが停止中"); // account is suspended (JP)
+    streaming_platform && payment_problem
+}
+
+/// E43 — Fake traffic / parking / toll violation scam.
+///
+/// AND-pair: traffic or parking violation noun AND a payment-urgency phrase.
+/// Scammers impersonate parking enforcement, traffic courts, and toll
+/// authorities (EZPass, FasTrak, 高速道路) to extract immediate payment.
+/// Distinct from `authority_lure` (requires a named law-enforcement agency)
+/// and `tax_authority_scam` (tax debt + arrest threat).  FTC 2025 reports
+/// traffic/toll smishing as a top-3 impersonator scam type.
+pub fn has_traffic_fine_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let violation_type = has("parking violation")
+        || has("parking ticket")
+        || has("traffic fine")
+        || has("speeding ticket")
+        || has("red light violation")
+        || has("traffic citation")
+        || has("moving violation")
+        || has("toll violation")
+        || has("unpaid toll")
+        || has("toll balance")
+        || has("toll due")
+        || has("outstanding toll")
+        || has("road tax notice")
+        || has("vehicle fine")
+        || has("traffic penalty")
+        || has("ezpass")
+        || has("fastrak")
+        || has("i-pass")
+        || has("駐車違反") // parking violation (JP)
+        || has("交通違反") // traffic violation (JP)
+        || has("スピード違反") // speeding violation (JP)
+        || has("信号無視") // red light violation / signal ignored (JP)
+        || has("駐車違反金") // parking fine (JP)
+        || has("反則金") // traffic violation fine (JP)
+        || has("高速料金") // expressway toll (JP)
+        || has("未払い料金"); // unpaid fee/toll (JP)
+    let payment_urgency = has("pay within")
+        || has("pay immediately")
+        || has("final notice to pay")
+        || has("overdue fine")
+        || has("failure to pay")
+        || has("warrant for non-payment")
+        || has("immediate payment required")
+        || has("pay online now")
+        || has("penalty will increase")
+        || has("your fine has increased")
+        || has("vehicle registration hold")
+        || has("license suspension")
+        || has("license will be suspended")
+        || has("avoid additional fees")
+        || has("to avoid further penalties")
+        || has("to avoid suspension")
+        || has("すぐにお支払い") // pay immediately (JP)
+        || has("至急お支払い") // urgent payment (JP)
+        || has("期限内にお支払い") // pay within the deadline (JP)
+        || has("未払いの場合") // in case of non-payment (JP)
+        || has("罰則金の支払い") // payment of penalty (JP)
+        || has("車両登録停止"); // vehicle registration suspension (JP)
+    violation_type && payment_urgency
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4611,6 +4732,126 @@ mod tests {
         // Scam CTA without debt claim
         assert!(!has_debt_relief_scam(
             "確実に解決します。審査不要で今すぐご相談ください。"
+        ));
+    }
+
+    // ── has_streaming_billing_scam ───────────────────────────────────────────
+
+    #[test]
+    fn streaming_billing_scam_fires_on_netflix_payment_failed() {
+        assert!(has_streaming_billing_scam(
+            "netflix: your payment failed — update your payment method to continue streaming"
+        ));
+        assert!(has_streaming_billing_scam(
+            "spotify: payment declined — billing issue detected — verify your payment information"
+        ));
+    }
+
+    #[test]
+    fn streaming_billing_scam_fires_on_disney_plus_billing() {
+        assert!(has_streaming_billing_scam(
+            "disney plus: payment method expired — reactivate your account now — failed to process payment"
+        ));
+        assert!(has_streaming_billing_scam(
+            "amazon prime: credit card declined — account on hold — update your payment to restore access"
+        ));
+    }
+
+    #[test]
+    fn streaming_billing_scam_fires_jp() {
+        assert!(has_streaming_billing_scam(
+            "ネットフリックスよりお知らせ：お支払いが失敗しました。お支払い情報をご確認ください。"
+        ));
+        assert!(has_streaming_billing_scam(
+            "アマゾンプライム：決済が失敗しました。支払い情報の更新が必要です。"
+        ));
+    }
+
+    #[test]
+    fn streaming_billing_scam_does_not_fire_on_benign() {
+        // Platform name without payment problem
+        assert!(!has_streaming_billing_scam(
+            "netflix now available — unlimited movies and shows — try one month free"
+        ));
+        // Payment problem without platform name
+        assert!(!has_streaming_billing_scam(
+            "payment failed: please update your payment method for your subscription"
+        ));
+        // Generic billing info
+        assert!(!has_streaming_billing_scam(
+            "billing issue resolved — your account has been updated — thank you"
+        ));
+    }
+
+    #[test]
+    fn streaming_billing_scam_does_not_fire_jp_benign() {
+        // Platform without payment problem
+        assert!(!has_streaming_billing_scam(
+            "ネットフリックスの映画おすすめランキング2025年版。"
+        ));
+        // Payment problem without platform
+        assert!(!has_streaming_billing_scam(
+            "お支払いが失敗した場合の対処法について解説します。"
+        ));
+    }
+
+    // ── has_traffic_fine_scam ────────────────────────────────────────────────
+
+    #[test]
+    fn traffic_fine_scam_fires_on_parking_violation_plus_urgency() {
+        assert!(has_traffic_fine_scam(
+            "parking violation notice: overdue fine — pay within 24 hours to avoid additional fees"
+        ));
+        assert!(has_traffic_fine_scam(
+            "traffic fine: speeding ticket unpaid — final notice to pay — failure to pay results in license suspension"
+        ));
+    }
+
+    #[test]
+    fn traffic_fine_scam_fires_on_toll_unpaid_plus_urgency() {
+        assert!(has_traffic_fine_scam(
+            "ezpass: unpaid toll balance — pay immediately to avoid additional penalties — vehicle fine"
+        ));
+        assert!(has_traffic_fine_scam(
+            "fastrak: toll violation outstanding — pay within 48 hours — penalty will increase"
+        ));
+    }
+
+    #[test]
+    fn traffic_fine_scam_fires_jp() {
+        assert!(has_traffic_fine_scam(
+            "駐車違反のお知らせ：反則金未払い。すぐにお支払いください。未払いの場合は車両登録停止。"
+        ));
+        assert!(has_traffic_fine_scam(
+            "高速料金の未払い料金があります。至急お支払いください。罰則金の支払いは期限内にお支払い。"
+        ));
+    }
+
+    #[test]
+    fn traffic_fine_scam_does_not_fire_on_benign() {
+        // Violation type without urgency
+        assert!(!has_traffic_fine_scam(
+            "parking violation: how to contest a ticket in your city — legal guide"
+        ));
+        // Payment urgency without violation type
+        assert!(!has_traffic_fine_scam(
+            "pay within 24 hours to avoid additional fees — final notice"
+        ));
+        // Legitimate traffic info
+        assert!(!has_traffic_fine_scam(
+            "red light violation statistics: city releases 2024 traffic enforcement report"
+        ));
+    }
+
+    #[test]
+    fn traffic_fine_scam_does_not_fire_jp_benign() {
+        // Violation info without urgency
+        assert!(!has_traffic_fine_scam(
+            "駐車違反の罰則と対処方法について。交通違反の流れを解説します。"
+        ));
+        // Urgency without violation
+        assert!(!has_traffic_fine_scam(
+            "すぐにお支払いください。至急ご確認をお願いします。"
         ));
     }
 }

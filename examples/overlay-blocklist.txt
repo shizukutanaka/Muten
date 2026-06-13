@@ -717,3 +717,33 @@ title: 借金の悩み解決債務整理確実に解決します着手金が必�
 title: 多重債務クレジットカードの借金審査不要で借金解決相談料が必要です           # JP: multiple debts, no credit check, consultation fee required
 glob: * debt relief program * guaranteed approval *
 glob: * eliminate your debt * no credit check *
+
+# ─────────────────────────────────────────────────────────────────
+# STREAMING / SUBSCRIPTION BILLING scam (E42). Heuristic:
+# has_streaming_billing_scam. Sources: APWG Q4 2024 streaming-service
+# phishing surge; Netflix/Spotify official scam advisories.
+# ─────────────────────────────────────────────────────────────────
+title: netflix your payment failed update your payment method to continue streaming
+title: spotify payment declined billing issue verify your payment information now
+title: disney plus payment method expired reactivate your account failed to process payment
+title: amazon prime credit card declined account on hold update your payment to restore
+title: hbo max payment failed subscription paused update payment method immediately
+title: ネットフリックスよりお支払いが失敗しました支払い情報の更新が必要です       # JP: Netflix payment failed, update payment info
+title: アマゾンプライム決済が失敗しました支払い方法が無効です今すぐご確認を       # JP: Amazon Prime transaction failed, method invalid
+glob: * netflix * payment failed *
+glob: * spotify * billing issue *
+
+# ─────────────────────────────────────────────────────────────────
+# TRAFFIC / PARKING / TOLL FINE scam (E43). Heuristic:
+# has_traffic_fine_scam. Sources: FTC 2025 top-3 impersonator scam type;
+# FBI IC3 2025 EZPass/FasTrak smishing alert.
+# ─────────────────────────────────────────────────────────────────
+title: parking violation notice overdue fine pay within 24 hours avoid license suspension
+title: traffic fine speeding ticket unpaid final notice to pay failure to pay license suspension
+title: ezpass unpaid toll balance pay immediately to avoid additional penalties vehicle fine
+title: fastrak toll violation outstanding pay within 48 hours penalty will increase
+title: red light violation traffic citation pay online now immediate payment required
+title: 駐車違反反則金未払いすぐにお支払いください未払いの場合は車両登録停止      # JP: parking fine, unpaid, pay now or registration hold
+title: 高速料金の未払い料金があります至急お支払いください罰則金の支払いを         # JP: expressway toll unpaid, urgent payment, penalty
+glob: * parking violation * pay within *
+glob: * unpaid toll * pay immediately *

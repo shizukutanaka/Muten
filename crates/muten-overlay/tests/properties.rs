@@ -1269,6 +1269,18 @@ proptest! {
         let _ = muten_overlay::confusables::has_debt_relief_scam(&s);
     }
 
+    /// has_streaming_billing_scam never panics on arbitrary Unicode.
+    #[test]
+    fn has_streaming_billing_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_streaming_billing_scam(&s);
+    }
+
+    /// has_traffic_fine_scam never panics on arbitrary Unicode.
+    #[test]
+    fn has_traffic_fine_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_traffic_fine_scam(&s);
+    }
+
     /// Plain ASCII without both an immigration-document phrase and a
     /// status-threat or fee phrase never fires.
     #[test]
@@ -1334,6 +1346,30 @@ proptest! {
             || has("results guaranteed");
         if !(debt_claim && scam_cta) {
             prop_assert!(!muten_overlay::confusables::has_debt_relief_scam(&s));
+        }
+    }
+
+    /// Plain ASCII without both a traffic/toll violation noun and a payment-
+    /// urgency phrase never fires has_traffic_fine_scam.
+    #[test]
+    fn plain_ascii_never_fires_traffic_fine_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let violation_type = has("parking violation") || has("parking ticket")
+            || has("traffic fine") || has("speeding ticket") || has("red light violation")
+            || has("traffic citation") || has("moving violation") || has("toll violation")
+            || has("unpaid toll") || has("toll balance") || has("toll due")
+            || has("outstanding toll") || has("road tax notice") || has("vehicle fine")
+            || has("traffic penalty") || has("ezpass") || has("fastrak") || has("i-pass");
+        let payment_urgency = has("pay within") || has("pay immediately")
+            || has("final notice to pay") || has("overdue fine") || has("failure to pay")
+            || has("warrant for non-payment") || has("immediate payment required")
+            || has("pay online now") || has("penalty will increase")
+            || has("your fine has increased") || has("vehicle registration hold")
+            || has("license suspension") || has("license will be suspended")
+            || has("avoid additional fees") || has("to avoid further penalties")
+            || has("to avoid suspension");
+        if !(violation_type && payment_urgency) {
+            prop_assert!(!muten_overlay::confusables::has_traffic_fine_scam(&s));
         }
     }
 }

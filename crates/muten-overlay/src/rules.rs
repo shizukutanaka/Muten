@@ -170,6 +170,10 @@ pub enum CompositeCondition {
     HasGovernmentGrantScam,
     /// The `debt_relief_scam` signal fired (E41 — debt/credit distress + guaranteed-fee CTA).
     HasDebtReliefScam,
+    /// The `streaming_billing_scam` signal fired (E42 — named streaming service + payment failure).
+    HasStreamingBillingScam,
+    /// The `traffic_fine_scam` signal fired (E43 — traffic/parking/toll violation + payment urgency).
+    HasTrafficFineScam,
 }
 
 impl CompositeCondition {
@@ -214,6 +218,8 @@ impl CompositeCondition {
             "has_immigration_visa_scam" => Some(Self::HasImmigrationVisaScam),
             "has_government_grant_scam" => Some(Self::HasGovernmentGrantScam),
             "has_debt_relief_scam" => Some(Self::HasDebtReliefScam),
+            "has_streaming_billing_scam" => Some(Self::HasStreamingBillingScam),
+            "has_traffic_fine_scam" => Some(Self::HasTrafficFineScam),
             _ => None,
         }
     }

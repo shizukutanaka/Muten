@@ -329,6 +329,12 @@ fn signal_phrase(signal: &str) -> &str {
         "debt_relief_scam" => {
             "poses as a debt-relief or credit-repair service promising guaranteed debt elimination, and demands an upfront application or consultation fee before delivering any service"
         }
+        "streaming_billing_scam" => {
+            "impersonates a streaming or subscription service (Netflix, Spotify, Disney+, Amazon Prime) with a fake payment-failure alert designed to steal payment credentials or subscription logins"
+        }
+        "traffic_fine_scam" => {
+            "impersonates a traffic enforcement authority or toll operator (parking enforcement, EZPass, FasTrak) with a fake violation notice demanding immediate payment to avoid license suspension or additional penalties"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -442,6 +448,8 @@ const W_SOCIAL_MEDIA_ACCOUNT_ALARM: i32 = 25; // social platform named + hacked/
 const W_IMMIGRATION_VISA_SCAM: i32 = 25; // visa/work-permit named + revocation/deportation threat (targets immigrants)
 const W_GOVERNMENT_GRANT_SCAM: i32 = 25; // government grant/stimulus impersonation + fee barrier (FTC gov-impostor)
 const W_DEBT_RELIEF_SCAM: i32 = 25; // debt/credit relief framing + upfront fee / guaranteed-results CTA
+const W_STREAMING_BILLING_SCAM: i32 = 25; // named streaming service + payment-failure/billing-problem (APWG 2025)
+const W_TRAFFIC_FINE_SCAM: i32 = 25; // traffic/parking/toll violation + payment urgency (FTC 2025 top-3 impostor)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -512,6 +520,8 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "immigration_visa_scam" => Some(W_IMMIGRATION_VISA_SCAM),
         "government_grant_scam" => Some(W_GOVERNMENT_GRANT_SCAM),
         "debt_relief_scam" => Some(W_DEBT_RELIEF_SCAM),
+        "streaming_billing_scam" => Some(W_STREAMING_BILLING_SCAM),
+        "traffic_fine_scam" => Some(W_TRAFFIC_FINE_SCAM),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -571,6 +581,8 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "immigration_visa_scam"
             | "government_grant_scam"
             | "debt_relief_scam"
+            | "streaming_billing_scam"
+            | "traffic_fine_scam"
             | "remote_access_lure"
     )
 }
@@ -1465,6 +1477,36 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         signals.push("debt_relief_scam".into());
     }
 
+    // Streaming/subscription billing scam (E42).  Phishing overlays
+    // impersonate Netflix, Spotify, Disney+, Amazon Prime, and similar
+    // streaming services with fake payment-failure alerts designed to steal
+    // payment credentials or account logins.  Distinct from `subscription_lure`
+    // (generic expiry language): this signal keys on named streaming brands
+    // combined with payment-failure framing (not subscription-expiry language).
+    // streaming_platform: "netflix", "spotify", "disney+", "amazon prime",
+    //   "hbo max", "youtube premium", ネットフリックス, スポティファイ, etc.
+    // payment_problem: "payment failed", "payment declined", "billing issue",
+    //   "update your payment", お支払いが失敗, 支払い方法が無効.
+    if alert_shaped && confusables::has_streaming_billing_scam(&normalized_title) {
+        score += rules.weight_of("streaming_billing_scam", W_STREAMING_BILLING_SCAM);
+        signals.push("streaming_billing_scam".into());
+    }
+
+    // Traffic / parking / toll violation scam (E43).  Scammers impersonate
+    // parking enforcement, traffic courts, and toll authorities (EZPass,
+    // FasTrak, 高速料金) to extract immediate payment for fabricated fines.
+    // Distinct from `authority_lure` (requires a named law-enforcement agency)
+    // and `tax_authority_scam` (tax debt + arrest threat).  FTC 2025 top-3
+    // impersonator scam type.
+    // violation_type: "parking violation", "traffic fine", "speeding ticket",
+    //   "toll violation", "unpaid toll", "ezpass", 駐車違反, 交通違反, 反則金.
+    // payment_urgency: "pay within", "final notice", "failure to pay",
+    //   "license suspension", すぐにお支払い, 未払いの場合, 罰則金の支払い.
+    if alert_shaped && confusables::has_traffic_fine_scam(&normalized_title) {
+        score += rules.weight_of("traffic_fine_scam", W_TRAFFIC_FINE_SCAM);
+        signals.push("traffic_fine_scam".into());
+    }
+
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
     // seize the machine. These tools are legitimate, so their name alone
@@ -1792,6 +1834,8 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasImmigrationVisaScam => has_sig("immigration_visa_scam"),
         C::HasGovernmentGrantScam => has_sig("government_grant_scam"),
         C::HasDebtReliefScam => has_sig("debt_relief_scam"),
+        C::HasStreamingBillingScam => has_sig("streaming_billing_scam"),
+        C::HasTrafficFineScam => has_sig("traffic_fine_scam"),
     }
 }
 
@@ -5841,6 +5885,116 @@ mod tests {
         assert_eq!(
             category_of("debt_relief_scam"),
             Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    // ── E42: streaming_billing_scam ──────────────────────────────────────────
+
+    #[test]
+    fn streaming_billing_scam_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "netflix: your payment failed — update your payment method to continue".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "streaming_billing_scam"),
+            "expected streaming_billing_scam; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_STREAMING_BILLING_SCAM);
+    }
+
+    #[test]
+    fn streaming_billing_scam_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "spotify: payment declined — billing issue — update your payment method".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "streaming_billing_scam"),
+            "streaming_billing_scam must not fire on user-initiated page; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn streaming_billing_scam_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("streaming_billing_scam"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E43: traffic_fine_scam ───────────────────────────────────────────────
+
+    #[test]
+    fn traffic_fine_scam_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title:
+                "parking violation notice — overdue fine — pay within 24 hours — license suspension"
+                    .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "traffic_fine_scam"),
+            "expected traffic_fine_scam; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_TRAFFIC_FINE_SCAM);
+    }
+
+    #[test]
+    fn traffic_fine_scam_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "ezpass: unpaid toll — pay immediately — to avoid suspension".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "traffic_fine_scam"),
+            "traffic_fine_scam must not fire on user-initiated page; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn traffic_fine_scam_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("traffic_fine_scam"),
+            Some(DarkPatternCategory::InterfaceInterference)
         );
     }
 }

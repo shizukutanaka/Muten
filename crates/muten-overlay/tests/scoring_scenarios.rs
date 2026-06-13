@@ -2369,3 +2369,224 @@ fn debt_relief_scam_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E42: streaming_billing_scam ──────────────────────────────────────────────
+
+#[test]
+fn streaming_billing_scam_fires_on_alert_shaped_window() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "netflix: your payment failed — update your payment method immediately".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "streaming_billing_scam"),
+        "expected streaming_billing_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 25,
+        "streaming_billing_scam must contribute at least W=25; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn streaming_billing_scam_fp_guard_no_alert_shape() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "spotify: payment declined — billing issue — update your payment".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        },
+        &rules,
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "streaming_billing_scam"),
+        "streaming_billing_scam must not fire without alert_shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_streaming_billing_scam_reaches_suspicious() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title:
+                "ネットフリックスよりお知らせ：お支払いが失敗しました。支払い情報の更新が必要です。"
+                    .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "streaming_billing_scam"),
+        "expected streaming_billing_scam for JP Netflix impostor; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP streaming_billing_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn streaming_billing_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "amazon prime: payment failed — billing issue — call 1-800-555-0196 to update payment method".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "streaming_billing_scam"),
+        "expected streaming_billing_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "streaming_billing_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}
+
+// ── E43: traffic_fine_scam ───────────────────────────────────────────────────
+
+#[test]
+fn traffic_fine_scam_fires_on_alert_shaped_window() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "parking violation notice — overdue fine — pay within 24 hours — avoid license suspension".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "traffic_fine_scam"),
+        "expected traffic_fine_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 25,
+        "traffic_fine_scam must contribute at least W=25; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn traffic_fine_scam_fp_guard_no_alert_shape() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "ezpass: unpaid toll balance — pay immediately — to avoid suspension".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        },
+        &rules,
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "traffic_fine_scam"),
+        "traffic_fine_scam must not fire without alert_shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_traffic_fine_scam_reaches_suspicious() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "駐車違反のお知らせ：反則金未払い。すぐにお支払いください。未払いの場合は車両登録停止。"
+                .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "traffic_fine_scam"),
+        "expected traffic_fine_scam for JP parking impostor; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP traffic_fine_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn traffic_fine_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "fastrak: toll violation — pay immediately — call 1-800-555-0197 — penalty will increase".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "traffic_fine_scam"),
+        "expected traffic_fine_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "traffic_fine_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}
