@@ -6396,6 +6396,109 @@ mod tests {
         }
     }
 
+    /// Registry-consistency guard (Gap A). `signal_phrase()` has a
+    /// `other => other` fallback that echoes the raw signal name when no
+    /// explicit phrase arm exists. A signal added to the `all_signals()`
+    /// NAMES array but missing its `signal_phrase()` arm would therefore
+    /// have `description == name` — a non-empty but useless description
+    /// that the older `all_signals_description_nonempty` test cannot catch.
+    /// This asserts every registered signal carries a *real* human phrase
+    /// distinct from its machine name, so a forgotten phrase wiring fails
+    /// loudly instead of silently shipping a bare signal name to operators.
+    #[test]
+    fn all_signals_have_real_descriptions_not_name_echo() {
+        for s in all_signals() {
+            assert_ne!(
+                s.description, s.name,
+                "signal {} has no signal_phrase() arm — description echoes the \
+                 raw name (add an arm in signal_phrase())",
+                s.name
+            );
+            // A real phrase is a sentence fragment, not a short token.
+            assert!(
+                s.description.len() > s.name.len(),
+                "signal {} description is suspiciously short ({:?}) — likely a \
+                 stub rather than an explanatory phrase",
+                s.name,
+                s.description
+            );
+        }
+    }
+
+    /// Registry-completeness guard (Gap B). Every content signal that
+    /// `classify()` can push into `Verdict.signals` must also be
+    /// enumerable via `all_signals()` — otherwise an MDM operator listing
+    /// signals (the `signals` CLI subcommand) to build a blocklist would
+    /// never learn the signal exists. This cross-checks the curated list
+    /// of every AND-pair content signal (E1–E59) and the structural URL
+    /// signals against the registry. Adding a `signals.push("x")` in
+    /// `classify()` without adding `"x"` to the NAMES array fails here.
+    #[test]
+    fn every_content_signal_is_in_registry() {
+        let registry: std::collections::HashSet<&str> =
+            all_signals().iter().map(|s| s.name).collect();
+        // Every named content/structural signal classify() can emit.
+        for name in &[
+            "clickfix_instruction",
+            "urgency_countdown",
+            "forced_retention_cue",
+            "credential_harvest_cue",
+            "fake_scanner_cue",
+            "subscription_lure",
+            "authority_lure",
+            "download_trap_lure",
+            "prize_lure",
+            "crypto_drain_lure",
+            "screen_share_lure",
+            "qr_code_lure",
+            "ip_alarm_lure",
+            "package_fee_lure",
+            "sextortion_lure",
+            "gift_card_demand",
+            "refund_scam_cue",
+            "national_id_alarm",
+            "bank_account_alarm",
+            "false_registration_billing",
+            "fake_bsod_lure",
+            "advance_fee_lure",
+            "tech_support_invoice_scam",
+            "utility_cutoff_threat",
+            "healthcare_scam",
+            "job_scam",
+            "tax_authority_scam",
+            "social_media_account_alarm",
+            "immigration_visa_scam",
+            "government_grant_scam",
+            "debt_relief_scam",
+            "streaming_billing_scam",
+            "traffic_fine_scam",
+            "pig_butchering_lure",
+            "loan_fee_scam",
+            "data_uri_page",
+            "ip_host_url",
+            "charity_scam_lure",
+            "rental_scam_lure",
+            "pet_sale_scam",
+            "timeshare_travel_scam",
+            "windows_activation_scam",
+            "survey_reward_scam",
+            "av_brand_renewal_scam",
+            "recovery_scam",
+            "student_loan_scam",
+            "secret_shopper_scam",
+            "mlm_pyramid_recruitment",
+            "veterans_benefit_scam",
+            "fake_copyright_scam",
+            "remote_access_lure",
+        ] {
+            assert!(
+                registry.contains(name),
+                "content signal {name:?} can fire in classify() but is missing \
+                 from all_signals() NAMES — operators cannot discover it"
+            );
+        }
+    }
+
     #[test]
     fn all_signals_contains_key_signals() {
         let sigs = all_signals();

@@ -876,6 +876,21 @@ MSRV 1.75, 286 tests.
   Weight `W_FAKE_COPYRIGHT_SCAM = 30`. Category: InterfaceInterference. MITRE:
   T1566. 10 confusables unit tests + 3 lib unit tests + 2 property tests + 4
   scoring scenarios; 1132 tests total. (E59.)
+- **Signal-registry consistency guards** (F1 follow-up). Two new tests harden
+  the `all_signals()` registry against the silent wiring-omission bug class that
+  the per-signal boilerplate (7 edit points in `lib.rs` per content signal)
+  makes easy to hit. (1) `all_signals_have_real_descriptions_not_name_echo`
+  asserts every registered signal's `description` differs from its raw `name`
+  — `signal_phrase()` has an `other => other` fallback, so a signal added to
+  the NAMES array but missing its phrase arm would otherwise ship a bare machine
+  name as its "description" and pass the older non-empty check. (2)
+  `every_content_signal_is_in_registry` cross-checks every content/structural
+  signal `classify()` can emit (E1–E59 + URL-structural) against the registry,
+  so a `signals.push("x")` added without a NAMES entry — which would hide the
+  signal from the operator-facing `signals` CLI subcommand — fails loudly.
+  Both currently pass (no live bug); they are regression guards making the
+  prior 16 additions and all future ones provably discoverable and documented.
+  1134 tests total.
 - **`verify` CLI subcommand** (H6). `muten-overlay verify <log> [--json]`
   replays the SHA-256 hash chain of an audit log produced by `monitor`,
   verifies every link's `prev_hash` and `hash` field, and reports the event
