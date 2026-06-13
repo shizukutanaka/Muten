@@ -2788,3 +2788,97 @@ fn loan_fee_scam_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── A9: data_uri_page ─────────────────────────────────────────────
+
+#[test]
+fn data_uri_page_fires_on_data_scheme_alert() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "microsoft security warning — call support".into(),
+            url: Some("data:text/html,<html>fake alert</html>".into()),
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "data_uri_page"),
+        "expected data_uri_page; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn data_uri_page_fp_guard_no_alert_shape() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "hello world".into(),
+            url: Some("data:text/html,hello".into()),
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        },
+        &rules,
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "data_uri_page"),
+        "data_uri_page must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn file_scheme_page_fires_data_uri_signal() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "windows defender — critical threat detected".into(),
+            url: Some("file:///C:/Users/Public/scam.html".into()),
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "data_uri_page"),
+        "expected data_uri_page for file:// URL; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn data_uri_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "critical virus alert — call 1-800-555-0234 immediately".into(),
+            url: Some("data:text/html,<html>call microsoft support</html>".into()),
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "data_uri_page + phone must reach Block; score = {}",
+        v.score
+    );
+}

@@ -143,6 +143,7 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         "traffic_fine_scam" => Some(InterfaceInterference),
         "pig_butchering_lure" => Some(Sneaking), // romance framing disguises the investment fraud
         "loan_fee_scam" => Some(Sneaking), // fake approval disguises the advance-fee extraction
+        "data_uri_page" => Some(Sneaking), // scheme disguises the absence of a real hosting domain
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }

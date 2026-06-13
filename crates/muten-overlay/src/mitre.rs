@@ -87,7 +87,8 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         | "streaming_billing_scam"
         | "traffic_fine_scam"
         | "pig_butchering_lure"
-        | "loan_fee_scam" => &["T1566"],
+        | "loan_fee_scam"
+        | "data_uri_page" => &["T1566"],
         _ => &[],
     }
 }
@@ -180,6 +181,7 @@ mod tests {
         assert_eq!(techniques_of("traffic_fine_scam"), &["T1566"]);
         assert_eq!(techniques_of("pig_butchering_lure"), &["T1566"]);
         assert_eq!(techniques_of("loan_fee_scam"), &["T1566"]);
+        assert_eq!(techniques_of("data_uri_page"), &["T1566"]);
     }
 
     #[test]

@@ -341,6 +341,9 @@ fn signal_phrase(signal: &str) -> &str {
         "loan_fee_scam" => {
             "claims the victim has been pre-approved for a personal, payday, or emergency loan, then demands an upfront processing fee, insurance deposit, or collateral payment before releasing funds that do not exist (advance-fee loan fraud)"
         }
+        "data_uri_page" => {
+            "is hosted at a data: or file:// URL, a technique used by tech-support scammers to serve fake-alert overlays without a domain that can be blocklisted"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -458,6 +461,7 @@ const W_STREAMING_BILLING_SCAM: i32 = 25; // named streaming service + payment-f
 const W_TRAFFIC_FINE_SCAM: i32 = 25; // traffic/parking/toll violation + payment urgency (FTC 2025 top-3 impostor)
 const W_PIG_BUTCHERING_LURE: i32 = 30; // romance/mentor cue + investment platform (IC3 2024 #1 by loss $4.57B)
 const W_LOAN_FEE_SCAM: i32 = 30; // pre-approved loan + upfront-fee gate (FTC advance-fee loan fraud)
+const W_DATA_URI_PAGE: i32 = 25; // alert-shaped window served from data: or file:// URL (blocklist-bypass technique)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -532,6 +536,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "traffic_fine_scam" => Some(W_TRAFFIC_FINE_SCAM),
         "pig_butchering_lure" => Some(W_PIG_BUTCHERING_LURE),
         "loan_fee_scam" => Some(W_LOAN_FEE_SCAM),
+        "data_uri_page" => Some(W_DATA_URI_PAGE),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -595,6 +600,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "traffic_fine_scam"
             | "pig_butchering_lure"
             | "loan_fee_scam"
+            | "data_uri_page"
             | "remote_access_lure"
     )
 }
@@ -701,6 +707,7 @@ pub fn all_signals() -> Vec<SignalInfo> {
         "traffic_fine_scam",
         "pig_butchering_lure",
         "loan_fee_scam",
+        "data_uri_page",
         "remote_access_lure",
     ];
     NAMES
@@ -1839,6 +1846,25 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         }
     }
 
+    // Data-URI / file-scheme page (GAP_ANALYSIS A9). Tech-support scammers
+    // host fake-support overlays via `data:text/html,<html>...` URLs to bypass
+    // per-domain blocklists entirely: the URL has no hostname to blocklist.
+    // `file://` URLs appearing in an unsolicited alert-shaped overlay indicate
+    // a local HTML file dropped by a prior stage of an attack (dropper or
+    // malicious installer). Both schemes are near-zero-FP for alert-shaped
+    // windows: legitimate kiosk apps using file:// are user-initiated and
+    // closable; `data:` URIs don't appear as top-level browser URLs in
+    // legitimate enterprise software.
+    if alert_shaped {
+        if let Some(url) = w.url.as_deref() {
+            let lc = url.trim_start();
+            if lc.starts_with("data:") || lc.starts_with("file://") || lc.starts_with("file:///") {
+                score += rules.weight_of("data_uri_page", W_DATA_URI_PAGE);
+                signals.push("data_uri_page".into());
+            }
+        }
+    }
+
     // Composite "screen-lock" tell: a window that is full-screen AND
     // always-on-top AND grabs all input is a browser/screen *locker*,
     // not an ordinary modal dialog (which is modal but neither
@@ -1975,6 +2001,7 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasTrafficFineScam => has_sig("traffic_fine_scam"),
         C::HasPigButcheringLure => has_sig("pig_butchering_lure"),
         C::HasLoanFeeScam => has_sig("loan_fee_scam"),
+        C::HasDataUriPage => has_sig("data_uri_page"),
     }
 }
 
@@ -6299,6 +6326,97 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("loan_fee_scam"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    // ── A9: data_uri_page (lib.rs unit tests) ─────────────────────
+
+    #[test]
+    fn data_uri_page_fires_on_data_scheme() {
+        let w = OverlayWindow {
+            title: "your computer has a virus call microsoft support".into(),
+            url: Some("data:text/html,<html><body>call 1-800-microsoft</body></html>".into()),
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "data_uri_page"),
+            "data_uri_page must fire for data: URL; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn data_uri_page_fires_on_file_scheme() {
+        let w = OverlayWindow {
+            title: "windows security alert".into(),
+            url: Some("file:///C:/Users/victim/AppData/Local/Temp/scam.html".into()),
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "data_uri_page"),
+            "data_uri_page must fire for file:// URL; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn data_uri_page_does_not_fire_for_normal_https() {
+        let w = OverlayWindow {
+            title: "windows security alert".into(),
+            url: Some("https://example.com/page".into()),
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "data_uri_page"),
+            "data_uri_page must not fire for https: URL; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn data_uri_page_does_not_fire_without_alert_shape() {
+        let w = OverlayWindow {
+            title: "page".into(),
+            url: Some("data:text/html,hello".into()),
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "data_uri_page"),
+            "data_uri_page must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn data_uri_page_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("data_uri_page"),
             Some(DarkPatternCategory::Sneaking)
         );
     }

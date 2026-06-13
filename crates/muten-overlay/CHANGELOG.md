@@ -699,6 +699,17 @@ MSRV 1.75, 286 tests.
   FasTrak smishing alert.  Weight `W_TRAFFIC_FINE_SCAM = 25`.  Category:
   `InterfaceInterference`.  MITRE: T1566.  10 confusables unit tests + 3 lib unit
   tests + 2 property tests + 4 scoring scenarios; 824 tests total.  (E43.)
+- **Data-URI / file-scheme page detection** (`data_uri_page`; A9). An
+  alert-shaped window whose `url` field starts with `data:` or `file://` /
+  `file:///` is flagged as a tech-support-scam blocklist-bypass technique.
+  Attackers serve full `<html>` payloads via `data:text/html,<html>…` to avoid
+  per-domain blocklisting (the URL has no hostname). `file://` URLs in
+  unsolicited alert-shaped windows indicate a locally-dropped HTML file from a
+  prior dropper/installer stage. The detection is a pure scheme-prefix check
+  on the URL field inside the existing `alert_shaped` guard; no confusables.rs
+  function is needed. Weight `W_DATA_URI_PAGE = 25`. Category: Sneaking.
+  MITRE: T1566. 5 lib unit tests + 4 scoring scenarios; 875 tests total.
+  (A9; GAP_ANALYSIS_2026H2 area A.)
 - **Pig-butchering / romance-investment lure** (`pig_butchering_lure`; E44).
   `has_pig_butchering_lure(s)` fires when the normalized title contains both a
   *romance/group cue* (VIP group, investment mentor, trading mentor, "join our
