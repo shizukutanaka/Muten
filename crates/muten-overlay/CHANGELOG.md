@@ -42,6 +42,16 @@ MSRV 1.75, 286 tests.
   to `.git/HEAD` and `.git/refs/heads/` so the version re-embeds on every
   commit. (M6.)
 
+- **Scareware flood-threshold boundary guard** (Socratic round 9). `assess`
+  flags a flood at `repeat_count >= REPEAT_THRESHOLD` (3). The existing tests
+  covered count 1 (Benign) and count 3 (= threshold, Scareware) but skipped the
+  decisive lower edge — count 2, the last *benign* count. Lowering the threshold
+  to 2 or weakening the comparison to `>= REPEAT_THRESHOLD - 1` would still pass
+  those tests while turning a legitimate app that merely pops up twice into a
+  false "flood" — a false positive on the scareware path the FP-averse design
+  must avoid. New `flood_threshold_boundary_one_below_is_benign` pins both edges
+  relative to the constant (THRESHOLD−1 → Benign, THRESHOLD → Scareware) so it
+  stays correct if the threshold is retuned. 1159 tests total.
 - **Phone-number digit-count boundary guard** (Socratic round 8).
   `contains_phone_number` fires on a run of `(7..=15)` digits, inclusive at both
   ends — but every existing test used 10–11-digit numbers (well inside) or a

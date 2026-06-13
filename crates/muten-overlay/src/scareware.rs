@@ -200,6 +200,28 @@ mod tests {
         assert_eq!(v.decision, ScarewareDecision::Benign);
     }
 
+    /// Flood-threshold boundary guard (Socratic round 9). `assess` flags a
+    /// flood at `repeat_count >= REPEAT_THRESHOLD`. The existing tests cover
+    /// count 1 (Benign) and count 3 (= threshold, Scareware) but skip the
+    /// decisive lower edge, count 2 — the last *benign* count. Lowering
+    /// `REPEAT_THRESHOLD` to 2, or changing the comparison to
+    /// `>= REPEAT_THRESHOLD - 1`, would still pass those tests while turning a
+    /// legitimate app that merely pops up twice into a false "flood" — a
+    /// false positive on the scareware path, which the FP-averse design must
+    /// avoid. This pins both edges relative to the constant so it stays
+    /// correct if the threshold is retuned.
+    #[test]
+    fn flood_threshold_boundary_one_below_is_benign() {
+        // One below the threshold → not yet a flood (FP guard).
+        let v = assess(REPEAT_THRESHOLD - 1, None, &Ruleset::default());
+        assert_eq!(v.decision, ScarewareDecision::Benign);
+        assert!(!v.signals.contains(&"repeated_flood"));
+        // Exactly at the threshold → flood.
+        let v = assess(REPEAT_THRESHOLD, None, &Ruleset::default());
+        assert_eq!(v.decision, ScarewareDecision::Scareware);
+        assert!(v.signals.contains(&"repeated_flood"));
+    }
+
     #[test]
     fn repeated_flood_is_scareware() {
         let mut t = RepeatTracker::new(DEFAULT_WINDOW_MS);
