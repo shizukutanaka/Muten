@@ -42,6 +42,15 @@ MSRV 1.75, 286 tests.
   to `.git/HEAD` and `.git/refs/heads/` so the version re-embeds on every
   commit. (M6.)
 
+- **Scareware sliding-window boundary guard** (Socratic round 10).
+  `RepeatTracker` prunes appearances with `t >= cutoff` (`cutoff = now −
+  window_ms`), so an appearance *exactly* `window_ms` old is still inside the
+  window and one tick older falls out. The existing test only checked an event
+  far outside the window, so flipping `>= cutoff` to `> cutoff` — shrinking the
+  window by one tick, enough to miss a flood whose appearances are spaced
+  exactly `window_ms` apart — would pass it. New
+  `sliding_window_boundary_is_inclusive_of_exactly_window_ms` pins both sides of
+  the exact edge via the non-mutating `count`. 1160 tests total.
 - **Scareware flood-threshold boundary guard** (Socratic round 9). `assess`
   flags a flood at `repeat_count >= REPEAT_THRESHOLD` (3). The existing tests
   covered count 1 (Benign) and count 3 (= threshold, Scareware) but skipped the

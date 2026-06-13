@@ -245,6 +245,33 @@ mod tests {
         assert_eq!(n, 1, "old appearances should have been pruned");
     }
 
+    /// Sliding-window boundary guard (Socratic round 10). Pruning keeps
+    /// entries with `t >= cutoff` where `cutoff = now - window_ms`, so an
+    /// appearance *exactly* `window_ms` old is still inside the window, and
+    /// one tick older falls out. The existing test only checks an event far
+    /// outside the window, so flipping `>= cutoff` to `> cutoff` (shrinking
+    /// the window by one tick — enough to miss a flood whose appearances are
+    /// spaced exactly `window_ms` apart) would pass it. This pins both sides
+    /// of the exact edge via the non-mutating `count`.
+    #[test]
+    fn sliding_window_boundary_is_inclusive_of_exactly_window_ms() {
+        let window_ms = 10_000;
+        let mut t = RepeatTracker::new(window_ms);
+        t.record("sig", 1_000);
+        // now == event_time + window_ms → cutoff == event_time → still counted.
+        assert_eq!(
+            t.count("sig", 1_000 + window_ms),
+            1,
+            "an appearance exactly window_ms old must remain in the window"
+        );
+        // One tick later → cutoff passes the event → pruned from the count.
+        assert_eq!(
+            t.count("sig", 1_000 + window_ms + 1),
+            0,
+            "an appearance just over window_ms old must fall out of the window"
+        );
+    }
+
     #[test]
     fn distinct_signatures_counted_separately() {
         let mut t = RepeatTracker::new(DEFAULT_WINDOW_MS);
