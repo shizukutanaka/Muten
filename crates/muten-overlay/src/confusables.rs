@@ -1465,6 +1465,70 @@ pub fn has_national_id_alarm(s: &str) -> bool {
     id_noun && id_alarm
 }
 
+/// E29 — Fake bank-fraud alert overlay.
+///
+/// Scammers impersonating banks or payment processors display an alert-shaped
+/// overlay claiming a victim's bank account or card has been frozen or has
+/// experienced fraudulent/unauthorized transactions.  The overlay prompts the
+/// victim to call a number (often also on-screen, caught by `phone_number`) or
+/// click a button to "unfreeze" the account, leading to credential theft or
+/// gift-card payment demands.
+///
+/// This is distinct from `credential_harvest_cue` (which requires a credential-
+/// entry instruction) and `national_id_alarm` (which targets national ID
+/// numbers): `has_bank_account_alarm` fires when banking-specific account/card
+/// language appears with a freeze/fraud alarm, even when no credential entry
+/// instruction is present — the attacker only wants the victim to call.
+///
+/// Two groups (AND-pair):
+/// - `bank_noun`: banking-specific terms — "bank account", "checking account",
+///   "savings account", "debit card", "credit card", "your account at",
+///   銀行口座, キャッシュカード, 通帳, クレジットカード, デビットカード.
+/// - `bank_alarm`: fraud/freeze language — "unauthorized transaction",
+///   "fraudulent transaction", "suspicious transaction", "fraudulent charge",
+///   "has been frozen", "fraudulent access", "unauthorized access detected",
+///   不正な取引, 不審な取引, 口座が停止, 口座が凍結, 不正アクセスを検知.
+///
+/// The AND-pair ensures a screen that merely says "check your credit card
+/// statement" (no alarm) or "suspicious activity reported" (no bank noun)
+/// does not fire.  The alert_shaped guard at the call site prevents legitimate
+/// bank-app notifications (user-initiated, closable) from triggering.
+#[must_use]
+pub fn has_bank_account_alarm(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // bank_noun: banking-specific account/card terms
+    let bank_noun = has("bank account")
+        || has("checking account")
+        || has("savings account")
+        || has("debit card")
+        || has("credit card")
+        || has("your account at")
+        || has("銀行口座")     // bank account (JP)
+        || has("キャッシュカード") // cash card (JP)
+        || has("通帳")          // bankbook / passbook (JP)
+        || has("クレジットカード") // credit card (JP)
+        || has("デビットカード"); // debit card (JP)
+
+    // bank_alarm: fraud/freeze language unique to this scam pattern
+    let bank_alarm = has("unauthorized transaction")
+        || has("fraudulent transaction")
+        || has("suspicious transaction")
+        || has("fraudulent charge")
+        || has("has been frozen")
+        || has("account has been frozen")
+        || has("access has been restricted")
+        || has("fraudulent access")
+        || has("unauthorized access detected")
+        || has("不正な取引")     // unauthorized transaction (JP)
+        || has("不審な取引")     // suspicious transaction (JP)
+        || has("口座が停止")     // account suspended (JP)
+        || has("口座が凍結")     // account frozen (JP)
+        || has("不正アクセスを検知"); // unauthorized access detected (JP)
+
+    bank_noun && bank_alarm
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2901,5 +2965,74 @@ mod tests {
         assert!(!has_national_id_alarm("基礎年金番号の確認方法について"));
         // Legitimate マイナンバー application guide
         assert!(!has_national_id_alarm("マイナンバーカードの申請方法"));
+    }
+
+    // ── has_bank_account_alarm ────────────────────────────────────────────
+    #[test]
+    fn bank_alarm_fires_on_frozen_account() {
+        assert!(has_bank_account_alarm(
+            "your bank account has been frozen due to suspicious activity — call now"
+        ));
+        assert!(has_bank_account_alarm(
+            "checking account access has been restricted — unauthorized transaction detected"
+        ));
+        assert!(has_bank_account_alarm(
+            "your debit card has been frozen — fraudulent transaction detected"
+        ));
+    }
+
+    #[test]
+    fn bank_alarm_fires_on_fraudulent_charge() {
+        assert!(has_bank_account_alarm(
+            "credit card fraudulent charge detected — call 1-800-555-0100"
+        ));
+        assert!(has_bank_account_alarm(
+            "savings account: unauthorized transaction — verify your identity"
+        ));
+    }
+
+    #[test]
+    fn bank_alarm_fires_jp() {
+        assert!(has_bank_account_alarm(
+            "銀行口座に不正な取引が検出されました。サポートにご連絡ください。"
+        ));
+        assert!(has_bank_account_alarm(
+            "キャッシュカードが不正利用されました。口座が凍結されました。"
+        ));
+        assert!(has_bank_account_alarm(
+            "銀行口座が停止されました。不審な取引が検出されました。"
+        ));
+    }
+
+    #[test]
+    fn bank_alarm_does_not_fire_on_benign() {
+        // No alarm — just balance info
+        assert!(!has_bank_account_alarm(
+            "your bank account balance is $1,234.56"
+        ));
+        // No bank noun — just a generic alarm
+        assert!(!has_bank_account_alarm(
+            "suspicious activity detected — verify your identity"
+        ));
+        // Legitimate fraud alert email body — but no bank_noun
+        assert!(!has_bank_account_alarm(
+            "unauthorized transaction: a $99 charge was processed"
+        ));
+        // Generic "account frozen" without bank noun
+        assert!(!has_bank_account_alarm(
+            "your account has been frozen — contact support"
+        ));
+    }
+
+    #[test]
+    fn bank_alarm_does_not_fire_jp_benign() {
+        // Legitimate balance check
+        assert!(!has_bank_account_alarm(
+            "銀行口座の残高確認はアプリでどうぞ"
+        ));
+        // Generic suspended without fraud alarm
+        assert!(!has_bank_account_alarm(
+            "クレジットカードの請求書が届きました"
+        ));
     }
 }

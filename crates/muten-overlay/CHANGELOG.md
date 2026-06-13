@@ -389,6 +389,27 @@ MSRV 1.75, 286 tests.
   `InterfaceInterference`. MITRE: T1566. 9 confusables unit tests + 3 lib
   unit tests + 2 property tests + 4 scoring scenarios + 10 blocklist titles +
   2 glob patterns; 610 tests total. (E28.)
+- **Fake bank-fraud alert overlay** (`bank_account_alarm`; E29).
+  `has_bank_account_alarm(s)` fires when the normalized title contains a
+  *bank_noun* ("bank account", "checking account", "savings account", "debit
+  card", "credit card", "your account at", 銀行口座, キャッシュカード, 通帳,
+  クレジットカード, デビットカード) AND a *bank_alarm* ("unauthorized transaction",
+  "fraudulent transaction", "suspicious transaction", "fraudulent charge", "has
+  been frozen", "account has been frozen", "fraudulent access", "unauthorized
+  access detected", 不正な取引, 不審な取引, 口座が停止, 口座が凍結, 不正アクセスを検知).
+  Scammers impersonating banks or payment processors display alert-shaped
+  overlays claiming a victim's account or card has been frozen or has
+  experienced fraudulent transactions, prompting a call to a fake helpline.
+  Distinct from `credential_harvest_cue` (which requires a credential-entry
+  instruction): `has_bank_account_alarm` fires when only the alarm framing is
+  present — the attacker wants a call, not credential entry. AND-pair prevents
+  a screen that merely mentions "credit card" (no alarm) or "suspicious
+  activity" (no bank noun) from firing. Full JP coverage (銀行口座/キャッシュ
+  カード + 不正な取引/口座が凍結 patterns). alert_shaped guard prevents legitimate
+  bank-app notifications (user-initiated, closable) from triggering. Weight
+  `W_BANK_ACCOUNT_ALARM = 25`. Category: `InterfaceInterference`. MITRE: T1566.
+  9 confusables unit tests + 3 lib unit tests + 2 property tests + 4 scoring
+  scenarios; 624 tests total. (E29.)
 - **Sextortion / webcam-recording extortion lure** (`sextortion_lure`; E25).
   `has_sextortion_lure(s)` fires when the normalized title contains a *camera_cue*
   ("your camera" / "your webcam" / "we have recorded" / "have been recording" /

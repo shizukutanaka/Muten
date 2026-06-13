@@ -290,6 +290,9 @@ fn signal_phrase(signal: &str) -> &str {
         "national_id_alarm" => {
             "falsely claims a national ID number (SSN/NIN/マイナンバー) has been suspended or used in criminal activity"
         }
+        "bank_account_alarm" => {
+            "impersonates a bank fraud alert claiming an account or card has been frozen or has fraudulent transactions"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -390,6 +393,7 @@ const W_SEXTORTION: i32 = 25; // webcam recording + crypto payment demand (FBI I
 const W_GIFT_CARD_DEMAND: i32 = 30; // gift-card payment demand: card_noun + buy/send-codes (FTC #1 tech-support loss)
 const W_REFUND_SCAM: i32 = 25; // refund/overpayment lure: claim-oriented action + refund noun (FTC/IC3 2024 elderly-targeting)
 const W_NATIONAL_ID_ALARM: i32 = 30; // SSN/NIN/マイナンバー suspension alarm (FTC #1 government impersonation subcategory)
+const W_BANK_ACCOUNT_ALARM: i32 = 25; // fake bank-fraud alert: bank/card noun + freeze/fraud alarm (distinct from credential_harvest)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -447,6 +451,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "gift_card_demand" => Some(W_GIFT_CARD_DEMAND),
         "refund_scam_cue" => Some(W_REFUND_SCAM),
         "national_id_alarm" => Some(W_NATIONAL_ID_ALARM),
+        "bank_account_alarm" => Some(W_BANK_ACCOUNT_ALARM),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -493,6 +498,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "gift_card_demand"
             | "refund_scam_cue"
             | "national_id_alarm"
+            | "bank_account_alarm"
             | "remote_access_lure"
     )
 }
@@ -1178,6 +1184,24 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         signals.push("national_id_alarm".into());
     }
 
+    // E29 — Fake bank-fraud alert overlay. Scammers impersonating banks
+    // or payment processors claim a victim's bank account, debit card, or
+    // credit card has been frozen or has fraudulent/unauthorized transactions.
+    // The overlay prompts the victim to call a number to "unfreeze" the
+    // account, leading to credential theft or gift-card payment coercion.
+    // Distinct from credential_harvest_cue (which requires a credential-
+    // entry instruction) — this signal fires when only the alarm framing
+    // is present (attacker wants a call, not credential entry).
+    // Two groups: bank_noun (bank account/checking/savings/debit/credit card,
+    // 銀行口座/キャッシュカード/通帳) AND bank_alarm (unauthorized/fraudulent
+    // transaction, has been frozen, 口座が凍結/停止, 不正な取引).
+    // alert_shaped guard: legitimate bank-app notifications are user-initiated
+    // and closable — they never appear as unsolicited full-screen overlays.
+    if alert_shaped && confusables::has_bank_account_alarm(&normalized_title) {
+        score += rules.weight_of("bank_account_alarm", W_BANK_ACCOUNT_ALARM);
+        signals.push("bank_account_alarm".into());
+    }
+
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
     // seize the machine. These tools are legitimate, so their name alone
@@ -1492,6 +1516,7 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasGiftCardDemand => has_sig("gift_card_demand"),
         C::HasRefundScamCue => has_sig("refund_scam_cue"),
         C::HasNationalIdAlarm => has_sig("national_id_alarm"),
+        C::HasBankAccountAlarm => has_sig("bank_account_alarm"),
     }
 }
 
@@ -4826,6 +4851,59 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("national_id_alarm"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E29: bank_account_alarm ───────────────────────────────────────────
+    #[test]
+    fn bank_account_alarm_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "your bank account has been frozen — unauthorized transaction detected".into(),
+            url: None,
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 300,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "bank_account_alarm"),
+            "expected bank_account_alarm; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_BANK_ACCOUNT_ALARM);
+    }
+
+    #[test]
+    fn bank_account_alarm_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "your bank account balance summary".into(),
+            url: None,
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "bank_account_alarm"),
+            "bank_account_alarm must not fire on user-initiated bank page; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn bank_account_alarm_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("bank_account_alarm"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }

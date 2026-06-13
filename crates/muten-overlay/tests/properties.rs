@@ -976,4 +976,29 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_national_id_alarm(&s));
         }
     }
+
+    // ── E29: bank_account_alarm ───────────────────────────────────────────
+
+    /// has_bank_account_alarm never panics on arbitrary Unicode input.
+    #[test]
+    fn has_bank_account_alarm_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_bank_account_alarm(&s);
+    }
+
+    /// Plain ASCII without both a bank noun and a fraud alarm never fires.
+    #[test]
+    fn plain_ascii_never_fires_bank_account_alarm(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let bank_noun = has("bank account") || has("checking account")
+            || has("savings account") || has("debit card") || has("credit card")
+            || has("your account at");
+        let bank_alarm = has("unauthorized transaction") || has("fraudulent transaction")
+            || has("suspicious transaction") || has("fraudulent charge")
+            || has("has been frozen") || has("account has been frozen")
+            || has("access has been restricted") || has("fraudulent access")
+            || has("unauthorized access detected");
+        if !(bank_noun && bank_alarm) {
+            prop_assert!(!muten_overlay::confusables::has_bank_account_alarm(&s));
+        }
+    }
 }

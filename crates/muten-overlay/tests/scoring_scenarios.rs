@@ -1160,3 +1160,74 @@ fn ssn_scam_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E29: bank_account_alarm ───────────────────────────────────────────────
+
+#[test]
+fn bank_account_frozen_reaches_suspicious() {
+    let v = classify(
+        &alert_window(
+            "your bank account has been frozen — unauthorized transaction detected call now",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "bank_account_alarm"),
+        "expected bank_account_alarm; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "bank_account_alarm must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn legitimate_bank_app_does_not_fire_bank_alarm() {
+    let v = classify(
+        &closable_window("your bank account overview — recent transactions"),
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "bank_account_alarm"),
+        "bank_account_alarm must not fire on legit bank overview; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_bank_alarm_reaches_suspicious() {
+    let v = classify(
+        &alert_window("銀行口座に不正な取引が検出されました。口座が停止されました。"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "bank_account_alarm"),
+        "expected bank_account_alarm for JP bank alarm; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP bank_account_alarm must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn bank_alarm_plus_phone_reaches_block() {
+    let v = classify(
+        &alert_window("credit card fraudulent charge detected call 1-800-555-0100 to dispute"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "bank_account_alarm"),
+        "expected bank_account_alarm; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "bank_account_alarm + phone must reach Block; score = {}",
+        v.score
+    );
+}
