@@ -1568,3 +1568,87 @@ fn tech_invoice_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E34: utility_cutoff_threat ────────────────────────────────────────────────
+
+#[test]
+fn utility_cutoff_reaches_suspicious() {
+    let v = classify(
+        &alert_window(
+            "final notice — your electricity service will be disconnected in 2 hours — avoid disconnection pay now",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "utility_cutoff_threat"),
+        "expected utility_cutoff_threat; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "utility_cutoff_threat must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn legitimate_utility_portal_does_not_fire() {
+    let v = classify(
+        &OverlayWindow {
+            title: "electricity account summary — current balance due — thank you".into(),
+            url: None,
+            coverage_percent: 12,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        },
+        &Ruleset::default(),
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "utility_cutoff_threat"),
+        "utility_cutoff_threat must not fire on legitimate utility portal; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_utility_cutoff_reaches_suspicious() {
+    let v = classify(
+        &alert_window(
+            "電気の停止予告です。料金未払いのため供給停止となります。即時お支払いください。",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "utility_cutoff_threat"),
+        "expected utility_cutoff_threat for JP utility scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP utility_cutoff_threat must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn utility_cutoff_plus_phone_reaches_block() {
+    let v = classify(
+        &alert_window(
+            "gas service will be shut off today — pay to avoid disconnection — call 1-800-555-0100",
+        ),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "utility_cutoff_threat"),
+        "expected utility_cutoff_threat; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "utility_cutoff_threat + phone must reach Block; score = {}",
+        v.score
+    );
+}

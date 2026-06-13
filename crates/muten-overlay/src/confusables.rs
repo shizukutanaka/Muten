@@ -1835,6 +1835,75 @@ pub fn has_tech_support_invoice_scam(s: &str) -> bool {
     charge_claim && cancel_cta
 }
 
+/// E34 — fake utility disconnection threat scam.
+///
+/// Detects overlays that impersonate a utility company (electric, gas, water)
+/// and threaten immediate service disconnection unless payment is made right
+/// away.  FTC 2024 lists utility impersonation as the #3 impostor-scam type
+/// by report volume; IC3 2025 notes these scams often deploy full-screen
+/// overlays mimicking official utility notices.
+///
+/// AND-pair design:
+/// - `utility_service`: names the utility/public service being threatened —
+///   "electric service", "electricity", "gas service", "water service",
+///   "power company", "utility account", "electric company", "your power",
+///   電気, ガス, 水道, 電力, 公共料金, 電気代.
+/// - `cutoff_threat`: termination / disconnection language —
+///   "will be disconnected", "will be shut off", "disconnection notice",
+///   "service termination", "final notice", "pay to avoid disconnection",
+///   "service will be terminated", "disconnected within", "your service has
+///   been suspended", "pay immediately to restore",
+///   停止予告, 供給停止, 料金未払い, 即時お支払い, 強制停止.
+///
+/// The AND-pair prevents legitimate utility account pages (utility_service, no
+/// threat) and generic "final notice" debt-collection pages (cutoff_threat, no
+/// utility noun) from firing.  The alert_shaped guard at the call site handles
+/// the geometry dimension.
+#[must_use]
+pub fn has_utility_cutoff_threat(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // utility_service: names the targeted public service
+    let utility_service = has("electric service")
+        || has("electricity")
+        || has("gas service")
+        || has("water service")
+        || has("power company")
+        || has("utility account")
+        || has("electric company")
+        || has("your power")
+        || has("your electricity")
+        || has("your gas")
+        || has("natural gas service")
+        || has("電気")      // electricity (JP)
+        || has("ガス")      // gas (JP)
+        || has("水道")      // water/plumbing (JP)
+        || has("電力")      // electric power (JP)
+        || has("公共料金") // public utility bill (JP)
+        || has("電気代"); // electricity bill (JP)
+
+    // cutoff_threat: disconnection / termination urgency language
+    let cutoff_threat = has("will be disconnected")
+        || has("will be shut off")
+        || has("disconnection notice")
+        || has("service termination")
+        || has("final notice")
+        || has("pay to avoid disconnection")
+        || has("service will be terminated")
+        || has("disconnected within")
+        || has("your service has been suspended")
+        || has("pay immediately to restore")
+        || has("immediate payment required")
+        || has("avoid disconnection")
+        || has("停止予告")  // disconnection notice (JP)
+        || has("供給停止") // supply terminated (JP)
+        || has("料金未払い") // unpaid utility bill (JP)
+        || has("即時お支払い") // immediate payment (JP)
+        || has("強制停止"); // forced termination (JP)
+
+    utility_service && cutoff_threat
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3648,5 +3717,63 @@ mod tests {
         assert!(!has_tech_support_invoice_scam(
             "解約の手続きはマイページからお手続きください。"
         ));
+    }
+
+    // ── has_utility_cutoff_threat ────────────────────────────────────────────
+
+    #[test]
+    fn utility_cutoff_fires_on_electric_disconnection() {
+        assert!(has_utility_cutoff_threat(
+            "your electricity service will be disconnected in 2 hours pay immediately"
+        ));
+        assert!(has_utility_cutoff_threat(
+            "final notice — electric service disconnection notice — avoid disconnection now"
+        ));
+    }
+
+    #[test]
+    fn utility_cutoff_fires_on_gas_termination() {
+        assert!(has_utility_cutoff_threat(
+            "gas service will be shut off today — pay to avoid disconnection"
+        ));
+        assert!(has_utility_cutoff_threat(
+            "your natural gas service will be terminated — immediate payment required"
+        ));
+    }
+
+    #[test]
+    fn utility_cutoff_fires_jp() {
+        assert!(has_utility_cutoff_threat(
+            "電気の停止予告です。料金未払いのため供給停止となります。即時お支払いください。"
+        ));
+        assert!(has_utility_cutoff_threat(
+            "ガスの供給停止予告。強制停止を避けるため即時お支払いください。"
+        ));
+    }
+
+    #[test]
+    fn utility_cutoff_does_not_fire_on_benign() {
+        // Utility service mention without threat
+        assert!(!has_utility_cutoff_threat(
+            "electricity usage report for this month — thank you"
+        ));
+        // Cutoff language without utility noun
+        assert!(!has_utility_cutoff_threat(
+            "your account will be disconnected — final notice"
+        ));
+        // Scheduled maintenance notice (not a threat)
+        assert!(!has_utility_cutoff_threat(
+            "electric service maintenance scheduled for saturday"
+        ));
+    }
+
+    #[test]
+    fn utility_cutoff_does_not_fire_jp_benign() {
+        // Legitimate bill notification
+        assert!(!has_utility_cutoff_threat(
+            "電気代のご請求書が届きました。ご確認ください。"
+        ));
+        // Maintenance notice
+        assert!(!has_utility_cutoff_threat("ガスの点検のお知らせ"));
     }
 }

@@ -166,6 +166,21 @@ glob: * registered * outstanding fee *
 glob: * enrollment * legal action *
 
 # ─────────────────────────────────────────────────────────────────
+# FAKE UTILITY DISCONNECTION THREAT (E34). Heuristic:
+# has_utility_cutoff_threat. Source: FTC 2024 #3 impostor-scam type,
+# IC3 2025 utility-impersonation fraud reports.
+# ─────────────────────────────────────────────────────────────────
+title: your electricity service will be disconnected pay immediately
+title: final notice electric service disconnection notice avoid disconnection
+title: gas service will be shut off today pay to avoid disconnection
+title: water service termination notice immediate payment required
+title: your power will be shut off within 2 hours pay now to restore
+title: 電気の停止予告です料金未払いのため供給停止となります即時お支払いください # JP: electric cutoff, pay now
+title: ガスの強制停止予告供給停止を避けるため即時お支払いください            # JP: gas forced cutoff notice
+glob: * electricity * will be disconnected *
+glob: * gas service * shut off *
+
+# ─────────────────────────────────────────────────────────────────
 # FAKE TECH-SUPPORT INVOICE / cancel-scam (E33). Heuristic:
 # has_tech_support_invoice_scam. Sources: FTC 2025 impostor-scam data,
 # FBI IC3 2025 tech-support fraud sub-category.

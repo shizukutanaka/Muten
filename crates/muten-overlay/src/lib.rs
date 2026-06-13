@@ -305,6 +305,9 @@ fn signal_phrase(signal: &str) -> &str {
         "tech_support_invoice_scam" => {
             "displays a fake invoice claiming a large charge (e.g., Microsoft support plan, McAfee renewal) was processed and urges the victim to call to cancel or dispute"
         }
+        "utility_cutoff_threat" => {
+            "impersonates a utility company (electric, gas, water) and threatens immediate service disconnection unless payment is made right away"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -410,6 +413,7 @@ const W_FALSE_REG_BILLING: i32 = 25; // ワンクリック詐欺: false registra
 const W_FAKE_BSOD_LURE: i32 = 30; // fake BSOD / Windows-blocked overlay impersonating OS crash (T1036)
 const W_ADVANCE_FEE_LURE: i32 = 25; // 419/advance-fee: windfall claim + fee-extraction demand (FTC BCP 2024)
 const W_TECH_INVOICE_SCAM: i32 = 25; // fake tech-support invoice: charge claim + call-to-cancel (FTC 2025 impostor)
+const W_UTILITY_CUTOFF: i32 = 25; // fake utility disconnection threat: utility_service + cutoff_threat (FTC #3 impostor)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -472,6 +476,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "fake_bsod_lure" => Some(W_FAKE_BSOD_LURE),
         "advance_fee_lure" => Some(W_ADVANCE_FEE_LURE),
         "tech_support_invoice_scam" => Some(W_TECH_INVOICE_SCAM),
+        "utility_cutoff_threat" => Some(W_UTILITY_CUTOFF),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -523,6 +528,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "fake_bsod_lure"
             | "advance_fee_lure"
             | "tech_support_invoice_scam"
+            | "utility_cutoff_threat"
             | "remote_access_lure"
     )
 }
@@ -1287,6 +1293,22 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         signals.push("tech_support_invoice_scam".into());
     }
 
+    // E34 — fake utility disconnection threat (FTC 2024 #3 impostor-scam type,
+    // IC3 2025 utility-impersonation fraud).  An overlay claims to be a utility
+    // company (electric, gas, water) and threatens immediate service cutoff unless
+    // payment is made right away.  Two groups: utility_service (electricity / gas /
+    // water / power company / 電気 / ガス / 水道) AND cutoff_threat ("will be
+    // disconnected", "disconnection notice", "final notice", "pay to avoid
+    // disconnection", 停止予告, 供給停止, 即時お支払い).
+    // Distinct from subscription_lure (expired subscriptions) and
+    // national_id_alarm (government-ID suspension): E34 targets public utility
+    // service threats specifically.  alert_shaped guard prevents legitimate utility
+    // account portals (user-initiated, closable) from triggering.
+    if alert_shaped && confusables::has_utility_cutoff_threat(&normalized_title) {
+        score += rules.weight_of("utility_cutoff_threat", W_UTILITY_CUTOFF);
+        signals.push("utility_cutoff_threat".into());
+    }
+
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
     // seize the machine. These tools are legitimate, so their name alone
@@ -1606,6 +1628,7 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasFakeBsodLure => has_sig("fake_bsod_lure"),
         C::HasAdvanceFeeLure => has_sig("advance_fee_lure"),
         C::HasTechSupportInvoiceScam => has_sig("tech_support_invoice_scam"),
+        C::HasUtilityCutoffThreat => has_sig("utility_cutoff_threat"),
     }
 }
 
@@ -5212,6 +5235,62 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("tech_support_invoice_scam"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E34: utility_cutoff_threat ───────────────────────────────────────────
+
+    #[test]
+    fn utility_cutoff_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "final notice — your electricity service will be disconnected — pay immediately to restore".into(),
+            url: None,
+            coverage_percent: 96,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "utility_cutoff_threat"),
+            "expected utility_cutoff_threat; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_UTILITY_CUTOFF);
+    }
+
+    #[test]
+    fn utility_cutoff_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title:
+                "electric service disconnection notice — final notice — pay to avoid disconnection"
+                    .into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "utility_cutoff_threat"),
+            "utility_cutoff_threat must not fire on user-initiated page; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn utility_cutoff_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("utility_cutoff_threat"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }

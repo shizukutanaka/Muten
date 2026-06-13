@@ -1111,4 +1111,31 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_tech_support_invoice_scam(&s));
         }
     }
+
+    // ── E34: utility_cutoff_threat ────────────────────────────────────────────
+
+    /// has_utility_cutoff_threat never panics on arbitrary Unicode input.
+    #[test]
+    fn has_utility_cutoff_threat_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_utility_cutoff_threat(&s);
+    }
+
+    /// Plain ASCII without both a utility noun and a cutoff threat never fires.
+    #[test]
+    fn plain_ascii_never_fires_utility_cutoff_threat(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let utility_service = has("electric service") || has("electricity")
+            || has("gas service") || has("water service") || has("power company")
+            || has("utility account") || has("electric company")
+            || has("your power") || has("your electricity") || has("your gas");
+        let cutoff_threat = has("will be disconnected") || has("will be shut off")
+            || has("disconnection notice") || has("service termination")
+            || has("final notice") || has("pay to avoid disconnection")
+            || has("service will be terminated") || has("disconnected within")
+            || has("your service has been suspended") || has("pay immediately to restore")
+            || has("immediate payment required") || has("avoid disconnection");
+        if !(utility_service && cutoff_threat) {
+            prop_assert!(!muten_overlay::confusables::has_utility_cutoff_threat(&s));
+        }
+    }
 }

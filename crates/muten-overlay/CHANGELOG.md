@@ -505,6 +505,24 @@ MSRV 1.75, 286 tests.
   alert_shaped guard prevents legitimate invoice notifications (user-initiated,
   closable) from triggering.  10 confusables unit tests + 3 lib unit tests +
   2 property tests + 4 scoring scenarios; 684 tests total.  (E33.)
+- **Fake utility disconnection threat** (`utility_cutoff_threat`; E34).
+  `has_utility_cutoff_threat(s)` fires when the normalized title contains a
+  *utility_service* noun ("electricity", "electric service", "gas service",
+  "water service", "power company", "utility account", 電気, ガス, 水道, 電力,
+  公共料金) AND a *cutoff_threat* ("will be disconnected", "will be shut off",
+  "disconnection notice", "service termination", "final notice", "pay to avoid
+  disconnection", "immediate payment required", 停止予告, 供給停止, 料金未払い,
+  即時お支払い, 強制停止).  Targets the well-documented utility-impersonation
+  scam (FTC 2024 #3 impostor-scam type) where an overlay mimics an official
+  electric, gas, or water company notice and threatens disconnection within
+  hours unless a "payment" is made immediately.  Distinct from
+  `subscription_lure` (expired subscriptions), `national_id_alarm` (government-ID
+  suspension), and `authority_lure` (government agency impersonation): E34
+  specifically targets public-utility service interruption threats.  Weight
+  `W_UTILITY_CUTOFF = 25`.  Category: `InterfaceInterference`.  MITRE: T1566.
+  alert_shaped guard prevents legitimate utility account portals (user-initiated,
+  closable) from triggering.  10 confusables unit tests + 3 lib unit tests +
+  2 property tests + 4 scoring scenarios; 698 tests total.  (E34.)
 - **Sextortion / webcam-recording extortion lure** (`sextortion_lure`; E25).
   `has_sextortion_lure(s)` fires when the normalized title contains a *camera_cue*
   ("your camera" / "your webcam" / "we have recorded" / "have been recording" /

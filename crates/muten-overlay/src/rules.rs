@@ -154,6 +154,8 @@ pub enum CompositeCondition {
     HasAdvanceFeeLure,
     /// The `tech_support_invoice_scam` signal fired (E33 — fake invoice cancel-scam).
     HasTechSupportInvoiceScam,
+    /// The `utility_cutoff_threat` signal fired (E34 — fake utility disconnection).
+    HasUtilityCutoffThreat,
 }
 
 impl CompositeCondition {
@@ -190,6 +192,7 @@ impl CompositeCondition {
             "has_fake_bsod_lure" => Some(Self::HasFakeBsodLure),
             "has_advance_fee_lure" => Some(Self::HasAdvanceFeeLure),
             "has_tech_support_invoice_scam" => Some(Self::HasTechSupportInvoiceScam),
+            "has_utility_cutoff_threat" => Some(Self::HasUtilityCutoffThreat),
             _ => None,
         }
     }
