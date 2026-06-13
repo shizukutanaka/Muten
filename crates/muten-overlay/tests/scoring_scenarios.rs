@@ -2149,3 +2149,223 @@ fn immigration_visa_scam_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E40: government_grant_scam ───────────────────────────────────────────────
+
+#[test]
+fn government_grant_scam_fires_on_alert_shaped_window() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "federal grant approved — verify your identity to receive — application fee required".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "government_grant_scam"),
+        "expected government_grant_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 25,
+        "government_grant_scam must contribute at least W=25; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn government_grant_scam_fp_guard_no_alert_shape() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "government grant — stimulus check — apply before the deadline — enrollment deadline".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 8_000,
+        },
+        &rules,
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "government_grant_scam"),
+        "government_grant_scam must not fire without alert_shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_government_grant_scam_reaches_suspicious() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "政府給付金のお知らせ：今すぐ申請すれば10万円受け取れます。手数料が必要です。"
+                .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "government_grant_scam"),
+        "expected government_grant_scam for JP stimulus impostor; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP government_grant_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn government_grant_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "federal grant: $10,000 emergency relief fund — claim your grant — call 1-800-555-0194 — application fee required".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "government_grant_scam"),
+        "expected government_grant_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "government_grant_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}
+
+// ── E41: debt_relief_scam ────────────────────────────────────────────────────
+
+#[test]
+fn debt_relief_scam_fires_on_alert_shaped_window() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "debt relief program: eliminate your debt — guaranteed approval — no credit check required".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "debt_relief_scam"),
+        "expected debt_relief_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 25,
+        "debt_relief_scam must contribute at least W=25; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn debt_relief_scam_fp_guard_no_alert_shape() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "debt consolidation — credit card debt — stop paying now — guaranteed approval"
+                .into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        },
+        &rules,
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "debt_relief_scam"),
+        "debt_relief_scam must not fire without alert_shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_debt_relief_scam_reaches_suspicious() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "借金の悩み解決。債務整理のご相談。確実に解決します。着手金が必要です。".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "debt_relief_scam"),
+        "expected debt_relief_scam for JP debt impostor; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP debt_relief_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn debt_relief_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "credit card debt relief program — guaranteed approval — call 1-800-555-0195 — processing fee required".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "debt_relief_scam"),
+        "expected debt_relief_scam; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 100,
+        "debt_relief_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}

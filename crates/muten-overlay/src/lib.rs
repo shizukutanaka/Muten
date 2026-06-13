@@ -323,6 +323,12 @@ fn signal_phrase(signal: &str) -> &str {
         "immigration_visa_scam" => {
             "impersonates an immigration authority and threatens visa revocation, deportation, or illegal-overstay charges unless the victim pays a renewal or settlement fee immediately"
         }
+        "government_grant_scam" => {
+            "impersonates a government program (federal grant, stimulus payment, emergency relief fund) and demands an application fee, processing fee, or identity verification before releasing funds that do not exist"
+        }
+        "debt_relief_scam" => {
+            "poses as a debt-relief or credit-repair service promising guaranteed debt elimination, and demands an upfront application or consultation fee before delivering any service"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -434,6 +440,8 @@ const W_JOB_SCAM: i32 = 25; // employment fraud: job offer + advance-fee gate (I
 const W_TAX_AUTHORITY_SCAM: i32 = 30; // IRS/HMRC/国税庁 impersonation + arrest/seizure threat (FTC 2025 gov impostor #2)
 const W_SOCIAL_MEDIA_ACCOUNT_ALARM: i32 = 25; // social platform named + hacked/suspended (phishing overlay)
 const W_IMMIGRATION_VISA_SCAM: i32 = 25; // visa/work-permit named + revocation/deportation threat (targets immigrants)
+const W_GOVERNMENT_GRANT_SCAM: i32 = 25; // government grant/stimulus impersonation + fee barrier (FTC gov-impostor)
+const W_DEBT_RELIEF_SCAM: i32 = 25; // debt/credit relief framing + upfront fee / guaranteed-results CTA
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -502,6 +510,8 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "tax_authority_scam" => Some(W_TAX_AUTHORITY_SCAM),
         "social_media_account_alarm" => Some(W_SOCIAL_MEDIA_ACCOUNT_ALARM),
         "immigration_visa_scam" => Some(W_IMMIGRATION_VISA_SCAM),
+        "government_grant_scam" => Some(W_GOVERNMENT_GRANT_SCAM),
+        "debt_relief_scam" => Some(W_DEBT_RELIEF_SCAM),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -559,6 +569,8 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "tax_authority_scam"
             | "social_media_account_alarm"
             | "immigration_visa_scam"
+            | "government_grant_scam"
+            | "debt_relief_scam"
             | "remote_access_lure"
     )
 }
@@ -1417,6 +1429,42 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         signals.push("immigration_visa_scam".into());
     }
 
+    // Government grant / stimulus scam (E40).  Overlays impersonating
+    // government programs (federal grants, stimulus payments, pandemic relief,
+    // 政府給付金) demand an application fee, processing fee, or identity
+    // verification to release nonexistent funds.  Distinct from
+    // `advance_fee_lure` (personal windfall: inheritance/lottery) — this
+    // signal keys specifically on government-program framing.  No real
+    // government grant program requires an upfront fee or is delivered via
+    // an unsolicited browser overlay.
+    // grant_program: "government grant", "federal grant", "stimulus check",
+    //   "emergency relief fund", "pandemic relief", 政府給付金, 補助金, 給付金.
+    // claim_barrier: "claim your grant", "application fee required",
+    //   "verify your identity to receive", "enrollment deadline", 今すぐ申請,
+    //   給付金を受け取るには, 手数料が必要.
+    if alert_shaped && confusables::has_government_grant_scam(&normalized_title) {
+        score += rules.weight_of("government_grant_scam", W_GOVERNMENT_GRANT_SCAM);
+        signals.push("government_grant_scam".into());
+    }
+
+    // Debt relief / credit repair scam (E41).  Fake debt-relief operations
+    // charge upfront fees (着手金, "application fee required") while
+    // promising guaranteed debt elimination or "stop paying now" results.
+    // The upfront-fee or guaranteed-results CTA is the scam tell: legitimate
+    // credit counselors charge no upfront fee and never guarantee specific
+    // outcomes.  With the alert_shaped guard, legitimate credit-counseling
+    // websites (user-initiated, closable) cannot fire.
+    // debt_claim: "credit card debt", "debt consolidation", "debt relief
+    //   program", "debt settlement", "eliminate your debt", 借金, 債務整理,
+    //   過払い金, 多重債務.
+    // scam_cta: "guaranteed approval", "no credit check required", "100%
+    //   guaranteed results", "stop paying now", "application fee required",
+    //   確実に解決, 審査不要, 着手金, 相談料が必要.
+    if alert_shaped && confusables::has_debt_relief_scam(&normalized_title) {
+        score += rules.weight_of("debt_relief_scam", W_DEBT_RELIEF_SCAM);
+        signals.push("debt_relief_scam".into());
+    }
+
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
     // seize the machine. These tools are legitimate, so their name alone
@@ -1742,6 +1790,8 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasTaxAuthorityScam => has_sig("tax_authority_scam"),
         C::HasSocialMediaAccountAlarm => has_sig("social_media_account_alarm"),
         C::HasImmigrationVisaScam => has_sig("immigration_visa_scam"),
+        C::HasGovernmentGrantScam => has_sig("government_grant_scam"),
+        C::HasDebtReliefScam => has_sig("debt_relief_scam"),
     }
 }
 
@@ -5679,6 +5729,118 @@ mod tests {
         assert_eq!(
             category_of("immigration_visa_scam"),
             Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E40: government_grant_scam ───────────────────────────────────────────
+
+    #[test]
+    fn government_grant_scam_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "federal grant approved — verify your identity to receive — application fee required"
+                .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "government_grant_scam"),
+            "expected government_grant_scam; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_GOVERNMENT_GRANT_SCAM);
+    }
+
+    #[test]
+    fn government_grant_scam_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "government grant — stimulus check — apply before the deadline — enrollment deadline"
+                .into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "government_grant_scam"),
+            "government_grant_scam must not fire on user-initiated page; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn government_grant_scam_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("government_grant_scam"),
+            Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    // ── E41: debt_relief_scam ────────────────────────────────────────────────
+
+    #[test]
+    fn debt_relief_scam_fires_on_alert_shaped_window() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "debt relief program: eliminate your debt — guaranteed approval — no credit check required"
+                .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "debt_relief_scam"),
+            "expected debt_relief_scam; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_DEBT_RELIEF_SCAM);
+    }
+
+    #[test]
+    fn debt_relief_scam_does_not_fire_without_alert_shape() {
+        let rules = Ruleset::default();
+        let w = OverlayWindow {
+            title: "debt consolidation — credit card debt — guaranteed approval — stop paying now"
+                .into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "debt_relief_scam"),
+            "debt_relief_scam must not fire on user-initiated page; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn debt_relief_scam_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("debt_relief_scam"),
+            Some(DarkPatternCategory::Sneaking)
         );
     }
 }

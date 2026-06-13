@@ -1257,6 +1257,18 @@ proptest! {
         let _ = muten_overlay::confusables::has_immigration_visa_scam(&s);
     }
 
+    /// has_government_grant_scam never panics on arbitrary Unicode.
+    #[test]
+    fn has_government_grant_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_government_grant_scam(&s);
+    }
+
+    /// has_debt_relief_scam never panics on arbitrary Unicode.
+    #[test]
+    fn has_debt_relief_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_debt_relief_scam(&s);
+    }
+
     /// Plain ASCII without both an immigration-document phrase and a
     /// status-threat or fee phrase never fires.
     #[test]
@@ -1277,6 +1289,51 @@ proptest! {
             || has("face deportation") || has("removal proceedings");
         if !(immigration_doc && status_threat) {
             prop_assert!(!muten_overlay::confusables::has_immigration_visa_scam(&s));
+        }
+    }
+
+    /// Plain ASCII without both a government-program phrase and a collection
+    /// barrier never fires has_government_grant_scam.
+    #[test]
+    fn plain_ascii_never_fires_government_grant_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let grant_program = has("government grant") || has("federal grant")
+            || has("stimulus payment") || has("stimulus check") || has("economic relief")
+            || has("pandemic relief") || has("covid relief") || has("emergency relief fund")
+            || has("government benefit fund") || has("unclaimed government funds")
+            || has("government assistance program") || has("qualifying government benefit")
+            || has("emergency subsidy") || has("government disbursement");
+        let claim_barrier = has("claim your grant") || has("claim your funds")
+            || has("collect your check") || has("application fee required")
+            || has("processing fee to receive") || has("registration fee required")
+            || has("verify your identity to receive") || has("enrollment deadline")
+            || has("apply before the deadline") || has("funds will expire")
+            || has("limited enrollment available") || has("claim now before deadline")
+            || has("disbursement fee");
+        if !(grant_program && claim_barrier) {
+            prop_assert!(!muten_overlay::confusables::has_government_grant_scam(&s));
+        }
+    }
+
+    /// Plain ASCII without both a debt-claim phrase and a scam-CTA phrase
+    /// never fires has_debt_relief_scam.
+    #[test]
+    fn plain_ascii_never_fires_debt_relief_scam(s in "[a-z .,!?]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let debt_claim = has("credit card debt") || has("credit card balance")
+            || has("unsecured debt") || has("personal loan debt") || has("get out of debt")
+            || has("debt forgiveness") || has("debt consolidation") || has("debt relief program")
+            || has("debt settlement") || has("credit repair program") || has("eliminate your debt")
+            || has("reduce your debt") || has("debt management plan") || has("student debt relief");
+        let scam_cta = has("guaranteed approval") || has("no credit check required")
+            || has("100% guaranteed results") || has("we can eliminate your debt")
+            || has("settled for pennies") || has("stop paying now") || has("stop payments today")
+            || has("you qualify for relief") || has("application fee required")
+            || has("processing fee required") || has("initial consultation fee")
+            || has("pay to start your case") || has("guaranteed debt relief")
+            || has("results guaranteed");
+        if !(debt_claim && scam_cta) {
+            prop_assert!(!muten_overlay::confusables::has_debt_relief_scam(&s));
         }
     }
 }

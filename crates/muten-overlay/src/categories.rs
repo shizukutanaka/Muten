@@ -137,6 +137,8 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         "tax_authority_scam" => Some(InterfaceInterference),
         "social_media_account_alarm" => Some(InterfaceInterference),
         "immigration_visa_scam" => Some(InterfaceInterference),
+        "government_grant_scam" => Some(Sneaking),
+        "debt_relief_scam" => Some(Sneaking),
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }

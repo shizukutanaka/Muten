@@ -166,6 +166,10 @@ pub enum CompositeCondition {
     HasSocialMediaAccountAlarm,
     /// The `immigration_visa_scam` signal fired (E39 — visa/work-permit + revocation threat).
     HasImmigrationVisaScam,
+    /// The `government_grant_scam` signal fired (E40 — gov-program impersonation + fee barrier).
+    HasGovernmentGrantScam,
+    /// The `debt_relief_scam` signal fired (E41 — debt/credit distress + guaranteed-fee CTA).
+    HasDebtReliefScam,
 }
 
 impl CompositeCondition {
@@ -208,6 +212,8 @@ impl CompositeCondition {
             "has_tax_authority_scam" => Some(Self::HasTaxAuthorityScam),
             "has_social_media_account_alarm" => Some(Self::HasSocialMediaAccountAlarm),
             "has_immigration_visa_scam" => Some(Self::HasImmigrationVisaScam),
+            "has_government_grant_scam" => Some(Self::HasGovernmentGrantScam),
+            "has_debt_relief_scam" => Some(Self::HasDebtReliefScam),
             _ => None,
         }
     }

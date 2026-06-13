@@ -687,3 +687,33 @@ title: 入国管理局在留資格が取り消しになりました強制送還�
 title: 在留カード不法滞在オーバーステイ在留資格の失効更新料お支払いください        # JP: residence card, overstay, fee required
 glob: * your visa * has been revoked * deportation *
 glob: * immigration * illegal overstay * renewal fee *
+
+# ─────────────────────────────────────────────────────────────────
+# GOVERNMENT GRANT / STIMULUS scam (E40). Heuristic: has_government_grant_scam.
+# Sources: FTC BCP 2024 government-impostor enforcement; 消費者庁 2025
+# 給付金詐欺 advisories for JP market.
+# ─────────────────────────────────────────────────────────────────
+title: federal grant approved verify your identity to receive application fee required
+title: government grant economic relief claim your funds processing fee to receive
+title: stimulus check pandemic relief apply before the deadline enrollment deadline
+title: emergency relief fund unclaimed government funds claim your grant disbursement fee
+title: qualifying government benefit government assistance program funds will expire claim now
+title: 政府給付金のお知らせ今すぐ申請して受け取るには手数料が必要です           # JP: govt benefit payment, apply now, fee required
+title: 特別定額給付金申請期限が迫っています給付金を受け取るには確認が必要です   # JP: special grant, deadline, confirmation required
+glob: * government grant * application fee *
+glob: * stimulus * verify your identity to receive *
+
+# ─────────────────────────────────────────────────────────────────
+# DEBT RELIEF / CREDIT REPAIR scam (E41). Heuristic: has_debt_relief_scam.
+# Sources: FTC 2025 debt-relief enforcement actions; 日弁連 2025 多重債務
+# 詐欺 advisories for JP market.
+# ─────────────────────────────────────────────────────────────────
+title: debt relief program eliminate your debt guaranteed approval no credit check required
+title: credit card debt consolidation 100% guaranteed results we can eliminate your debt today
+title: debt settlement program unsecured debt stop paying now you qualify for relief
+title: credit repair program reduce your debt results guaranteed application fee required
+title: get out of debt personal loan debt settled for pennies processing fee required
+title: 借金の悩み解決債務整理確実に解決します着手金が必要です                   # JP: debt trouble, restructuring, guaranteed, retainer required
+title: 多重債務クレジットカードの借金審査不要で借金解決相談料が必要です           # JP: multiple debts, no credit check, consultation fee required
+glob: * debt relief program * guaranteed approval *
+glob: * eliminate your debt * no credit check *

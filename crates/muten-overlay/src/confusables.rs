@@ -2215,6 +2215,118 @@ pub fn has_immigration_visa_scam(s: &str) -> bool {
     immigration_doc && status_threat
 }
 
+/// E40 — Government grant / stimulus scam.
+///
+/// AND-pair: government-program framing (government grant / federal grant /
+/// stimulus / emergency relief) AND a collection barrier (application fee /
+/// verify-to-receive urgency / enrollment deadline).  Distinct from
+/// `advance_fee_lure` (personal windfall — inheritance / lottery): this
+/// signal impersonates official government programs rather than creating a
+/// personal windfall story.  No legitimate government grant requires an
+/// upfront fee or is delivered via an unsolicited browser overlay.
+pub fn has_government_grant_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let grant_program = has("government grant")
+        || has("federal grant")
+        || has("stimulus payment")
+        || has("stimulus check")
+        || has("economic relief")
+        || has("pandemic relief")
+        || has("covid relief")
+        || has("emergency relief fund")
+        || has("government benefit fund")
+        || has("unclaimed government funds")
+        || has("government assistance program")
+        || has("qualifying government benefit")
+        || has("emergency subsidy")
+        || has("government disbursement")
+        || has("政府給付金") // government benefit payment (JP)
+        || has("補助金") // subsidy/grant (JP)
+        || has("給付金") // benefit/grant payment (JP)
+        || has("特別定額給付金") // special fixed benefit payment / covid stimulus (JP)
+        || has("緊急経済支援") // emergency economic relief (JP)
+        || has("公的補助") // public assistance (JP)
+        || has("国庫補助") // national treasury grant (JP)
+        || has("給付が決定"); // benefit has been decided (JP)
+    let claim_barrier = has("claim your grant")
+        || has("claim your funds")
+        || has("collect your check")
+        || has("application fee required")
+        || has("processing fee to receive")
+        || has("registration fee required")
+        || has("verify your identity to receive")
+        || has("enrollment deadline")
+        || has("apply before the deadline")
+        || has("funds will expire")
+        || has("limited enrollment available")
+        || has("claim now before deadline")
+        || has("disbursement fee")
+        || has("今すぐ申請") // apply now (JP)
+        || has("給付金を受け取るには") // to receive the benefit payment (JP)
+        || has("手数料が必要") // fee is required (JP)
+        || has("申請期限") // application deadline (JP)
+        || has("期限内にお申し込み") // apply within the deadline (JP)
+        || has("給付金の申請手続き") // benefit application procedure (JP)
+        || has("確認が必要です"); // confirmation required (JP)
+    grant_program && claim_barrier
+}
+
+/// E41 — Debt relief / credit repair scam.
+///
+/// AND-pair: debt or credit distress framing AND a scam CTA (guaranteed
+/// results, advance fee, "stop paying now").  Fake debt-relief operations
+/// charge upfront fees and disappear without delivering the promised debt
+/// reduction, leaving victims worse off.  Distinct from `advance_fee_lure`
+/// (windfall release fee) and `job_scam` (employment fee gate).  With the
+/// `alert_shaped` guard, legitimate credit-counseling websites (closable,
+/// user-initiated) cannot fire.
+pub fn has_debt_relief_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let debt_claim = has("credit card debt")
+        || has("credit card balance")
+        || has("unsecured debt")
+        || has("personal loan debt")
+        || has("get out of debt")
+        || has("debt forgiveness")
+        || has("debt consolidation")
+        || has("debt relief program")
+        || has("debt settlement")
+        || has("credit repair program")
+        || has("eliminate your debt")
+        || has("reduce your debt")
+        || has("debt management plan")
+        || has("student debt relief")
+        || has("借金") // debt (JP)
+        || has("債務整理") // debt restructuring / bankruptcy adjacent (JP)
+        || has("過払い金") // excess interest paid / overpayment claim (JP)
+        || has("借金の悩み") // debt trouble (JP)
+        || has("多重債務") // multiple debts (JP)
+        || has("クレジットカードの借金") // credit card debt (JP)
+        || has("借金解決"); // debt resolution (JP)
+    let scam_cta = has("guaranteed approval")
+        || has("no credit check required")
+        || has("100% guaranteed results")
+        || has("we can eliminate your debt")
+        || has("settled for pennies")
+        || has("stop paying now")
+        || has("stop payments today")
+        || has("you qualify for relief")
+        || has("application fee required")
+        || has("processing fee required")
+        || has("initial consultation fee")
+        || has("pay to start your case")
+        || has("guaranteed debt relief")
+        || has("results guaranteed")
+        || has("確実に解決") // definitely resolved / guaranteed resolution (JP)
+        || has("審査不要") // no screening required / no credit check (JP)
+        || has("成功報酬") // success-based fee (JP — legitimate for lawyers but also scam CTA)
+        || has("着手金") // retainer/initial fee (JP)
+        || has("相談料が必要") // consultation fee required (JP)
+        || has("初期費用が必要") // initial cost required (JP)
+        || has("保証料"); // guarantee fee (JP)
+    debt_claim && scam_cta
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4379,6 +4491,126 @@ mod tests {
         // Overstay info without immigration doc
         assert!(!has_immigration_visa_scam(
             "不法滞在の定義と日本の法律についての解説。"
+        ));
+    }
+
+    // ── has_government_grant_scam ────────────────────────────────────────────
+
+    #[test]
+    fn government_grant_scam_fires_on_federal_grant_plus_fee() {
+        assert!(has_government_grant_scam(
+            "government grant approved — claim your grant — application fee required to release funds"
+        ));
+        assert!(has_government_grant_scam(
+            "federal grant: $10,000 stimulus check — verify your identity to receive — enrollment deadline today"
+        ));
+    }
+
+    #[test]
+    fn government_grant_scam_fires_on_stimulus_plus_urgency() {
+        assert!(has_government_grant_scam(
+            "stimulus payment ready — economic relief — apply before the deadline — processing fee to receive"
+        ));
+        assert!(has_government_grant_scam(
+            "pandemic relief fund — unclaimed government funds — claim your funds — disbursement fee required"
+        ));
+    }
+
+    #[test]
+    fn government_grant_scam_fires_jp() {
+        assert!(has_government_grant_scam(
+            "政府給付金のお知らせ：今すぐ申請すれば10万円受け取れます。手数料が必要です。"
+        ));
+        assert!(has_government_grant_scam(
+            "特別定額給付金のご案内：申請期限が迫っています。給付金を受け取るには確認が必要です。"
+        ));
+    }
+
+    #[test]
+    fn government_grant_scam_does_not_fire_on_benign() {
+        // Grant program without fee/urgency barrier
+        assert!(!has_government_grant_scam(
+            "federal grant available for small businesses — apply at grants.gov"
+        ));
+        // Fee/urgency without grant program framing
+        assert!(!has_government_grant_scam(
+            "application fee required — processing fee to receive — enrollment deadline"
+        ));
+        // Legitimate news about stimulus
+        assert!(!has_government_grant_scam(
+            "stimulus check: irs updates direct deposit schedule for economic impact payments"
+        ));
+    }
+
+    #[test]
+    fn government_grant_scam_does_not_fire_jp_benign() {
+        // Grant info without fee/urgency
+        assert!(!has_government_grant_scam(
+            "補助金制度の申請方法について。中小企業向け公的補助の詳細はこちら。"
+        ));
+        // Application deadline without grant program
+        assert!(!has_government_grant_scam(
+            "申請期限：3月31日（月）まで。手数料が必要です。詳細はウェブサイトをご確認ください。"
+        ));
+    }
+
+    // ── has_debt_relief_scam ─────────────────────────────────────────────────
+
+    #[test]
+    fn debt_relief_scam_fires_on_debt_consolidation_plus_guarantee() {
+        assert!(has_debt_relief_scam(
+            "debt relief program: get out of debt — guaranteed approval — we can eliminate your debt today"
+        ));
+        assert!(has_debt_relief_scam(
+            "credit card debt relief — debt consolidation — no credit check required — 100% guaranteed results"
+        ));
+    }
+
+    #[test]
+    fn debt_relief_scam_fires_on_stop_paying_plus_debt_claim() {
+        assert!(has_debt_relief_scam(
+            "debt settlement program — unsecured debt — stop paying now — you qualify for relief"
+        ));
+        assert!(has_debt_relief_scam(
+            "eliminate your debt — credit repair program — results guaranteed — application fee required"
+        ));
+    }
+
+    #[test]
+    fn debt_relief_scam_fires_jp() {
+        assert!(has_debt_relief_scam(
+            "借金の悩み解決。債務整理のご相談。確実に解決します。着手金が必要です。"
+        ));
+        assert!(has_debt_relief_scam(
+            "多重債務・クレジットカードの借金。審査不要で借金解決。相談料が必要です。"
+        ));
+    }
+
+    #[test]
+    fn debt_relief_scam_does_not_fire_on_benign() {
+        // Debt claim without scam CTA
+        assert!(!has_debt_relief_scam(
+            "credit card debt: how to pay it off with a balance transfer"
+        ));
+        // Scam CTA without debt claim
+        assert!(!has_debt_relief_scam(
+            "guaranteed approval — no credit check required — fast processing"
+        ));
+        // Legitimate non-profit credit counseling
+        assert!(!has_debt_relief_scam(
+            "nonprofit debt counseling: free consultation — no fees charged"
+        ));
+    }
+
+    #[test]
+    fn debt_relief_scam_does_not_fire_jp_benign() {
+        // Debt info without scam CTA
+        assert!(!has_debt_relief_scam(
+            "債務整理の種類：任意整理・個人再生・自己破産について弁護士が解説。"
+        ));
+        // Scam CTA without debt claim
+        assert!(!has_debt_relief_scam(
+            "確実に解決します。審査不要で今すぐご相談ください。"
         ));
     }
 }

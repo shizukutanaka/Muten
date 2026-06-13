@@ -614,7 +614,50 @@ MSRV 1.75, 286 tests.
   No legitimate immigration authority delivers enforcement notices via unsolicited
   browser overlays.  Weight `W_IMMIGRATION_VISA_SCAM = 25`.  Category:
   `InterfaceInterference`.  MITRE: T1566.  10 confusables unit tests + 3 lib unit
-  tests + 2 property tests + 4 scoring scenarios; 769 tests total.  (E39.)
+  tests + 2 property tests + 4 scoring scenarios.  (E39.)
+- **Government grant / stimulus scam** (`government_grant_scam`; E40).
+  `has_government_grant_scam(s)` fires when the normalized title contains a
+  *grant_program* phrase ("government grant", "federal grant", "stimulus
+  payment", "stimulus check", "economic relief", "pandemic relief", "covid
+  relief", "emergency relief fund", "unclaimed government funds", 政府給付金,
+  補助金, 給付金, 特別定額給付金, 緊急経済支援, 公的補助, 国庫補助, 給付が決定)
+  AND a *claim_barrier* ("claim your grant", "claim your funds", "application
+  fee required", "processing fee to receive", "verify your identity to receive",
+  "enrollment deadline", "apply before the deadline", "funds will expire",
+  "disbursement fee", 今すぐ申請, 給付金を受け取るには, 手数料が必要, 申請期限,
+  確認が必要です).  Distinct from `advance_fee_lure` (which covers personal
+  windfall stories — inheritance, lottery): this signal keys on impersonation
+  of official government grant or stimulus programs.  No real government grant
+  program requires an upfront fee, and no legitimate government notice is
+  delivered via an unsolicited browser overlay.  FTC BCP 2024 government
+  impostor enforcement; 消費者庁 2025 給付金詐欺 advisories for the JP market.
+  Weight `W_GOVERNMENT_GRANT_SCAM = 25`.  Category: `Sneaking`.  MITRE: T1566.
+  10 confusables unit tests + 3 lib unit tests + 2 property tests + 4 scoring
+  scenarios.  (E40.)
+- **Debt relief / credit repair scam** (`debt_relief_scam`; E41).
+  `has_debt_relief_scam(s)` fires when the normalized title contains a
+  *debt_claim* ("credit card debt", "credit card balance", "unsecured debt",
+  "get out of debt", "debt forgiveness", "debt consolidation", "debt relief
+  program", "debt settlement", "credit repair program", "eliminate your debt",
+  "student debt relief", 借金, 債務整理, 過払い金, 借金の悩み, 多重債務,
+  クレジットカードの借金, 借金解決) AND a *scam_cta* ("guaranteed approval",
+  "no credit check required", "100% guaranteed results", "we can eliminate
+  your debt", "settled for pennies", "stop paying now", "stop payments today",
+  "you qualify for relief", "application fee required", "processing fee
+  required", "initial consultation fee", "pay to start your case",
+  "guaranteed debt relief", 確実に解決, 審査不要, 着手金, 相談料が必要,
+  初期費用が必要, 保証料).  Fake debt-relief operations collect upfront
+  fees while promising guaranteed debt elimination or "stop paying now"
+  outcomes — results they never deliver — leaving victims worse off than
+  before.  The upfront-fee or guaranteed-results CTA is the sole scam tell:
+  legitimate NFCC-accredited credit counselors charge no advance fee and
+  never guarantee specific debt-reduction outcomes.  alert_shaped guard
+  prevents legitimate credit-counseling websites (user-initiated, closable)
+  from firing.  FTC 2025 debt-relief enforcement actions; 日本弁護士連合会
+  2025 多重債務詐欺 advisories for the JP market.  Weight `W_DEBT_RELIEF_SCAM
+  = 25`.  Category: `Sneaking`.  MITRE: T1566.  10 confusables unit tests +
+  3 lib unit tests + 2 property tests + 4 scoring scenarios; 797 tests total.
+  (E41.)
 - **Sextortion / webcam-recording extortion lure** (`sextortion_lure`; E25).
   `has_sextortion_lure(s)` fires when the normalized title contains a *camera_cue*
   ("your camera" / "your webcam" / "we have recorded" / "have been recording" /
