@@ -159,6 +159,7 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         "veterans_benefit_scam" => Some(Sneaking), // legitimate-agency guise conceals fee-for-free-service fraud
         "fake_copyright_scam" => Some(InterfaceInterference), // legal-threat framing steers victim into urgent payment
         "crypto_giveaway_scam" => Some(InterfaceInterference), // exchange/celebrity impersonation steers victim to send crypto
+        "otp_interception_scam" => Some(InterfaceInterference), // social-engineers the victim into relaying a 2FA code
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }

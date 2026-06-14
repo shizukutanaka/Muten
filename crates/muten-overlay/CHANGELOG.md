@@ -16,6 +16,23 @@ dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
 ### Added
+- **OTP / 2FA code-relay account-takeover scam** (`otp_interception_scam`; E61).
+  `has_otp_interception_scam(s)` fires when the normalized title contains both an
+  *OTP/code cue* (verification code, one-time code/password, OTP, 2FA/
+  authentication code, "code we just sent", 認証コード, ワンタイムパスワード, etc.)
+  AND a *relay demand* — an instruction to **share / read / give / tell /
+  provide** the code to the page or caller (share the code, read us the code,
+  tell us the code, コードを共有, コードを教えて, etc.). The relay framing is the
+  decisive near-zero-FP tell: a legitimate two-factor flow has the user *enter*
+  a code they requested into its own form — it never asks them to *share*, *read
+  aloud*, or *give* the code to anyone. Attackers who triggered a real OTP with
+  a stolen password need the victim to relay it in real time. Distinct from
+  `credential_harvest_cue` (password/account-suspended framing), asserted by a
+  distinctness test. FTC Consumer Sentinel 2024 OTP fraud; FBI IC3 2024
+  account-takeover; 警察庁/IPA ワンタイムパスワード詐欺 advisory 2024. Weight
+  `W_OTP_INTERCEPTION_SCAM = 30`. Category: InterfaceInterference. MITRE: T1566.
+  10 confusables unit tests + 3 lib unit tests + 2 property tests + 4 scoring
+  scenarios + 1 JP-normalization invariant; 1203 tests total. (E61.)
 - **Cryptocurrency giveaway / coin-doubling scam** (`crypto_giveaway_scam`; E60).
   `has_crypto_giveaway_scam(s)` fires when the normalized title contains both a
   *giveaway/doubling cue* (crypto/bitcoin/ETH giveaway, official giveaway,

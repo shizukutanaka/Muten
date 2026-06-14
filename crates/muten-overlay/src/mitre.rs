@@ -103,7 +103,8 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         | "ip_host_url"
         | "veterans_benefit_scam"
         | "fake_copyright_scam"
-        | "crypto_giveaway_scam" => &["T1566"],
+        | "crypto_giveaway_scam"
+        | "otp_interception_scam" => &["T1566"],
         _ => &[],
     }
 }
@@ -212,6 +213,7 @@ mod tests {
         assert_eq!(techniques_of("veterans_benefit_scam"), &["T1566"]);
         assert_eq!(techniques_of("fake_copyright_scam"), &["T1566"]);
         assert_eq!(techniques_of("crypto_giveaway_scam"), &["T1566"]);
+        assert_eq!(techniques_of("otp_interception_scam"), &["T1566"]);
     }
 
     #[test]

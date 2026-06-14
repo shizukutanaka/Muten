@@ -4207,3 +4207,93 @@ fn crypto_giveaway_scam_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E61: otp_interception_scam ────────────────────────────────────
+
+#[test]
+fn otp_interception_scam_fires_on_alert_shaped_window() {
+    let w = OverlayWindow {
+        title: "we sent a verification code — share the code with our agent to verify".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "otp_interception_scam"),
+        "expected otp_interception_scam; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn otp_interception_scam_fp_guard_no_alert_shape() {
+    let w = OverlayWindow {
+        title: "we sent a verification code — share the code with our agent to verify".into(),
+        url: None,
+        coverage_percent: 10,
+        topmost: false,
+        has_close_button: true,
+        blocks_input: false,
+        origin: Origin::UserInitiated,
+        age_ms: 5_000,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        !v.signals.iter().any(|s| s == "otp_interception_scam"),
+        "otp_interception_scam must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn otp_interception_scam_jp_reaches_suspicious() {
+    let w = OverlayWindow {
+        title: "認証コードを送信しました — コードを教えてください — 今すぐ確認".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "otp_interception_scam"),
+        "JP otp_interception_scam signal must actually fire through normalize_for_match; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP otp_interception_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn otp_interception_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "2fa code required — give us the code we just sent — call 1-800-555-0202".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "otp_interception_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}

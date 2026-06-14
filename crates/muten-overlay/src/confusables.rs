@@ -7152,6 +7152,14 @@ mod jp_normalization_invariant {
             has_crypto_giveaway_scam
         ));
     }
+
+    #[test]
+    fn normalize_preserves_jp_otp_interception_scam() {
+        assert!(fires_after_normalize(
+            "認証コードを送信しました コードを教えてください",
+            has_otp_interception_scam
+        ));
+    }
 }
 
 // ── E60: crypto_giveaway_scam ─────────────────────────────────────────────────
@@ -7308,6 +7316,161 @@ mod e60_tests {
         // Pure recruitment language must not fire this — pig_butchering's job.
         assert!(!has_crypto_giveaway_scam(
             "join our vip trading group and i will mentor you to profit"
+        ));
+    }
+}
+
+// ── E61: otp_interception_scam ────────────────────────────────────────────────
+
+/// Detects real-time OTP / 2FA code-relay (account-takeover) scams.
+///
+/// Fires when the normalized title contains **both** an *OTP/code cue*
+/// (verification code, one-time code/password, OTP, 2FA/authentication code,
+/// "code we just sent", 認証コード, ワンタイムパスワード, etc.) **and** a
+/// *relay demand* — an instruction to **share / read / give / tell / provide**
+/// the code to the page or caller (share the code, read us the code, tell us
+/// the code, コードを共有, コードを教えて, etc.).
+///
+/// The relay framing is the decisive, near-zero-false-positive tell: a
+/// legitimate two-factor flow asks the user to **enter** a code *they*
+/// requested into its own form — it never asks them to *share*, *read aloud*,
+/// or *give* the code to anyone. Attackers who have triggered a genuine OTP on
+/// the victim's account (by logging in with a stolen password) need the victim
+/// to relay that code in real time; this overlay/caller is how they ask.
+/// Distinct from `credential_harvest_cue` (password/account-suspended framing).
+/// FTC Consumer Sentinel 2024 (OTP/one-time-code fraud); FBI IC3 2024
+/// account-takeover; 警察庁/IPA ワンタイムパスワード詐欺 advisory 2024.
+#[must_use]
+pub fn has_otp_interception_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let code_cue = has("verification code")
+        || has("one-time code")
+        || has("one time code")
+        || has("one-time password")
+        || has("one time password")
+        || has("otp code")
+        || has("2fa code")
+        || has("two-factor code")
+        || has("two factor code")
+        || has("authentication code")
+        || has("security code we")
+        || has("code we just sent")
+        || has("code we sent")
+        || has("code we texted")
+        || has("6-digit code")
+        || has("six-digit code")
+        || has("認証コード")
+        || has("ワンタイムパスワード")
+        || has("ワンタイムコード")
+        || has("確認コード")
+        || has("認証番号");
+    let relay_demand = has("share the code")
+        || has("share your code")
+        || has("share this code")
+        || has("share the verification code")
+        || has("read us the code")
+        || has("read me the code")
+        || has("read the code to")
+        || has("read back the code")
+        || has("give us the code")
+        || has("tell us the code")
+        || has("provide the code")
+        || has("provide your verification code")
+        || has("send us the code")
+        || has("confirm the code with")
+        || has("コードを共有")
+        || has("コードを教え")
+        || has("コードを伝え")
+        || has("コードを読み上げ")
+        || has("認証コードを共有")
+        || has("認証番号を教え");
+    code_cue && relay_demand
+}
+
+#[cfg(test)]
+mod e61_tests {
+    use super::*;
+
+    #[test]
+    fn otp_interception_scam_fires_share_verification_code() {
+        assert!(has_otp_interception_scam(
+            "we sent a verification code — share the code with our agent to verify"
+        ));
+    }
+
+    #[test]
+    fn otp_interception_scam_fires_read_otp() {
+        assert!(has_otp_interception_scam(
+            "otp code sent to your phone — read us the code to confirm your identity"
+        ));
+    }
+
+    #[test]
+    fn otp_interception_scam_fires_2fa_give() {
+        assert!(has_otp_interception_scam(
+            "2fa code required — give us the code we just sent to continue"
+        ));
+    }
+
+    #[test]
+    fn otp_interception_scam_fires_jp() {
+        assert!(has_otp_interception_scam(
+            "認証コードを送信しました — コードを教えてください"
+        ));
+    }
+
+    #[test]
+    fn otp_interception_scam_fires_one_time_password_tell() {
+        assert!(has_otp_interception_scam(
+            "one-time password sent — tell us the code to unlock your account"
+        ));
+    }
+
+    #[test]
+    fn otp_interception_scam_does_not_fire_code_only() {
+        // Legitimate 2FA: enter the code YOU requested — no share/read/give.
+        assert!(!has_otp_interception_scam(
+            "enter the verification code we sent to your phone"
+        ));
+        assert!(!has_otp_interception_scam(
+            "your one-time password is 123456"
+        ));
+    }
+
+    #[test]
+    fn otp_interception_scam_does_not_fire_relay_only() {
+        // Share/tell language without an OTP/code cue.
+        assert!(!has_otp_interception_scam(
+            "share this article with your friends"
+        ));
+        assert!(!has_otp_interception_scam(
+            "tell us the code word at the door"
+        ));
+    }
+
+    #[test]
+    fn otp_interception_scam_does_not_fire_benign() {
+        assert!(!has_otp_interception_scam(
+            "two-factor authentication keeps your account safe — learn more"
+        ));
+        assert!(!has_otp_interception_scam("enter your password to sign in"));
+    }
+
+    #[test]
+    fn otp_interception_scam_does_not_fire_jp_benign() {
+        assert!(!has_otp_interception_scam(
+            "認証コードを入力してログインしてください"
+        ));
+        assert!(!has_otp_interception_scam(
+            "ワンタイムパスワードの使い方についてのご案内"
+        ));
+    }
+
+    #[test]
+    fn otp_interception_scam_distinct_from_credential_harvest() {
+        // Pure password-reset / account-suspended framing must not fire E61.
+        assert!(!has_otp_interception_scam(
+            "your account is suspended — confirm your password to restore access"
         ));
     }
 }

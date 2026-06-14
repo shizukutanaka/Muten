@@ -1748,4 +1748,26 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_crypto_giveaway_scam(&s));
         }
     }
+
+    /// has_otp_interception_scam never panics on arbitrary Unicode.
+    #[test]
+    fn otp_interception_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_otp_interception_scam(&s);
+    }
+
+    /// Plain ASCII without both an OTP/code cue and a relay demand never fires
+    /// has_otp_interception_scam.
+    #[test]
+    fn plain_ascii_never_fires_otp_interception_scam(s in "[a-z .,!?0-9-]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let code_cue = has("verification code") || has("one-time code")
+            || has("one-time password") || has("otp code")
+            || has("2fa code") || has("authentication code");
+        let relay_demand = has("share the code") || has("read us the code")
+            || has("give us the code") || has("tell us the code")
+            || has("provide the code") || has("send us the code");
+        if !(code_cue && relay_demand) {
+            prop_assert!(!muten_overlay::confusables::has_otp_interception_scam(&s));
+        }
+    }
 }

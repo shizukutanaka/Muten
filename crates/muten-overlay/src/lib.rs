@@ -406,6 +406,9 @@ fn signal_phrase(signal: &str) -> &str {
         "crypto_giveaway_scam" => {
             "impersonates a crypto exchange or celebrity (e.g. Elon Musk / Tesla / Binance) running a 'giveaway' and instructs the victim to send cryptocurrency first in order to receive a doubled amount back — a one-shot coin-doubling fraud; no legitimate giveaway requires an upfront transfer"
         }
+        "otp_interception_scam" => {
+            "asks the user to share, read aloud, or give a one-time verification/2FA code to the page or caller — a real-time account-takeover relay; legitimate two-factor flows have the user enter a code into their own form, never share it with anyone"
+        }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
@@ -539,6 +542,7 @@ const W_MLM_PYRAMID_RECRUITMENT: i32 = 25; // referral/downline/residual income 
 const W_VETERANS_BENEFIT_SCAM: i32 = 30; // VA/veteran disability/benefit claim + processing fee (FTC 2024 military fraud)
 const W_FAKE_COPYRIGHT_SCAM: i32 = 30; // DMCA/copyright violation notice + pay settlement/fine (APWG 2024 legal-threat phishing)
 const W_CRYPTO_GIVEAWAY_SCAM: i32 = 30; // crypto giveaway/doubling + send-to-receive demand (FTC 2024 crypto-impersonation fraud)
+const W_OTP_INTERCEPTION_SCAM: i32 = 30; // OTP/2FA code cue + share/read/give-the-code relay demand (FTC 2024 account-takeover)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
@@ -629,6 +633,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "veterans_benefit_scam" => Some(W_VETERANS_BENEFIT_SCAM),
         "fake_copyright_scam" => Some(W_FAKE_COPYRIGHT_SCAM),
         "crypto_giveaway_scam" => Some(W_CRYPTO_GIVEAWAY_SCAM),
+        "otp_interception_scam" => Some(W_OTP_INTERCEPTION_SCAM),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
@@ -708,6 +713,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "veterans_benefit_scam"
             | "fake_copyright_scam"
             | "crypto_giveaway_scam"
+            | "otp_interception_scam"
             | "remote_access_lure"
     )
 }
@@ -830,6 +836,7 @@ pub fn all_signals() -> Vec<SignalInfo> {
         "veterans_benefit_scam",
         "fake_copyright_scam",
         "crypto_giveaway_scam",
+        "otp_interception_scam",
         "remote_access_lure",
     ];
     NAMES
@@ -1843,6 +1850,10 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         score += rules.weight_of("crypto_giveaway_scam", W_CRYPTO_GIVEAWAY_SCAM);
         signals.push("crypto_giveaway_scam".into());
     }
+    if alert_shaped && confusables::has_otp_interception_scam(&normalized_title) {
+        score += rules.weight_of("otp_interception_scam", W_OTP_INTERCEPTION_SCAM);
+        signals.push("otp_interception_scam".into());
+    }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
@@ -2221,6 +2232,7 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
         C::HasVeteransBenefitScam => has_sig("veterans_benefit_scam"),
         C::HasFakeCopyrightScam => has_sig("fake_copyright_scam"),
         C::HasCryptoGiveawayScam => has_sig("crypto_giveaway_scam"),
+        C::HasOtpInterceptionScam => has_sig("otp_interception_scam"),
     }
 }
 
@@ -4351,6 +4363,10 @@ mod tests {
             (
                 "crypto_giveaway_scam",
                 "official giveaway — send any amount — double your bitcoin instantly",
+            ),
+            (
+                "otp_interception_scam",
+                "we sent a verification code — share the code with our agent to verify",
             ),
         ];
         for (name, title) in cases {
@@ -6895,6 +6911,7 @@ mod tests {
             "veterans_benefit_scam",
             "fake_copyright_scam",
             "crypto_giveaway_scam",
+            "otp_interception_scam",
             "remote_access_lure",
         ] {
             assert!(
@@ -8047,6 +8064,57 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("crypto_giveaway_scam"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E61: otp_interception_scam (lib.rs unit tests) ───────────────
+
+    #[test]
+    fn otp_interception_scam_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "we sent a verification code — share the code with our agent to verify".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "otp_interception_scam"),
+            "otp_interception_scam must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn otp_interception_scam_does_not_fire_without_alert_shape() {
+        let w = OverlayWindow {
+            title: "we sent a verification code — share the code with our agent to verify".into(),
+            url: None,
+            coverage_percent: 10,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "otp_interception_scam"),
+            "otp_interception_scam must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn otp_interception_scam_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("otp_interception_scam"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }
