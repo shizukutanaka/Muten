@@ -1726,4 +1726,26 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_fake_copyright_scam(&s));
         }
     }
+
+    /// has_crypto_giveaway_scam never panics on arbitrary Unicode.
+    #[test]
+    fn crypto_giveaway_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_crypto_giveaway_scam(&s);
+    }
+
+    /// Plain ASCII without both a giveaway/doubling cue and a send-to-receive
+    /// demand never fires has_crypto_giveaway_scam.
+    #[test]
+    fn plain_ascii_never_fires_crypto_giveaway_scam(s in "[a-z .,!?0-9]{1,60}") {
+        let has = |a: &str| s.contains(a);
+        let giveaway_cue = has("crypto giveaway") || has("bitcoin giveaway")
+            || has("official giveaway") || has("doubling event")
+            || has("we are giving away") || has("crypto doubling");
+        let send_to_receive = has("send to this address") || has("send any amount")
+            || has("double your bitcoin") || has("get 2x back")
+            || has("receive double") || has("send and receive");
+        if !(giveaway_cue && send_to_receive) {
+            prop_assert!(!muten_overlay::confusables::has_crypto_giveaway_scam(&s));
+        }
+    }
 }

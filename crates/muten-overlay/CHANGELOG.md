@@ -16,6 +16,24 @@ dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
 ### Added
+- **Cryptocurrency giveaway / coin-doubling scam** (`crypto_giveaway_scam`; E60).
+  `has_crypto_giveaway_scam(s)` fires when the normalized title contains both a
+  *giveaway/doubling cue* (crypto/bitcoin/ETH giveaway, official giveaway,
+  doubling event, "we are giving away", Elon Musk / Tesla / Binance / Coinbase
+  giveaway, "first 1000 participants", 仮想通貨プレゼント, ビットコイン配布, etc.)
+  AND a *send-to-receive demand* (send to this address, send any amount, double
+  your bitcoin/crypto/ETH, get 2x back, receive double, send 0., 送れば倍,
+  送金すると2倍, 倍にして返金, etc.). The defining tell of the coin-doubling
+  fraud — fake celebrity/exchange "giveaway" livestreams — is that the victim
+  must *send* crypto first to "receive" a doubled amount back; no legitimate
+  giveaway requires an upfront transfer. Distinct from `crypto_drain_lure`
+  (seed-phrase / wallet-connect theft) and `pig_butchering_lure` (romance/mentor
+  recruitment into a fake platform). FTC Consumer Sentinel 2024 crypto
+  impersonation fraud; FBI IC3 2024; 消費者庁 暗号資産詐欺 advisory 2024. Weight
+  `W_CRYPTO_GIVEAWAY_SCAM = 30`. Category: InterfaceInterference (exchange/
+  celebrity impersonation). MITRE: T1566. 10 confusables unit tests + 3 lib unit
+  tests + 2 property tests + 4 scoring scenarios + 1 JP-normalization invariant;
+  1183 tests total. (E60.)
 - **Composite AND-condition rules** (`composite: <name> <weight> <cond1> …`
   in the blocklist; C5-2). A blocklist line like
   `composite: kiosk_lockdown 60 fullscreen topmost blocks_input unsolicited`

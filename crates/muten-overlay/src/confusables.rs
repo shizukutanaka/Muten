@@ -7144,4 +7144,170 @@ mod jp_normalization_invariant {
             has_fake_copyright_scam
         ));
     }
+
+    #[test]
+    fn normalize_preserves_jp_crypto_giveaway_scam() {
+        assert!(fires_after_normalize(
+            "仮想通貨プレゼント 送れば倍にして返金します",
+            has_crypto_giveaway_scam
+        ));
+    }
+}
+
+// ── E60: crypto_giveaway_scam ─────────────────────────────────────────────────
+
+/// Detects cryptocurrency "giveaway" / coin-doubling scams.
+///
+/// Fires when the normalized title contains **both** a *giveaway/doubling cue*
+/// (crypto giveaway, bitcoin giveaway, official giveaway, doubling event,
+/// we are giving away, first N participants, 仮想通貨プレゼント, ビットコイン配布,
+/// etc.) **and** a *send-to-receive demand* (send to this address, send any
+/// amount, double your bitcoin, get 2x back, receive double, 送れば倍,
+/// 送金すると2倍, etc.).
+///
+/// The defining tell of the coin-doubling scam — popularised by fake Elon
+/// Musk / Tesla / Binance / Coinbase "giveaway" livestreams — is that the
+/// victim must **send** cryptocurrency *first* to "receive" a larger amount
+/// back. No legitimate giveaway requires an upfront transfer. Distinct from
+/// `crypto_drain_lure` (seed-phrase / wallet-connect theft) and
+/// `pig_butchering_lure` (romance/mentor recruitment into a fake platform);
+/// here the lure is a one-shot send-and-get-double promise. FTC Consumer
+/// Sentinel 2024 (crypto giveaway/impersonation fraud); FBI IC3 2024;
+/// 消費者庁 暗号資産詐欺 advisory 2024.
+#[must_use]
+pub fn has_crypto_giveaway_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let giveaway_cue = has("crypto giveaway")
+        || has("bitcoin giveaway")
+        || has("btc giveaway")
+        || has("eth giveaway")
+        || has("ethereum giveaway")
+        || has("official giveaway")
+        || has("doubling event")
+        || has("crypto doubling")
+        || has("we are giving away")
+        || has("giving away bitcoin")
+        || has("elon musk giveaway")
+        || has("tesla giveaway")
+        || has("binance giveaway")
+        || has("coinbase giveaway")
+        || has("first 1000 participants")
+        || has("first 5000 participants")
+        || has("仮想通貨プレゼント")
+        || has("ビットコイン配布")
+        || has("暗号資産プレゼント")
+        || has("コイン配布キャンペーン");
+    let send_to_receive = has("send to this address")
+        || has("send any amount")
+        || has("send and receive")
+        || has("double your bitcoin")
+        || has("double your crypto")
+        || has("double your eth")
+        || has("get 2x back")
+        || has("receive double")
+        || has("receive twice")
+        || has("send 0.")
+        || has("send btc to")
+        || has("send eth to")
+        || has("instantly doubled")
+        || has("returned double")
+        || has("送れば倍")
+        || has("送金すると2倍")
+        || has("送ったコインが倍")
+        || has("倍にして返金")
+        || has("2倍にして返");
+    giveaway_cue && send_to_receive
+}
+
+#[cfg(test)]
+mod e60_tests {
+    use super::*;
+
+    #[test]
+    fn crypto_giveaway_scam_fires_btc_doubling() {
+        assert!(has_crypto_giveaway_scam(
+            "official giveaway — send any amount — double your bitcoin instantly"
+        ));
+    }
+
+    #[test]
+    fn crypto_giveaway_scam_fires_elon_send_address() {
+        assert!(has_crypto_giveaway_scam(
+            "elon musk giveaway — send to this address — receive double back"
+        ));
+    }
+
+    #[test]
+    fn crypto_giveaway_scam_fires_binance_2x() {
+        assert!(has_crypto_giveaway_scam(
+            "binance giveaway — send 0.1 btc — get 2x back"
+        ));
+    }
+
+    #[test]
+    fn crypto_giveaway_scam_fires_doubling_event() {
+        assert!(has_crypto_giveaway_scam(
+            "crypto doubling event for first 1000 participants — send and receive twice"
+        ));
+    }
+
+    #[test]
+    fn crypto_giveaway_scam_fires_jp() {
+        assert!(has_crypto_giveaway_scam(
+            "仮想通貨プレゼント — 送れば倍にして返金します"
+        ));
+    }
+
+    #[test]
+    fn crypto_giveaway_scam_does_not_fire_giveaway_only() {
+        // A legitimate-sounding giveaway with no send-first demand.
+        assert!(!has_crypto_giveaway_scam(
+            "crypto giveaway — winners announced next week — no purchase necessary"
+        ));
+        assert!(!has_crypto_giveaway_scam(
+            "bitcoin giveaway terms and conditions"
+        ));
+    }
+
+    #[test]
+    fn crypto_giveaway_scam_does_not_fire_send_only() {
+        // Send/receive language without the giveaway/doubling framing.
+        assert!(!has_crypto_giveaway_scam(
+            "send to this address to complete your purchase"
+        ));
+        assert!(!has_crypto_giveaway_scam(
+            "double your savings with our bank"
+        ));
+    }
+
+    #[test]
+    fn crypto_giveaway_scam_does_not_fire_benign() {
+        assert!(!has_crypto_giveaway_scam(
+            "learn how cryptocurrency works — beginner's guide"
+        ));
+        assert!(!has_crypto_giveaway_scam("your wallet balance has updated"));
+    }
+
+    #[test]
+    fn crypto_giveaway_scam_does_not_fire_jp_benign() {
+        assert!(!has_crypto_giveaway_scam(
+            "仮想通貨の始め方について解説します。詳しくはこちら。"
+        ));
+        assert!(!has_crypto_giveaway_scam(
+            "ビットコインの送金手数料についてのご案内"
+        ));
+    }
+
+    #[test]
+    fn crypto_giveaway_scam_distinct_from_drain_and_pig_butchering() {
+        // Pure seed-phrase drain language (no giveaway/send-double) must not
+        // fire this signal — that's crypto_drain_lure's job.
+        assert!(!has_crypto_giveaway_scam(
+            "validate your wallet — enter your seed phrase to restore access"
+        ));
+        // Pure recruitment language must not fire this — pig_butchering's job.
+        assert!(!has_crypto_giveaway_scam(
+            "join our vip trading group and i will mentor you to profit"
+        ));
+    }
 }

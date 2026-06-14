@@ -158,6 +158,7 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         "ip_host_url" => Some(Sneaking), // raw IP host conceals the absence of a legitimate registered domain
         "veterans_benefit_scam" => Some(Sneaking), // legitimate-agency guise conceals fee-for-free-service fraud
         "fake_copyright_scam" => Some(InterfaceInterference), // legal-threat framing steers victim into urgent payment
+        "crypto_giveaway_scam" => Some(InterfaceInterference), // exchange/celebrity impersonation steers victim to send crypto
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }

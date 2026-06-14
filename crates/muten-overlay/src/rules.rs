@@ -208,6 +208,8 @@ pub enum CompositeCondition {
     HasVeteransBenefitScam,
     /// The `fake_copyright_scam` signal fired (E59 — DMCA/copyright notice + pay settlement).
     HasFakeCopyrightScam,
+    /// The `crypto_giveaway_scam` signal fired (E60 — coin-doubling giveaway + send-to-receive).
+    HasCryptoGiveawayScam,
 }
 
 impl CompositeCondition {
@@ -271,6 +273,7 @@ impl CompositeCondition {
             "has_ip_host_url" => Some(Self::HasIpHostUrl),
             "has_veterans_benefit_scam" => Some(Self::HasVeteransBenefitScam),
             "has_fake_copyright_scam" => Some(Self::HasFakeCopyrightScam),
+            "has_crypto_giveaway_scam" => Some(Self::HasCryptoGiveawayScam),
             _ => None,
         }
     }

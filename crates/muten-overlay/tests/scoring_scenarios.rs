@@ -4116,3 +4116,94 @@ fn fake_copyright_scam_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E60: crypto_giveaway_scam ─────────────────────────────────────
+
+#[test]
+fn crypto_giveaway_scam_fires_on_alert_shaped_window() {
+    let w = OverlayWindow {
+        title: "official giveaway — send any amount — double your bitcoin instantly".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "crypto_giveaway_scam"),
+        "expected crypto_giveaway_scam; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn crypto_giveaway_scam_fp_guard_no_alert_shape() {
+    let w = OverlayWindow {
+        title: "official giveaway — send any amount — double your bitcoin instantly".into(),
+        url: None,
+        coverage_percent: 10,
+        topmost: false,
+        has_close_button: true,
+        blocks_input: false,
+        origin: Origin::UserInitiated,
+        age_ms: 5_000,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        !v.signals.iter().any(|s| s == "crypto_giveaway_scam"),
+        "crypto_giveaway_scam must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn crypto_giveaway_scam_jp_reaches_suspicious() {
+    let w = OverlayWindow {
+        title: "仮想通貨プレゼント — 送れば倍にして返金します — 今すぐ送金してください".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "crypto_giveaway_scam"),
+        "JP crypto_giveaway_scam signal must actually fire through normalize_for_match; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP crypto_giveaway_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn crypto_giveaway_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "elon musk giveaway — send to this address — get 2x back — call 1-800-555-0201"
+                .into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "crypto_giveaway_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}
