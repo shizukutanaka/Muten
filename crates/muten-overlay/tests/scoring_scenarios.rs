@@ -4297,3 +4297,93 @@ fn otp_interception_scam_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── E62: family_emergency_scam ────────────────────────────────────
+
+#[test]
+fn family_emergency_scam_fires_on_alert_shaped_window() {
+    let w = OverlayWindow {
+        title: "your grandson has been arrested — send bail money immediately".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "family_emergency_scam"),
+        "expected family_emergency_scam; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn family_emergency_scam_fp_guard_no_alert_shape() {
+    let w = OverlayWindow {
+        title: "your grandson has been arrested — send bail money immediately".into(),
+        url: None,
+        coverage_percent: 10,
+        topmost: false,
+        has_close_button: true,
+        blocks_input: false,
+        origin: Origin::UserInitiated,
+        age_ms: 5_000,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        !v.signals.iter().any(|s| s == "family_emergency_scam"),
+        "family_emergency_scam must not fire without alert shape; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn family_emergency_scam_jp_reaches_suspicious() {
+    let w = OverlayWindow {
+        title: "息子さんが事故にあいました — 至急 送金してください — 緊急".into(),
+        url: None,
+        coverage_percent: 90,
+        topmost: true,
+        has_close_button: false,
+        blocks_input: false,
+        origin: Origin::Unsolicited,
+        age_ms: 100,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "family_emergency_scam"),
+        "JP family_emergency_scam signal must actually fire through normalize_for_match; got {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= 50,
+        "JP family_emergency_scam must reach Suspicious; score = {}",
+        v.score
+    );
+}
+
+#[test]
+fn family_emergency_scam_plus_phone_reaches_block() {
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "your daughter is in jail — wire money now — call 1-800-555-0303".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.score >= 100,
+        "family_emergency_scam + phone must reach Block; score = {}",
+        v.score
+    );
+}

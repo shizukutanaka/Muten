@@ -160,6 +160,7 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         "fake_copyright_scam" => Some(InterfaceInterference), // legal-threat framing steers victim into urgent payment
         "crypto_giveaway_scam" => Some(InterfaceInterference), // exchange/celebrity impersonation steers victim to send crypto
         "otp_interception_scam" => Some(InterfaceInterference), // social-engineers the victim into relaying a 2FA code
+        "family_emergency_scam" => Some(InterfaceInterference), // impersonates a relative in crisis to extract urgent secret payment
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }

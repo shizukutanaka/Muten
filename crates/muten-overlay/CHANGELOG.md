@@ -15,6 +15,27 @@ guard, and expanded rogue-AV families. **API break**: `Verdict.signals` and
 dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
+### Added
+- **Family-emergency / "grandparent" / bail scam** (`family_emergency_scam`;
+  E62). `has_family_emergency_scam(s)` fires when the normalized title contains
+  **all three** of: (1) a *relative token* (grandson, granddaughter, grandchild,
+  your son/daughter/nephew/niece, family member, loved one, お孫さん, 息子さん,
+  娘さん, ご家族, ご親族); (2) an *emergency state* (arrested, in jail, in the
+  hospital, car accident, kidnapped, detained, in trouble, stranded, emergency,
+  逮捕, 事故, 入院, 誘拐, 拘束, 緊急); and (3) a *money demand* (bail, ransom, wire
+  money, send money, gift cards, western union, 保釈金, 送金, 振り込) **or** a
+  *secrecy demand* (don't tell anyone/mom/dad, keep this secret, 誰にも言わ, 内緒).
+  The three-way conjunction is the decisive near-zero-FP tell: the grandparent /
+  AI-voice-clone imposter scam always couples a named relative in a fabricated
+  crisis with an urgent secret money request. Distinct from `authority_lure`
+  (police/agency impersonation of the *victim*, not a relative) and
+  `advance_fee_lure`, asserted by distinctness tests. FTC Consumer Sentinel 2024
+  (family-emergency/imposter, a top fraud category); FBI IC3 2024 AI-voice-clone
+  advisory; 警察庁 オレオレ詐欺 advisory. Weight `W_FAMILY_EMERGENCY_SCAM = 30`.
+  Category: InterfaceInterference. MITRE: T1566. 10 confusables unit tests + 3
+  lib unit tests + 2 property tests + 4 scoring scenarios + 1 JP-normalization
+  invariant; 1224 tests total. (E62.)
+
 ### Changed
 - **Full-wiring meta-guard for content signals** (structural hardening; Gap C).
   Audited every detection signal's four metadata wirings (score weight,

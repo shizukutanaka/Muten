@@ -1770,4 +1770,26 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_otp_interception_scam(&s));
         }
     }
+
+    /// has_family_emergency_scam never panics on arbitrary Unicode.
+    #[test]
+    fn family_emergency_scam_never_panics(s in ".*") {
+        let _ = muten_overlay::confusables::has_family_emergency_scam(&s);
+    }
+
+    /// Plain ASCII lacking any relative token never fires
+    /// has_family_emergency_scam (the relative is a required conjunct).
+    #[test]
+    fn plain_ascii_without_relative_never_fires_family_emergency_scam(
+        s in "[a-z .,!?0-9-]{1,80}"
+    ) {
+        let has = |a: &str| s.contains(a);
+        let relative = has("grandson") || has("granddaughter") || has("grandchild")
+            || has("your son") || has("your daughter") || has("your nephew")
+            || has("your niece") || has("family member") || has("loved one")
+            || has("a relative");
+        if !relative {
+            prop_assert!(!muten_overlay::confusables::has_family_emergency_scam(&s));
+        }
+    }
 }

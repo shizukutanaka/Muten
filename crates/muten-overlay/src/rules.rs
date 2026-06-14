@@ -212,6 +212,8 @@ pub enum CompositeCondition {
     HasCryptoGiveawayScam,
     /// The `otp_interception_scam` signal fired (E61 — OTP/2FA code cue + share-the-code relay).
     HasOtpInterceptionScam,
+    /// The `family_emergency_scam` signal fired (E62 — relative + crisis + money/secrecy demand).
+    HasFamilyEmergencyScam,
 }
 
 impl CompositeCondition {
@@ -277,6 +279,7 @@ impl CompositeCondition {
             "has_fake_copyright_scam" => Some(Self::HasFakeCopyrightScam),
             "has_crypto_giveaway_scam" => Some(Self::HasCryptoGiveawayScam),
             "has_otp_interception_scam" => Some(Self::HasOtpInterceptionScam),
+            "has_family_emergency_scam" => Some(Self::HasFamilyEmergencyScam),
             _ => None,
         }
     }

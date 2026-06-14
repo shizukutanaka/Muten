@@ -7160,6 +7160,14 @@ mod jp_normalization_invariant {
             has_otp_interception_scam
         ));
     }
+
+    #[test]
+    fn normalize_preserves_jp_family_emergency_scam() {
+        assert!(fires_after_normalize(
+            "息子さんが事故にあいました 至急 送金してください",
+            has_family_emergency_scam
+        ));
+    }
 }
 
 // ── E60: crypto_giveaway_scam ─────────────────────────────────────────────────
@@ -7471,6 +7479,177 @@ mod e61_tests {
         // Pure password-reset / account-suspended framing must not fire E61.
         assert!(!has_otp_interception_scam(
             "your account is suspended — confirm your password to restore access"
+        ));
+    }
+}
+
+// ── E62: family_emergency_scam ────────────────────────────────────────────────
+
+/// Detects family-emergency / "grandparent" / bail scams (AI-voice-clone era).
+///
+/// Fires when the normalized title contains **all three** of:
+///   1. a *relative token* — grandson, granddaughter, grandchild, your son,
+///      your daughter, nephew, niece, family member, loved one, お孫さん,
+///      息子さん, 娘さん, ご家族, ご親族;
+///   2. an *emergency state* — arrested, in jail, in the hospital, (car)
+///      accident, kidnapped, detained, in trouble, stranded, emergency,
+///      逮捕, 事故, 入院, 誘拐, 拘束, 緊急;
+///   3. a *money demand* (bail, ransom, wire money, send money, gift cards,
+///      western union, 保釈金, 送金, 振り込, お金を送) **or** a *secrecy demand*
+///      (don't tell anyone / mom / dad, keep this secret, 誰にも言わ, 内緒).
+///
+/// The three-way conjunction is the decisive near-zero-false-positive tell: the
+/// grandparent / family-emergency scam *always* couples a named relative in a
+/// fabricated crisis with an urgent, secret request to send money — typically
+/// after an AI-cloned voice impersonates the relative. No legitimate alert
+/// pairs all three. Distinct from `authority_lure` (police/agency impersonation
+/// of the *victim*, not a relative) and `advance_fee_lure` (no relative/crisis
+/// framing). FTC Consumer Sentinel 2024 (family-emergency / imposter scams, a
+/// top fraud category); FBI IC3 2024 AI-voice-clone advisory; 警察庁 オレオレ詐欺
+/// (ore-ore / "it's me" scam) advisory.
+#[must_use]
+pub fn has_family_emergency_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let relative = has("grandson")
+        || has("granddaughter")
+        || has("grandchild")
+        || has("your son")
+        || has("your daughter")
+        || has("your nephew")
+        || has("your niece")
+        || has("family member")
+        || has("loved one")
+        || has("a relative")
+        || has("お孫さん")
+        || has("息子さん")
+        || has("娘さん")
+        || has("ご家族")
+        || has("ご親族");
+    let emergency = has("arrested")
+        || has("in jail")
+        || has("in the hospital")
+        || has("car accident")
+        || has("an accident")
+        || has("a serious accident")
+        || has("kidnapped")
+        || has("been detained")
+        || has("is detained")
+        || has("in trouble")
+        || has("stranded")
+        || has("emergency")
+        || has("逮捕")
+        || has("事故")
+        || has("入院")
+        || has("誘拐")
+        || has("拘束")
+        || has("緊急");
+    let money_demand = has("bail")
+        || has("ransom")
+        || has("wire money")
+        || has("wire transfer")
+        || has("send money")
+        || has("send the money")
+        || has("send gift cards")
+        || has("western union")
+        || has("money transfer")
+        || has("need money")
+        || has("保釈金")
+        || has("送金")
+        || has("振り込")
+        || has("お金を送")
+        || has("現金を");
+    let secrecy_demand = has("don't tell")
+        || has("do not tell")
+        || has("dont tell")
+        || has("keep this between")
+        || has("keep this a secret")
+        || has("keep it a secret")
+        || has("don't tell mom")
+        || has("don't tell dad")
+        || has("誰にも言わ")
+        || has("内緒");
+    relative && emergency && (money_demand || secrecy_demand)
+}
+
+#[cfg(test)]
+mod e62_tests {
+    use super::*;
+
+    #[test]
+    fn family_emergency_scam_fires_grandson_bail() {
+        assert!(has_family_emergency_scam(
+            "your grandson has been arrested — send bail money immediately"
+        ));
+    }
+
+    #[test]
+    fn family_emergency_scam_fires_son_accident_wire() {
+        assert!(has_family_emergency_scam(
+            "your son was in a car accident and is in the hospital — wire money now"
+        ));
+    }
+
+    #[test]
+    fn family_emergency_scam_fires_secrecy_variant() {
+        // money via secrecy demand instead of an explicit money word
+        assert!(has_family_emergency_scam(
+            "your granddaughter is in jail — don't tell anyone, she needs help fast"
+        ));
+    }
+
+    #[test]
+    fn family_emergency_scam_fires_jp_oreore() {
+        assert!(has_family_emergency_scam(
+            "息子さんが事故にあいました — 至急 送金してください"
+        ));
+    }
+
+    #[test]
+    fn family_emergency_scam_fires_kidnap_ransom() {
+        assert!(has_family_emergency_scam(
+            "your family member has been kidnapped — pay the ransom and tell no one"
+        ));
+    }
+
+    #[test]
+    fn family_emergency_scam_does_not_fire_relative_only() {
+        assert!(!has_family_emergency_scam(
+            "your son's school photos are ready to view"
+        ));
+    }
+
+    #[test]
+    fn family_emergency_scam_does_not_fire_emergency_money_no_relative() {
+        // Emergency + money but no relative → not the grandparent pattern
+        // (this shape is covered by other signals, not E62).
+        assert!(!has_family_emergency_scam(
+            "emergency — your account was charged, wire money to reverse it"
+        ));
+    }
+
+    #[test]
+    fn family_emergency_scam_does_not_fire_relative_emergency_no_demand() {
+        // Relative + emergency but no money/secrecy demand → benign news.
+        assert!(!has_family_emergency_scam(
+            "your daughter was in a minor accident but is completely fine now"
+        ));
+    }
+
+    #[test]
+    fn family_emergency_scam_does_not_fire_benign() {
+        assert!(!has_family_emergency_scam(
+            "send money to your family with our low-fee transfer service"
+        ));
+        assert!(!has_family_emergency_scam(
+            "emergency exits are located at the rear"
+        ));
+    }
+
+    #[test]
+    fn family_emergency_scam_distinct_from_authority_lure() {
+        // Police impersonation of the VICTIM (no relative) must not fire E62.
+        assert!(!has_family_emergency_scam(
+            "you have been arrested for tax fraud — pay the fine immediately"
         ));
     }
 }
