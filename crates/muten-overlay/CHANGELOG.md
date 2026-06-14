@@ -15,6 +15,25 @@ guard, and expanded rogue-AV families. **API break**: `Verdict.signals` and
 dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
+### Security
+- **Algorithmic-complexity DoS via unbounded title/URL length** (Socratic
+  resource-safety audit). A probe of pathological input found that a single
+  ~5 MB window title stalled one `classify()` call for ~89 seconds (and a 2 MB
+  combining-mark flood for ~34 s), because every normalization pass and all
+  ~150 content detectors run at least `O(n)` in the title length with no upper
+  bound — a denial of service for any real-time monitor that classifies every
+  window. New `MAX_TITLE_CHARS = 2048` cap with `bound_title_chars()` (a
+  `O(MAX_TITLE_CHARS)`, char-boundary-safe prefix that stops scanning at the
+  cap rather than walking the whole input) is now applied to the title and URL
+  at the `classify()` boundary — before host/title/phone matching, phone
+  scanning, and `normalize_for_match` — and as defense-in-depth inside the
+  public `normalize_for_match` and `contains_phone_number`. Real titles are far
+  shorter than the cap, so detection is unaffected (scam text at the start of a
+  padded title still fires); worst-case work drops from tens of seconds to a
+  few milliseconds. 4 resource-safety tests (giant title is fast, scam within
+  the cap still detected, combining-mark flood bounded, char-boundary
+  truncation). 1246 tests total.
+
 ### Fixed
 - **False positive: `refund_scam_cue` fired on legitimate refund-completion
   notices** (Socratic FP audit). A new aggregate benign-corpus test (see below)

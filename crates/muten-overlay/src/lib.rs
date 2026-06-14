@@ -1229,8 +1229,14 @@ fn is_cloud_storage_host(host: &str) -> bool {
 ///    hosts.
 #[must_use]
 pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
+    // Bound untrusted input length up front: a maliciously gigantic title or
+    // URL would otherwise make every downstream normalization pass and content
+    // detector (~150 of them, each at least O(n)) run for tens of seconds — an
+    // algorithmic-complexity DoS. Real titles/URLs are far shorter than the cap.
+    let title = confusables::bound_title_chars(&w.title);
+
     // 1. Hard host/URL block.
-    if let Some(url) = w.url.as_deref() {
+    if let Some(url) = w.url.as_deref().map(confusables::bound_title_chars) {
         if let Some(hit) = rules.match_host(url) {
             let signals: Vec<String> = vec!["blocklist_host".into()];
             return Verdict {
@@ -1290,8 +1296,8 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // Both are treated as the same signal and weight — the distinction is only
     // in how the pattern is expressed, not in how much evidence it provides.
     let title_rule = rules
-        .match_title(&w.title)
-        .or_else(|| rules.match_title_glob(&w.title));
+        .match_title(title)
+        .or_else(|| rules.match_title_glob(title));
     if let Some(rule) = title_rule {
         score += rules.weight_of("blocklist_title", W_TITLE_HIT);
         signals.push("blocklist_title".into());
@@ -1303,7 +1309,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // pushed scam-number list is high-confidence wherever it appears, so
     // it does not require the alert shape. Additive (not an auto-block),
     // consistent with `blocklist_title`; surfaces the matched rule.
-    if let Some(rule) = rules.match_phone(&w.title) {
+    if let Some(rule) = rules.match_phone(title) {
         score += rules.weight_of("blocklist_phone", W_PHONE_BLOCKLIST);
         signals.push("blocklist_phone".into());
         if matched_rule.is_none() {
@@ -1321,7 +1327,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // penalized.
     let alert_shaped =
         w.coverage_percent >= FULLSCREEN_COVERAGE || w.blocks_input || !w.has_close_button;
-    if alert_shaped && contains_phone_number(&confusables::fold_confusables(&w.title)) {
+    if alert_shaped && contains_phone_number(&confusables::fold_confusables(title)) {
         score += rules.weight_of("phone_number", W_PHONE_NUMBER);
         signals.push("phone_number".into());
     }
@@ -1342,7 +1348,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // The `alert_shaped` guard is the primary false-positive fence: a
     // legitimate reCAPTCHA page that happens to have "captcha" in its title
     // is not modal / full-screen / no-close, so this never fires for it.
-    let normalized_title = confusables::normalize_for_match(&w.title);
+    let normalized_title = confusables::normalize_for_match(title);
     if alert_shaped && confusables::has_clickfix_instruction(&normalized_title) {
         score += rules.weight_of("clickfix_instruction", W_CLICKFIX);
         signals.push("clickfix_instruction".into());
@@ -2258,6 +2264,9 @@ fn eval_condition(c: &rules::CompositeCondition, w: &OverlayWindow, signals: &[S
 /// here", not perfect E.164 validation.
 #[must_use]
 pub fn contains_phone_number(text: &str) -> bool {
+    // Defense-in-depth length bound for direct (external) callers; `classify`
+    // already passes a bounded title.
+    let text = confusables::bound_title_chars(text);
     let bytes = text.as_bytes();
     let mut i = 0;
     while i < bytes.len() {

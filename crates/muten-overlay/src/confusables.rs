@@ -586,6 +586,30 @@ pub fn collapse_spread_characters(s: &str) -> String {
     out
 }
 
+/// Maximum number of `char`s of an untrusted window title (or URL) the
+/// classifier will examine. Real window titles are at most a few hundred
+/// characters; this bound exists purely so a maliciously gigantic title
+/// cannot inflict an algorithmic-complexity denial of service (every content
+/// detector and every normalization pass is at least `O(n)` in the title
+/// length, and there are ~150 of them, so an unbounded multi-megabyte title
+/// can stall a single `classify()` call for *tens of seconds*). 2048 chars
+/// is ~7× more headroom than any realistic title yet caps worst-case work at
+/// a few tens of milliseconds.
+pub const MAX_TITLE_CHARS: usize = 2048;
+
+/// Truncate `s` to at most [`MAX_TITLE_CHARS`] `char`s, on a UTF-8 char
+/// boundary, returning a borrowed prefix. Runs in `O(MAX_TITLE_CHARS)` — it
+/// stops scanning after the cap rather than walking the whole (possibly
+/// enormous) input, which is what makes it a usable DoS guard. Shorter inputs
+/// are returned unchanged.
+#[must_use]
+pub fn bound_title_chars(s: &str) -> &str {
+    match s.char_indices().nth(MAX_TITLE_CHARS) {
+        Some((byte_idx, _)) => &s[..byte_idx],
+        None => s,
+    }
+}
+
 /// The single normalized form used for **blocklist title matching**:
 /// strip emoji/symbols → strip invisibles → fold confusables → collapse
 /// spread-character obfuscation → fold leetspeak → lowercase.  Idempotent.
@@ -596,6 +620,7 @@ pub fn collapse_spread_characters(s: &str) -> String {
 /// needs the original digits).
 #[must_use]
 pub fn normalize_for_match(s: &str) -> String {
+    let s = bound_title_chars(s);
     let s = strip_symbols_and_emoji(s);
     let stripped = strip_invisibles(&s);
     let folded = fold_confusables(&stripped);

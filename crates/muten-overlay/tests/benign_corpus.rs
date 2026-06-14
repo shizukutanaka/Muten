@@ -185,3 +185,65 @@ fn benign_corpus_in_normal_geometry_is_allow() {
         failures.join("\n")
     );
 }
+
+// ── Resource-safety / DoS guard (Socratic robustness audit) ───────────────
+//
+// A maliciously gigantic window title must not be able to stall the classifier
+// (algorithmic-complexity denial of service). The classifier bounds untrusted
+// title/URL length to MAX_TITLE_CHARS before any normalization or detection.
+
+use std::time::Instant;
+
+#[test]
+fn giant_title_classifies_quickly() {
+    // ~5 MB title. Before bounding this took ~90 seconds; bounded it is trivial.
+    let giant = "verify your account ".repeat(262_144);
+    let w = alert_shaped(&giant);
+    let t0 = Instant::now();
+    let v = classify(&w, &Ruleset::default());
+    let ms = t0.elapsed().as_millis();
+    assert!(
+        ms < 2_000,
+        "classify() on a {}-byte title took {ms} ms — input length is not bounded",
+        giant.len()
+    );
+    // Sanity: it still produces a verdict (geometry alone is alert-shaped).
+    assert!(v.score > 0);
+}
+
+#[test]
+fn giant_title_still_detects_scam_within_cap() {
+    // Scam phrasing at the very start (where a real window renders it) must
+    // still be detected even when megabytes of padding follow.
+    let mut title = String::from("your grandson has been arrested — send bail money immediately. ");
+    title.push_str(&"x".repeat(4_000_000));
+    let v = classify(&alert_shaped(&title), &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "family_emergency_scam"),
+        "scam text within the cap must still be detected; got {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn pathological_combining_marks_classify_quickly() {
+    let comb: String = "\u{0301}".repeat(2_000_000);
+    let t0 = Instant::now();
+    let _ = classify(&alert_shaped(&comb), &Ruleset::default());
+    assert!(
+        t0.elapsed().as_millis() < 2_000,
+        "combining-mark flood must be bounded"
+    );
+}
+
+#[test]
+fn bound_title_chars_truncates_on_char_boundary() {
+    use muten_overlay::confusables::{bound_title_chars, MAX_TITLE_CHARS};
+    // Multibyte input longer than the cap must truncate without panicking and
+    // yield valid UTF-8 of exactly MAX_TITLE_CHARS chars.
+    let s: String = "認".repeat(MAX_TITLE_CHARS + 500);
+    let out = bound_title_chars(&s);
+    assert_eq!(out.chars().count(), MAX_TITLE_CHARS);
+    // Shorter input is returned unchanged.
+    assert_eq!(bound_title_chars("short"), "short");
+}
