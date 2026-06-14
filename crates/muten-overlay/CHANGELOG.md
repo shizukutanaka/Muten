@@ -42,6 +42,18 @@ MSRV 1.75, 286 tests.
   to `.git/HEAD` and `.git/refs/heads/` so the version re-embeds on every
   commit. (M6.)
 
+- **Audit canonical round-trip guard for complex `detail`** (Socratic round 13).
+  The hash chain takes its hash over the canonical form of each event's `detail`
+  and recomputes it on `verify_chain`, so any drift in how a non-trivial `detail`
+  is serialized would make a legitimate log fail to verify. Every existing
+  write→verify test used a single-key ASCII detail (`{"x":id}`), leaving
+  `write_canonical`'s nested-object, array, number, and non-ASCII/escaped-string
+  paths unexercised through the real emit→read→verify cycle. New
+  `verifies_complex_unicode_detail_round_trip` emits an event whose detail mixes
+  a nested object, an array, a number, Japanese text, and a string with
+  quotes/backslashes, confirms the chain verifies, and confirms a one-byte
+  tamper inside that detail breaks it — guarding the tamper-evidence claim
+  against a canonicalization regression. 1163 tests total.
 - **`enforce` dismiss-failure resilience guard** (Socratic round 12). `enforce`
   does `controller.dismiss(id).unwrap_or(false)`, so a dismiss returning `Err`
   (helper crash, permission denied) or `Ok(false)` (the user closed the window

@@ -740,6 +740,51 @@ mod tests {
         assert_eq!(head, sink.head());
     }
 
+    /// Canonical round-trip guard for non-trivial `detail` payloads (Socratic
+    /// round 13). The other write→verify tests use a single-key ASCII detail
+    /// (`{"x":id}`), so the recursive `write_canonical` paths — nested objects,
+    /// arrays, numbers, and especially non-ASCII / escaped strings — were never
+    /// exercised through the real emit→read→`verify_chain` cycle. The hash is
+    /// taken over the canonical form and recomputed on verify, so any drift in
+    /// how a complex `detail` is serialized (e.g. swapping serde_json string
+    /// escaping for a custom encoder) would make a legitimate log fail to
+    /// verify. This emits an event whose detail mixes a nested object, an
+    /// array, a number, Japanese text, and a string with quotes/backslashes,
+    /// confirms the chain verifies, and confirms a one-byte tamper in that
+    /// detail breaks it.
+    #[test]
+    fn verifies_complex_unicode_detail_round_trip() {
+        let dir = TempDir::new().unwrap();
+        let p = dir.path().join("audit.log");
+        let sink = ChainedFileSink::open(&p).unwrap();
+        sink.emit(&AuditEvent {
+            timestamp_ms: 1_717_000_000_123,
+            kind: "overlay_blocked",
+            window_id: "w-complex".into(),
+            detail: serde_json::json!({
+                "title": "ウイルスに感染しました \"今すぐ\\電話\"",
+                "signals": ["phone_number", "fake_scanner_cue"],
+                "score": 130,
+                "nested": { "host": "scam.example", "ip": "203.0.113.7" }
+            }),
+        });
+        let text = std::fs::read_to_string(&p).unwrap();
+        // Legitimate complex log verifies.
+        let (count, head) = verify_chain(&text).unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(head, sink.head());
+        // A one-byte change inside the canonicalized detail breaks the chain.
+        let tampered = text.replacen("130", "131", 1);
+        assert_ne!(
+            tampered, text,
+            "tamper precondition: the score appears in the line"
+        );
+        assert!(
+            verify_chain(&tampered).is_err(),
+            "tampered detail must fail verification"
+        );
+    }
+
     #[test]
     fn tampering_breaks_chain() {
         let dir = TempDir::new().unwrap();
