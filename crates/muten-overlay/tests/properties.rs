@@ -1777,6 +1777,27 @@ proptest! {
         let _ = muten_overlay::confusables::has_family_emergency_scam(&s);
     }
 
+    /// collapse_spread_characters never panics and is idempotent on any input.
+    #[test]
+    fn collapse_spread_characters_idempotent_no_panic(s in ".*") {
+        let once = muten_overlay::confusables::collapse_spread_characters(&s);
+        let twice = muten_overlay::confusables::collapse_spread_characters(&once);
+        prop_assert_eq!(once, twice);
+    }
+
+    /// collapse_spread_characters never merges two genuine multi-character
+    /// words: any whitespace-separated token of length ≥2 in the input
+    /// survives as a substring of the output (it is never glued to a neighbour).
+    #[test]
+    fn collapse_preserves_multichar_words(
+        s in "[a-z]{2,8}( [a-z]{2,8}){0,4}"
+    ) {
+        // Pure multi-char words separated by single spaces contain no spread
+        // run, so the output must equal the input verbatim.
+        let out = muten_overlay::confusables::collapse_spread_characters(&s);
+        prop_assert_eq!(out, s);
+    }
+
     /// Plain ASCII lacking any relative token never fires
     /// has_family_emergency_scam (the relative is a required conjunct).
     #[test]

@@ -520,18 +520,87 @@ pub fn fold_leet_in_words(s: &str) -> String {
     out
 }
 
+/// Collapse "spread-character" obfuscation: a run of ≥4 consecutive
+/// single-character tokens each separated by a single separator
+/// (`b a i l`, `b.a.i.l`, `b-a-i-l`, `s e n d   b a i l`) is rejoined into
+/// one token (`bail`, `sendbail`). This defeats the cheapest evasion against
+/// every substring-based detector — interspersing separators between the
+/// letters of a known trigger word so `s.contains("bail")` fails.
+///
+/// **False-positive discipline.** Only maximal runs of **four or more**
+/// single-character alphanumeric tokens are collapsed, and only when each
+/// inner separator is a *single* collapsible character. Legitimate text never
+/// matches this signature: ordinary multi-character words (`the rapist` →
+/// stays two words, never `therapist`) and short stylistic spacing / initials
+/// (`U.S.A`, `F B I`, three or fewer singles) are left untouched. Because the
+/// transform only *joins* characters that were already adjacent modulo a
+/// separator, it can only ever *add* a detector match on deliberately
+/// obfuscated text — it cannot merge two genuine words into a false trigger.
+///
+/// `:` and `+` are intentionally **not** separators, so `M:SS` countdown
+/// timers and `Win+R` shortcuts are preserved for their detectors.
+/// Idempotent: after one pass no spread run remains.
+#[must_use]
+pub fn collapse_spread_characters(s: &str) -> String {
+    const MIN_RUN: usize = 4;
+    let is_sep = |c: char| {
+        matches!(
+            c,
+            ' ' | '\t' | '.' | ',' | '-' | '_' | '/' | '*' | '|' | '~' | '·' | '•' | '\u{00a0}'
+        )
+    };
+    let chars: Vec<char> = s.chars().collect();
+    let n = chars.len();
+    let mut out = String::with_capacity(n);
+    let mut i = 0;
+    while i < n {
+        // A spread run can only begin at a word boundary (start of string or
+        // just after a separator) on an alphanumeric character.
+        let at_boundary = i == 0 || is_sep(chars[i - 1]);
+        if at_boundary && chars[i].is_alphanumeric() {
+            // Greedily match the strict pattern `alnum (sep alnum)*` where every
+            // separator is a single char and every alphanumeric is a *single*
+            // character token (followed by a separator or end of string).
+            let mut letters = String::new();
+            letters.push(chars[i]);
+            let mut k = i + 1;
+            while k + 1 < n
+                && is_sep(chars[k])
+                && chars[k + 1].is_alphanumeric()
+                && (k + 2 >= n || is_sep(chars[k + 2]))
+            {
+                letters.push(chars[k + 1]);
+                k += 2;
+            }
+            if letters.chars().count() >= MIN_RUN {
+                out.push_str(&letters);
+                // `k` points at the separator following the last letter (or n);
+                // leave it unconsumed so the trailing boundary is preserved.
+                i = k;
+                continue;
+            }
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
 /// The single normalized form used for **blocklist title matching**:
-/// strip emoji/symbols → strip invisibles → fold confusables → fold
-/// leetspeak → lowercase.  Idempotent.  The emoji step runs first so
-/// mid-word insertions (e.g. `"inf⚠️ected"`) are collapsed before any
-/// other folding.  Not applied to the phone-number scan (which needs
-/// the original digits).
+/// strip emoji/symbols → strip invisibles → fold confusables → collapse
+/// spread-character obfuscation → fold leetspeak → lowercase.  Idempotent.
+/// The emoji step runs first so mid-word insertions (e.g. `"inf⚠️ected"`)
+/// are collapsed before any other folding.  The spread-character collapse
+/// runs *before* leetspeak folding so spaced leet (`b 4 i 1` → `b4i1` →
+/// `bail`) is defeated too.  Not applied to the phone-number scan (which
+/// needs the original digits).
 #[must_use]
 pub fn normalize_for_match(s: &str) -> String {
     let s = strip_symbols_and_emoji(s);
     let stripped = strip_invisibles(&s);
     let folded = fold_confusables(&stripped);
-    fold_leet_in_words(&folded).to_ascii_lowercase()
+    let despread = collapse_spread_characters(&folded);
+    fold_leet_in_words(&despread).to_ascii_lowercase()
 }
 
 /// Detect ClickFix / fake-CAPTCHA keyboard-instruction patterns in a
@@ -7651,5 +7720,143 @@ mod e62_tests {
         assert!(!has_family_emergency_scam(
             "you have been arrested for tax fraud — pay the fine immediately"
         ));
+    }
+}
+
+// ── Spread-character de-obfuscation (Socratic robustness audit) ───────────────
+
+#[cfg(test)]
+mod spread_char_tests {
+    use super::*;
+
+    #[test]
+    fn collapse_rejoins_space_spread_word() {
+        assert_eq!(collapse_spread_characters("b a i l"), "bail");
+    }
+
+    #[test]
+    fn collapse_rejoins_dot_and_dash_spread() {
+        assert_eq!(collapse_spread_characters("b.a.i.l"), "bail");
+        assert_eq!(collapse_spread_characters("b-a-i-l"), "bail");
+    }
+
+    #[test]
+    fn collapse_rejoins_mid_sentence_run() {
+        assert_eq!(
+            collapse_spread_characters("please send b a i l money"),
+            "please send bail money"
+        );
+    }
+
+    #[test]
+    fn collapse_joins_long_multiword_spread_into_one_token() {
+        // A whole spread phrase becomes one token that still contains every
+        // substring a detector looks for ("send", "bail").
+        let out = collapse_spread_characters("s e n d b a i l");
+        assert_eq!(out, "sendbail");
+        assert!(out.contains("send") && out.contains("bail"));
+    }
+
+    #[test]
+    fn collapse_preserves_normal_words() {
+        // The classic failure mode must NOT happen: real multi-char words
+        // are never merged.
+        assert_eq!(collapse_spread_characters("the rapist"), "the rapist");
+        assert_eq!(
+            collapse_spread_characters("send money to your family"),
+            "send money to your family"
+        );
+    }
+
+    #[test]
+    fn collapse_leaves_short_spacing_and_initials_untouched() {
+        // Three-or-fewer single chars (initials, stylistic) are below MIN_RUN.
+        assert_eq!(collapse_spread_characters("U.S.A"), "U.S.A");
+        assert_eq!(collapse_spread_characters("F B I"), "F B I");
+        assert_eq!(collapse_spread_characters("a b c"), "a b c");
+    }
+
+    #[test]
+    fn collapse_preserves_countdown_and_shortcut_separators() {
+        // ':' and '+' are not separators, so M:SS timers and Win+R survive.
+        assert_eq!(collapse_spread_characters("5:00"), "5:00");
+        assert_eq!(collapse_spread_characters("win+r"), "win+r");
+    }
+
+    #[test]
+    fn collapse_is_idempotent() {
+        let once = collapse_spread_characters("v e r i f y your a c c o u n t");
+        let twice = collapse_spread_characters(&once);
+        assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn collapse_never_panics_on_unicode_edges() {
+        for s in [
+            "",
+            " ",
+            "...",
+            "a",
+            "ä b ç d é",
+            "１ ２ ３ ４",
+            "🎉 a b c d",
+        ] {
+            let _ = collapse_spread_characters(s);
+        }
+    }
+
+    // ── Robustness: the previously-failing evasions now fire through the
+    //    full normalize_for_match pipeline. ──────────────────────────────
+
+    #[test]
+    fn normalize_defeats_intra_word_spacing_evasion() {
+        let raw = "your grandson was arrested send b a i l";
+        assert!(
+            has_family_emergency_scam(&normalize_for_match(raw)),
+            "intra-word spacing evasion must be defeated"
+        );
+    }
+
+    #[test]
+    fn normalize_defeats_punctuation_insertion_evasion() {
+        for raw in [
+            "your grandson was arrested send b.a.i.l",
+            "your grandson was arrested send b-a-i-l",
+        ] {
+            assert!(
+                has_family_emergency_scam(&normalize_for_match(raw)),
+                "punctuation-insertion evasion must be defeated: {raw:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_defeats_spaced_leetspeak_evasion() {
+        // Spaced AND leet-coded together: collapse runs *before* leet-folding,
+        // so the spaced "b 4 i l" rejoins to "b4il" and then folds (4→a) to
+        // "bail". Verifies the pipeline ordering, not just collapse alone.
+        let raw = "your grandson was arrested send b 4 i l";
+        let norm = normalize_for_match(raw);
+        assert!(
+            has_family_emergency_scam(&norm),
+            "spaced-leet evasion must be defeated; got {norm:?}"
+        );
+    }
+
+    #[test]
+    fn normalize_defeats_spread_clickfix_verify_human() {
+        // A different detector (clickfix) also benefits automatically.
+        let raw = "c a p t c h a — v e r i f y you are h u m a n";
+        assert!(
+            has_clickfix_instruction(&normalize_for_match(raw)),
+            "spread clickfix/captcha framing must be defeated"
+        );
+    }
+
+    #[test]
+    fn normalize_spread_does_not_create_false_family_emergency() {
+        // Benign spaced text must not be conjured into a scam match.
+        let raw = "w e l c o m e   t o   t h e   s h o w";
+        assert!(!has_family_emergency_scam(&normalize_for_match(raw)));
     }
 }

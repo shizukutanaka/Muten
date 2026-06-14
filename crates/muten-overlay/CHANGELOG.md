@@ -15,6 +15,26 @@ guard, and expanded rogue-AV families. **API break**: `Verdict.signals` and
 dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
+### Security
+- **Spread-character de-obfuscation in `normalize_for_match`** (Socratic
+  robustness audit). An adversarial probe of the normalization pipeline found
+  that, while it already defeated zero-width characters, leetspeak, diacritics,
+  and Cyrillic homoglyphs, it did **not** defeat *intra-word spacing* (`b a i l`)
+  or *punctuation insertion* (`b.a.i.l`, `b-a-i-l`) — the cheapest evasion an
+  attacker can apply to the trigger phrase of **any** of the 75 substring-based
+  detectors. New `collapse_spread_characters()` rejoins maximal runs of **four
+  or more** single-character alphanumeric tokens separated by single separators
+  (`b a i l` → `bail`, `s e n d b a i l` → `sendbail`), inserted into the
+  pipeline *before* leetspeak folding so spaced-leet (`b 4 i l` → `b4il` →
+  `bail`) is defeated too. False-positive discipline: only the
+  spread-character signature (≥4 consecutive singles) is collapsed, so genuine
+  multi-character words are never merged (`the rapist` stays two words; `U.S.A`
+  and other ≤3-char initials/stylistic spacing are untouched), and `:`/`+` are
+  not separators so `M:SS` countdowns and `Win+R` shortcuts survive. The
+  transform is idempotent and can only *add* a match on deliberately obfuscated
+  text. 8 unit tests + 6 robustness/integration tests + 2 property tests
+  (idempotent/no-panic, never-merges-words). 1240 tests total.
+
 ### Added
 - **Family-emergency / "grandparent" / bail scam** (`family_emergency_scam`;
   E62). `has_family_emergency_scam(s)` fires when the normalized title contains
