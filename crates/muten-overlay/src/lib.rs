@@ -6846,78 +6846,128 @@ mod tests {
         }
     }
 
+    /// Single source of truth for the curated set of content / AND-pair and
+    /// structural-URL detection signals that `classify()` can emit (E1–E61).
+    /// Both the registry-completeness guard and the full-wiring guard below
+    /// consume this one list, so a new content signal is declared in exactly
+    /// one place for the meta-tests — no second copy to drift out of sync.
+    /// (Pure window-geometry descriptors such as `fullscreen` / `topmost`
+    /// are intentionally excluded: they carry no dark-pattern category and
+    /// no MITRE technique, so they are not subject to the full-wiring guard.)
+    const CONTENT_SIGNALS: &[&str] = &[
+        "clickfix_instruction",
+        "urgency_countdown",
+        "forced_retention_cue",
+        "credential_harvest_cue",
+        "fake_scanner_cue",
+        "subscription_lure",
+        "authority_lure",
+        "download_trap_lure",
+        "prize_lure",
+        "crypto_drain_lure",
+        "screen_share_lure",
+        "qr_code_lure",
+        "ip_alarm_lure",
+        "package_fee_lure",
+        "sextortion_lure",
+        "gift_card_demand",
+        "refund_scam_cue",
+        "national_id_alarm",
+        "bank_account_alarm",
+        "false_registration_billing",
+        "fake_bsod_lure",
+        "advance_fee_lure",
+        "tech_support_invoice_scam",
+        "utility_cutoff_threat",
+        "healthcare_scam",
+        "job_scam",
+        "tax_authority_scam",
+        "social_media_account_alarm",
+        "immigration_visa_scam",
+        "government_grant_scam",
+        "debt_relief_scam",
+        "streaming_billing_scam",
+        "traffic_fine_scam",
+        "pig_butchering_lure",
+        "loan_fee_scam",
+        "data_uri_page",
+        "ip_host_url",
+        "charity_scam_lure",
+        "rental_scam_lure",
+        "pet_sale_scam",
+        "timeshare_travel_scam",
+        "windows_activation_scam",
+        "survey_reward_scam",
+        "av_brand_renewal_scam",
+        "recovery_scam",
+        "student_loan_scam",
+        "secret_shopper_scam",
+        "mlm_pyramid_recruitment",
+        "veterans_benefit_scam",
+        "fake_copyright_scam",
+        "crypto_giveaway_scam",
+        "otp_interception_scam",
+        "remote_access_lure",
+    ];
+
     /// Registry-completeness guard (Gap B). Every content signal that
     /// `classify()` can push into `Verdict.signals` must also be
     /// enumerable via `all_signals()` — otherwise an MDM operator listing
     /// signals (the `signals` CLI subcommand) to build a blocklist would
-    /// never learn the signal exists. This cross-checks the curated list
-    /// of every AND-pair content signal (E1–E59) and the structural URL
-    /// signals against the registry. Adding a `signals.push("x")` in
-    /// `classify()` without adding `"x"` to the NAMES array fails here.
+    /// never learn the signal exists. This cross-checks the curated
+    /// `CONTENT_SIGNALS` list (every AND-pair content signal E1–E61 and the
+    /// structural URL signals) against the registry. Adding a
+    /// `signals.push("x")` in `classify()` without adding `"x"` to the NAMES
+    /// array fails here.
     #[test]
     fn every_content_signal_is_in_registry() {
         let registry: std::collections::HashSet<&str> =
             all_signals().iter().map(|s| s.name).collect();
-        // Every named content/structural signal classify() can emit.
-        for name in &[
-            "clickfix_instruction",
-            "urgency_countdown",
-            "forced_retention_cue",
-            "credential_harvest_cue",
-            "fake_scanner_cue",
-            "subscription_lure",
-            "authority_lure",
-            "download_trap_lure",
-            "prize_lure",
-            "crypto_drain_lure",
-            "screen_share_lure",
-            "qr_code_lure",
-            "ip_alarm_lure",
-            "package_fee_lure",
-            "sextortion_lure",
-            "gift_card_demand",
-            "refund_scam_cue",
-            "national_id_alarm",
-            "bank_account_alarm",
-            "false_registration_billing",
-            "fake_bsod_lure",
-            "advance_fee_lure",
-            "tech_support_invoice_scam",
-            "utility_cutoff_threat",
-            "healthcare_scam",
-            "job_scam",
-            "tax_authority_scam",
-            "social_media_account_alarm",
-            "immigration_visa_scam",
-            "government_grant_scam",
-            "debt_relief_scam",
-            "streaming_billing_scam",
-            "traffic_fine_scam",
-            "pig_butchering_lure",
-            "loan_fee_scam",
-            "data_uri_page",
-            "ip_host_url",
-            "charity_scam_lure",
-            "rental_scam_lure",
-            "pet_sale_scam",
-            "timeshare_travel_scam",
-            "windows_activation_scam",
-            "survey_reward_scam",
-            "av_brand_renewal_scam",
-            "recovery_scam",
-            "student_loan_scam",
-            "secret_shopper_scam",
-            "mlm_pyramid_recruitment",
-            "veterans_benefit_scam",
-            "fake_copyright_scam",
-            "crypto_giveaway_scam",
-            "otp_interception_scam",
-            "remote_access_lure",
-        ] {
+        for name in CONTENT_SIGNALS {
             assert!(
                 registry.contains(name),
                 "content signal {name:?} can fire in classify() but is missing \
                  from all_signals() NAMES — operators cannot discover it"
+            );
+        }
+    }
+
+    /// Full-wiring guard (Gap C). A content signal is only useful to
+    /// operators and downstream consumers if *all four* of its metadata
+    /// wirings are present: a score weight (so it contributes to the
+    /// verdict), a dark-pattern category (audit taxonomy), a MITRE ATT&CK
+    /// technique (threat-intel mapping), and a real human-readable phrase
+    /// (operator-facing `explain()`). The earlier guards each check one of
+    /// these in isolation, so a signal could be in the registry yet silently
+    /// missing its `category_of` / `techniques_of` / `weight_of` arm and no
+    /// single test would notice. This iterates the one `CONTENT_SIGNALS`
+    /// source of truth and asserts every content signal is fully wired —
+    /// turning "I added a detector but forgot one of its four mappings" from
+    /// a latent shipping bug into a loud, localized test failure.
+    #[test]
+    fn every_content_signal_is_fully_wired() {
+        for name in CONTENT_SIGNALS {
+            assert!(
+                signal_weight(name).is_some(),
+                "content signal {name:?} has no score weight — add an arm in \
+                 weight_of()/signal_weight()"
+            );
+            assert!(
+                categories::category_of(name).is_some(),
+                "content signal {name:?} has no dark-pattern category — add an \
+                 arm in categories::category_of()"
+            );
+            assert!(
+                !mitre::techniques_of(name).is_empty(),
+                "content signal {name:?} has no MITRE ATT&CK technique — add an \
+                 arm in mitre::techniques_of()"
+            );
+            // explain phrase must be a real fragment, not the bare name echo.
+            let phrase = signal_phrase(name);
+            assert_ne!(
+                phrase, *name,
+                "content signal {name:?} has no signal_phrase() arm — its \
+                 description would echo the raw name"
             );
         }
     }

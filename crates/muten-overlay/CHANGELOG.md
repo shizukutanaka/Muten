@@ -15,6 +15,21 @@ guard, and expanded rogue-AV families. **API break**: `Verdict.signals` and
 dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
+### Changed
+- **Full-wiring meta-guard for content signals** (structural hardening; Gap C).
+  Audited every detection signal's four metadata wirings (score weight,
+  dark-pattern category, MITRE ATT&CK technique, `explain()` phrase) and found
+  all 51 content signals fully and principled-ly wired — the only signals
+  without a category/MITRE mapping are pure window-geometry descriptors
+  (`fullscreen`, `topmost`, `unsolicited`, `very_new`, `user_initiated`,
+  `sudden_fullscreen_takeover`), which correctly carry no dark-pattern strategy.
+  To prevent future drift, the curated content-signal list is now a single
+  `CONTENT_SIGNALS` source of truth (previously duplicated inline inside the
+  registry test), and a new `every_content_signal_is_fully_wired` guard iterates
+  it asserting all four mappings are present for every content signal. This
+  turns "added a detector but forgot one of its four mappings" from a latent
+  shipping bug into a localized test failure. 1204 tests total.
+
 ### Added
 - **OTP / 2FA code-relay account-takeover scam** (`otp_interception_scam`; E61).
   `has_otp_interception_scam(s)` fires when the normalized title contains both an
