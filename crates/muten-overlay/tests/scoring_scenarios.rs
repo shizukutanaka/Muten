@@ -1042,9 +1042,13 @@ fn refund_scam_reaches_suspicious() {
 
 #[test]
 fn legitimate_refund_confirmation_does_not_fire_refund_scam() {
-    // Ordinary e-commerce refund confirmation — user-initiated, closable, small.
+    // Ordinary e-commerce refund confirmation. Tested under an ALERT-SHAPED
+    // window on purpose: the content detector must stay silent on its own
+    // precision (a completed-and-no-action refund notice), not merely because
+    // a closable window suppresses content signals. A closable-window variant
+    // would pass even with an over-broad detector and give false confidence.
     let v = classify(
-        &closable_window("your refund of $29 has been processed — thank you for your purchase"),
+        &alert_window("your refund of $29 has been processed — thank you for your purchase"),
         &Ruleset::default(),
     );
     assert!(

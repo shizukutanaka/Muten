@@ -1432,14 +1432,21 @@ pub fn has_gift_card_demand(s: &str) -> bool {
 /// Two groups (AND-pair):
 /// - `refund_noun`: "refund", "overpayment", "reimbursement", "rebate",
 ///   "cashback", "excess charge", 返金, 払い戻し, 過払い, 補償金.
-/// - `refund_action`: language that directs the victim to act to "collect" —
+/// - `refund_action`: language that directs the victim to *act to collect* —
 ///   "owed to you", "claim your refund", "pending refund", "refund is ready",
-///   "process your refund", 返金手続き, お手続きください, 返金が完了, 払い戻し手続き.
+///   a collect call-to-action ("click here to receive", "click to claim",
+///   "call to collect"), "process your refund", 返金手続き, お手続きください,
+///   払い戻し手続き.
 ///
 /// The AND-pair keeps plain store return-policy text ("refund within 30 days")
 /// from firing: it has a refund noun but no claim-oriented action verb.
-/// alert_shaped guard at the call site prevents FPs on legitimate bank portals
-/// (user-initiated, closable windows).
+/// Crucially, the action group excludes *passive completion* phrasing — "refund
+/// has been processed/completed", "your refund of $X", "refund amount", 返金が完了
+/// — because a finished-and-no-action-needed refund notice is exactly what
+/// legitimate banks and merchants display; only claim/approve/collect framing
+/// (the scammer asking the victim to *do* something to "get" the money) fires.
+/// This precision matters because the alert_shaped call-site guard does **not**
+/// help when a *legitimate* notice happens to render in an alert-shaped window.
 #[must_use]
 pub fn has_refund_scam_cue(s: &str) -> bool {
     let has = |a: &str| s.contains(a);
@@ -1465,16 +1472,17 @@ pub fn has_refund_scam_cue(s: &str) -> bool {
         || has("collect your refund")
         || has("pending refund")
         || has("refund is ready")
-        || has("refund has been")
+        || has("click here to receive")
+        || has("click to receive")
+        || has("click to claim")
+        || has("call to collect")
+        || has("call to claim")
         || has("process your refund")
         || has("transfer your refund")
-        || has("your refund of")
-        || has("refund amount")
         || has("receive your refund")
         || has("get your refund")
         || has("返金手続き")
         || has("払い戻し手続き")
-        || has("返金が完了")
         || has("お手続きください")
         || has("ご返金")
         || has("返金いたします")

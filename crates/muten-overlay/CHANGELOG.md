@@ -15,6 +15,39 @@ guard, and expanded rogue-AV families. **API break**: `Verdict.signals` and
 dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
+### Fixed
+- **False positive: `refund_scam_cue` fired on legitimate refund-completion
+  notices** (Socratic FP audit). A new aggregate benign-corpus test (see below)
+  immediately caught that "Your refund has been processed and will arrive in 3-5
+  days" — an ordinary bank/merchant notice — fired the refund scam signal,
+  because the action group matched the passive completion phrasing `refund has
+  been …` (and the amount-statements `your refund of` / `refund amount`). These
+  are no-action-needed notices, the opposite of the scam's *collect demand*. The
+  action group now keys on genuine collect call-to-actions ("click here to
+  receive", "click to claim", "call to collect", "claim/process your refund",
+  "owed to you", "pending refund", お手続きください, 返金手続き) and no longer matches
+  completion/amount phrasing. Scam detection is preserved (the
+  approved-then-"click here to receive" lure still fires via its CTA). The
+  pre-existing "legitimate refund confirmation" negative test was *false
+  confidence* — it used a closable (non-alert) window, so the content detector
+  was never evaluated; it now runs under an alert-shaped window and exercises the
+  detector's own precision.
+
+### Added
+- **Aggregate benign-corpus false-positive guard** (`tests/benign_corpus.rs`;
+  Socratic FP audit). Every other negative test proves only that one
+  author-chosen string — picked *for* the signal under test — does not fire,
+  which is structurally weak evidence for the "near-zero false-positive" claim.
+  The new test runs a broad corpus of realistic legitimate window titles (OS
+  dialogs, browser/app titles, dev tools, security products, banking and
+  e-commerce notices, media players; English + Japanese), including deliberate
+  "near-miss" titles sitting one conjunct away from each scam family (a real
+  Windows activation prompt, a genuine AV renewal, a real delivery notice, a 2FA
+  "enter the code" prompt, a benign message about a relative), through the whole
+  classifier and asserts **no content signal fires** on any of them — under both
+  alert-shaped and normal geometry. This is falsification-oriented: it caught the
+  `refund_scam_cue` FP above on first run. 1242 tests total.
+
 ### Security
 - **Spread-character de-obfuscation in `normalize_for_match`** (Socratic
   robustness audit). An adversarial probe of the normalization pipeline found
