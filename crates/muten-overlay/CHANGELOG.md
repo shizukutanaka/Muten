@@ -42,6 +42,17 @@ MSRV 1.75, 286 tests.
   to `.git/HEAD` and `.git/refs/heads/` so the version re-embeds on every
   commit. (M6.)
 
+- **`enforce` dismiss-failure resilience guard** (Socratic round 12). `enforce`
+  does `controller.dismiss(id).unwrap_or(false)`, so a dismiss returning `Err`
+  (helper crash, permission denied) or `Ok(false)` (the user closed the window
+  first) folds into `dismissed = false` *without* aborting the sweep — otherwise
+  one failed dismiss would abandon every other scam window in the same tick. All
+  existing enforce tests used `NullController`, whose `dismiss` always returns
+  `Ok(true)`, so this documented contract was never exercised. New
+  `enforce_survives_dismiss_failures_without_aborting` feeds two hard-host-block
+  windows through a controller that fails both dismisses and asserts enforce
+  still returns `Ok` with both outcomes, each `decision == Block` but
+  `dismissed == false`. 1162 tests total.
 - **`score_breakdown()` doc accuracy + behavior guard** (Socratic round 11).
   A hot-path panic hunt (untrusted window titles, `forbid(unsafe_code)`) and the
   existing `*_never_panics` property tests confirmed the detection/normalization/

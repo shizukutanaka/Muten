@@ -4013,6 +4013,79 @@ mod tests {
         assert!(outcomes.is_empty());
     }
 
+    /// Test controller whose `dismiss` never succeeds: it returns `Err` for
+    /// most ids and `Ok(false)` ("already gone") for the id `"gone"`. Used to
+    /// exercise the documented resilience contract in [`enforce`].
+    struct DismissFailController {
+        seed: Vec<EnumeratedWindow>,
+    }
+    impl OverlayController for DismissFailController {
+        fn name(&self) -> &'static str {
+            "dismiss-fail"
+        }
+        fn available(&self) -> bool {
+            true
+        }
+        fn enumerate(&self) -> Result<Vec<EnumeratedWindow>, ControllerError> {
+            Ok(self.seed.clone())
+        }
+        fn dismiss(&self, id: &WindowId) -> Result<bool, ControllerError> {
+            if id.as_str() == "gone" {
+                Ok(false) // window already gone
+            } else {
+                Err(ControllerError::Dismiss(format!("helper failed for {id}")))
+            }
+        }
+    }
+
+    /// Resilience contract guard (Socratic round 12). `enforce` does
+    /// `controller.dismiss(id).unwrap_or(false)`, so a dismiss that returns
+    /// `Err` (helper crash, permission denied) or `Ok(false)` (the user
+    /// closed the window first) must fold into `dismissed = false` *without*
+    /// aborting the sweep — otherwise one failed dismiss would abandon every
+    /// other scam window in the same tick. The existing enforce tests use
+    /// `NullController`, whose `dismiss` always returns `Ok(true)`, so this
+    /// path was never exercised. Two Block windows (hard host-block) are fed
+    /// through a controller that fails both dismisses; enforce must still
+    /// return `Ok` with both outcomes, each `decision == Block` but
+    /// `dismissed == false`.
+    #[test]
+    fn enforce_survives_dismiss_failures_without_aborting() {
+        let rules = Ruleset::from_lines(&["host: scam.example"]);
+        let mk = |id: &str| EnumeratedWindow {
+            id: id.into(),
+            window: OverlayWindow {
+                title: "you are infected".into(),
+                url: Some("http://scam.example/x".into()),
+                coverage_percent: 100,
+                topmost: true,
+                has_close_button: false,
+                blocks_input: true,
+                origin: Origin::Unsolicited,
+                age_ms: 0,
+            },
+        };
+        let ctrl = DismissFailController {
+            seed: vec![mk("boom"), mk("gone")],
+        };
+        // Must not propagate the dismiss error as an enforce-level failure.
+        let outcomes = enforce(&ctrl, &rules).expect("enforce must not abort on dismiss failure");
+        assert_eq!(outcomes.len(), 2, "both windows processed despite failures");
+        for o in &outcomes {
+            assert_eq!(
+                o.decision,
+                Decision::Block,
+                "{} is a hard host block",
+                o.window_id
+            );
+            assert!(
+                !o.dismissed,
+                "{} dismiss failed → dismissed must be false",
+                o.window_id
+            );
+        }
+    }
+
     // ── clickfix_instruction signal (C1-5) ──────────────────────────
 
     #[test]
