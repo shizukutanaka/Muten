@@ -4575,6 +4575,31 @@ fn math_bold_evasion_ip_alarm_lure_fires_on_alert() {
 }
 
 #[test]
+fn uppercase_accented_evasion_fires_fake_scanner_cue() {
+    // "VÍRUSES DETECTED ..." with an uppercase accented Í evaded before the
+    // fold was made case-symmetric (to_ascii_lowercase can't lower É/Í/Á).
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "VÍRUSES DETECTED ON YOUR PC REMOVE NOW".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "fake_scanner_cue"),
+        "uppercase-accented evasion must be defeated; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
 fn math_bold_evasion_also_raises_compat_chars_tell() {
     // Round-6 folding lets the content detector fire; the presence of the
     // fancy-text glyphs themselves must ALSO raise the compat_chars_present

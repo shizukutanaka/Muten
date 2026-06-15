@@ -16,6 +16,22 @@ dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
 ### Security
+- **Case-asymmetric confusable folding: uppercase accented Latin evaded the
+  matcher** (Socratic round 13 — confusable-fold case symmetry). `fold_char`
+  folded only the *lowercase* accented Latin letters (`á é í ó ú ç ñ` …), and
+  `normalize_for_match` lower-cases with `to_ascii_lowercase`, which touches only
+  ASCII A–Z. So an *uppercase* accented letter survived both folding and
+  lower-casing intact: `"vírus"` folded to `"virus"` (caught) but `"VÍRUS"`
+  stayed `"vÍrus"` and slipped past — an attacker just had to uppercase the
+  accented homoglyph (confirmed empirically: `VÍRUSES DETECTED …` fired zero
+  content signals before the fix). `fold_char` now folds the uppercase accented
+  Latin letters (`À–Å È–Ë Ì–Ï Ò–Õ Ù–Ü Ç Ñ`) straight to the lowercase ASCII
+  skeleton, exactly as the uppercase Cyrillic/Greek arms already do — making the
+  fold case-symmetric. 1 unit test (uppercase accents fold to lowercase ASCII;
+  `normalize_for_match("PÁYPÁL") == normalize_for_match("páypál")`) + 1 scoring
+  scenario (`VÍRUSES DETECTED …` now fires `fake_scanner_cue`). 1304 tests total.
+
+### Security
 - **Repeat-flood evasion via polymorphic titles** (Socratic round 12 — the
   flood *signature*, a surface never normalization-audited). The scareware
   `RepeatTracker` groups appearances by `signature()`, which used only

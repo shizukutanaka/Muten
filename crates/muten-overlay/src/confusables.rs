@@ -97,13 +97,20 @@ pub fn fold_char(c: char) -> char {
         'Υ' => 'y',
         'Χ' => 'x',
         // ── Latin diacritics commonly used to dodge filters ──
-        'á' | 'à' | 'â' | 'ä' | 'ã' | 'å' => 'a',
-        'é' | 'è' | 'ê' | 'ë' => 'e',
-        'í' | 'ì' | 'î' | 'ï' => 'i',
-        'ó' | 'ò' | 'ô' | 'ö' | 'õ' => 'o',
-        'ú' | 'ù' | 'û' | 'ü' => 'u',
-        'ç' => 'c',
-        'ñ' => 'n',
+        // Both cases are folded: `to_ascii_lowercase()` (applied later in
+        // `normalize_for_match`) only lowers ASCII A–Z, so an *uppercase*
+        // accented letter (`É`, `Á`, …) would otherwise survive folding and
+        // lower-casing intact — letting `VÍRUS`/`PÁYPÁL` dodge a matcher that
+        // catches the lowercase `vírus`/`páypál`. We fold uppercase straight to
+        // the lowercase ASCII skeleton (as the Cyrillic/Greek uppercase arms
+        // above already do), keeping the fold case-symmetric.
+        'á' | 'à' | 'â' | 'ä' | 'ã' | 'å' | 'Á' | 'À' | 'Â' | 'Ä' | 'Ã' | 'Å' => 'a',
+        'é' | 'è' | 'ê' | 'ë' | 'É' | 'È' | 'Ê' | 'Ë' => 'e',
+        'í' | 'ì' | 'î' | 'ï' | 'Í' | 'Ì' | 'Î' | 'Ï' => 'i',
+        'ó' | 'ò' | 'ô' | 'ö' | 'õ' | 'Ó' | 'Ò' | 'Ô' | 'Ö' | 'Õ' => 'o',
+        'ú' | 'ù' | 'û' | 'ü' | 'Ú' | 'Ù' | 'Û' | 'Ü' => 'u',
+        'ç' | 'Ç' => 'c',
+        'ñ' | 'Ñ' => 'n',
         // ── a couple of symbol look-alikes ──
         '\u{0131}' => 'i', // dotless i
         '0' => '0',        // (kept; digits handled elsewhere)
@@ -3143,6 +3150,28 @@ mod tests {
     #[test]
     fn folds_diacritics() {
         assert_eq!(fold_confusables("ínféctéd"), "infected");
+    }
+
+    #[test]
+    fn folds_uppercase_diacritics_case_symmetric() {
+        // Uppercase accented Latin must lose its accent in `fold_confusables`
+        // (case preserved here — `to_ascii_lowercase` happens later in the
+        // pipeline) so that the full `normalize_for_match` yields the SAME
+        // lowercase ASCII skeleton as the lowercase form. Otherwise
+        // `to_ascii_lowercase` (ASCII-only) leaves `É`/`Í`/`Á` intact and
+        // `VÍRUS`/`PÁYPÁL` evade a matcher that catches `vírus`/`páypál`.
+        assert_eq!(fold_confusables("INFÉCTED"), "INFeCTED"); // accent gone, case kept
+        // Every accented uppercase vowel/consonant folds to its lowercase
+        // ASCII skeleton (these arms map straight to lowercase, like Cyrillic).
+        assert_eq!(
+            fold_confusables("ÀÂÄÃÅ ÈÊË ÌÎÏ ÒÔÖÕ ÙÛÜ Ç Ñ").replace(' ', ""),
+            "aaaaaeeeiiioooouuucn"
+        );
+        // The whole normalize pipeline yields plain lowercase ASCII, matching
+        // the lowercase input exactly.
+        assert_eq!(normalize_for_match("VÍRUSES DETECTED"), "viruses detected");
+        assert_eq!(normalize_for_match("PÁYPÁL"), normalize_for_match("páypál"));
+        assert_eq!(normalize_for_match("INFÉCTED"), "infected");
     }
 
     // ── Mathematical Alphanumeric Symbols (U+1D400..U+1D7FF) ──────────────
