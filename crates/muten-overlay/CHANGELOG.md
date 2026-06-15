@@ -15,6 +15,20 @@ guard, and expanded rogue-AV families. **API break**: `Verdict.signals` and
 dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
+### Security
+- **Unbounded URL scanned by the URL-content/brand detectors (DoS)** (follow-up
+  to the round-6/round-12 input-bound work). The previous bound pass switched the
+  six raw-evasion checks to a length-bounded title/URL, but **seven URL-content
+  detectors still scanned the unbounded `w.url`**: `brand_impersonation`,
+  `combosquat_brand`, `typosquat_brand`, `cloud_storage_abuse`, `url_path_lure`,
+  `data_uri_page`, and `ip_host_url`. A multi-megabyte URL would therefore still
+  drive several `O(n)` scans (host extraction, path tokenization, scheme/IP
+  checks) per `classify()` call — an algorithmic-complexity DoS for a real-time
+  monitor. All seven now read the existing length-bounded `url_bounded` (the host
+  and any path lure live at the start of a real URL, so detection is unaffected).
+  1 resource-safety regression test (`giant_url_classifies_quickly`: a ~5 MB URL
+  classifies in well under the bound). 1306 tests total.
+
 ### Changed
 - **High-fidelity completeness meta-guard** (structural hardening; confidence
   drift). `Verdict::confidence()` rates a Suspicious/Block verdict by counting

@@ -212,6 +212,24 @@ fn giant_title_classifies_quickly() {
 }
 
 #[test]
+fn giant_url_classifies_quickly() {
+    // The URL-based content/brand checks (brand_impersonation, combosquat,
+    // typosquat_brand, cloud_storage_abuse, url_path_lure, data_uri_page,
+    // ip_host_url) must also read a length-bounded URL — a ~5 MB URL must not
+    // stall classify(). Regression guard for the URL-side of the input bound.
+    let giant_url = format!("http://evil.example/{}", "a".repeat(5_000_000));
+    let mut w = alert_shaped("alert");
+    w.url = Some(giant_url);
+    let t0 = Instant::now();
+    let _ = classify(&w, &Ruleset::default());
+    let ms = t0.elapsed().as_millis();
+    assert!(
+        ms < 2_000,
+        "classify() on a multi-megabyte URL took {ms} ms — URL length is not bounded"
+    );
+}
+
+#[test]
 fn giant_title_still_detects_scam_within_cap() {
     // Scam phrasing at the very start (where a real window renders it) must
     // still be detected even when megabytes of padding follow.

@@ -1987,8 +1987,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // blocklist, since the real brand domain is legitimate. The literal
     // brand never fires. A strong tell, but additive (not an auto-block),
     // so a lone homograph host is `Suspicious` pending other evidence.
-    if w.url
-        .as_deref()
+    if url_bounded
         .map(url_host)
         .and_then(brand_impersonation)
         .is_some()
@@ -2005,8 +2004,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // *equal* a brand). The hyphen-delimiter requirement keeps legitimate
     // concatenations (`windowsupdate.com`) from firing. Additive, not an
     // auto-block, consistent with `brand_impersonation`.
-    if w.url
-        .as_deref()
+    if url_bounded
         .map(url_host)
         .and_then(combosquat)
         .is_some()
@@ -2021,8 +2019,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // typosquat uses ordinary ASCII characters: "gogle", "amzon", "mircosoft".
     // Only fires when Levenshtein distance == 1; distance 0 is already handled
     // by brand_impersonation. Additive (not an auto-block).
-    if w.url
-        .as_deref()
+    if url_bounded
         .map(url_host)
         .and_then(typosquat_brand)
         .is_some()
@@ -2041,7 +2038,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // The alert_shaped guard prevents a normal cloud-app browser tab
     // from firing — tabs are closable and not fullscreen/topmost.
     if alert_shaped {
-        if let Some(host) = w.url.as_deref().map(url_host) {
+        if let Some(host) = url_bounded.map(url_host) {
             if is_cloud_storage_host(host) {
                 score += rules.weight_of("cloud_storage_abuse", W_CLOUD_STORAGE_ABUSE);
                 signals.push("cloud_storage_abuse".into());
@@ -2057,7 +2054,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // webapp at `/microsoft-alerts/faq` from firing — closable, non-fullscreen
     // windows are normal apps, not overlays.
     if alert_shaped {
-        if let Some(url) = w.url.as_deref() {
+        if let Some(url) = url_bounded {
             if has_path_lure(url) {
                 score += rules.weight_of("url_path_lure", W_URL_PATH_LURE);
                 signals.push("url_path_lure".into());
@@ -2075,7 +2072,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // closable; `data:` URIs don't appear as top-level browser URLs in
     // legitimate enterprise software.
     if alert_shaped {
-        if let Some(url) = w.url.as_deref() {
+        if let Some(url) = url_bounded {
             let lc = url.trim_start();
             if lc.starts_with("data:") || lc.starts_with("file://") || lc.starts_with("file:///") {
                 score += rules.weight_of("data_uri_page", W_DATA_URI_PAGE);
