@@ -1234,9 +1234,12 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // detector (~150 of them, each at least O(n)) run for tens of seconds — an
     // algorithmic-complexity DoS. Real titles/URLs are far shorter than the cap.
     let title = confusables::bound_title_chars(&w.title);
+    // Length-bounded raw URL, reused by the host block and the raw-evasion
+    // checks below so none of them scans a multi-megabyte URL (DoS guard).
+    let url_bounded: Option<&str> = w.url.as_deref().map(confusables::bound_title_chars);
 
     // 1. Hard host/URL block.
-    if let Some(url) = w.url.as_deref().map(confusables::bound_title_chars) {
+    if let Some(url) = url_bounded {
         if let Some(hit) = rules.match_host(url) {
             let signals: Vec<String> = vec!["blocklist_host".into()];
             return Verdict {
@@ -1897,9 +1900,8 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // CJK/Kana are ignored, so a legitimate Japanese+Latin title does
     // not fire (false-positive guard for the JP market). The weight
     // nudges toward Suspicious; it never blocks on its own.
-    let mixed_script = confusables::has_confusable_mixed_script(&w.title)
-        || w.url
-            .as_deref()
+    let mixed_script = confusables::has_confusable_mixed_script(title)
+        || url_bounded
             .is_some_and(|u| confusables::has_confusable_mixed_script(url_host(u)));
     if mixed_script {
         score += rules.weight_of("mixed_script", W_MIXED_SCRIPT);
@@ -1917,8 +1919,8 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // For URL hosts: check each label individually (split on '.'), since a
     // TLD like `.com` always contains Latin letters and would otherwise
     // prevent the per-token analysis from seeing a pure-Cyrillic label.
-    let whole_script = confusables::has_whole_script_confusable(&w.title)
-        || w.url.as_deref().is_some_and(|u| {
+    let whole_script = confusables::has_whole_script_confusable(title)
+        || url_bounded.is_some_and(|u| {
             url_host(u)
                 .split('.')
                 .any(confusables::has_whole_script_confusable)
@@ -1936,8 +1938,8 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // enclosed LETTERS have essentially no legitimate use in a window title
     // (circled numerals ①②③ in lists are distinct and don't fire). Checked
     // on raw strings before normalization strips the evidence. (C8-8.)
-    let compat_chars = confusables::has_compat_alpha(&w.title)
-        || w.url.as_deref().is_some_and(confusables::has_compat_alpha);
+    let compat_chars = confusables::has_compat_alpha(title)
+        || url_bounded.is_some_and(confusables::has_compat_alpha);
     if compat_chars {
         score += rules.weight_of("compat_chars_present", W_COMPAT_CHARS);
         signals.push("compat_chars_present".into());
@@ -1948,10 +1950,8 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // Arabic-Indic `٥`) is never a legitimate number. ASCII and full-width
     // digits count as the same system, so legitimate Japanese text using
     // full-width numerals is not flagged (JP FP guard). Read on raw text.
-    let mixed_numbers = confusables::has_mixed_number_systems(&w.title)
-        || w.url
-            .as_deref()
-            .is_some_and(confusables::has_mixed_number_systems);
+    let mixed_numbers = confusables::has_mixed_number_systems(title)
+        || url_bounded.is_some_and(confusables::has_mixed_number_systems);
     if mixed_numbers {
         score += rules.weight_of("mixed_number_systems", W_MIXED_NUMBERS);
         signals.push("mixed_number_systems".into());
@@ -1961,10 +1961,8 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // base character never occurs in legitimate text (even Vietnamese /
     // Arabic / Indic stack at most one or two), so it's a near-zero-FP
     // obfuscation tell. Read on raw text before any normalization.
-    let zalgo = confusables::has_excessive_combining_marks(&w.title)
-        || w.url
-            .as_deref()
-            .is_some_and(confusables::has_excessive_combining_marks);
+    let zalgo = confusables::has_excessive_combining_marks(title)
+        || url_bounded.is_some_and(confusables::has_excessive_combining_marks);
     if zalgo {
         score += rules.weight_of("excessive_combining_marks", W_ZALGO);
         signals.push("excessive_combining_marks".into());
@@ -1976,8 +1974,8 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // presence in a title/host is itself a high-confidence spoofing tell
     // — overrides have no honest use in a window title. Read on the raw
     // strings, before stripping erases them.
-    let bidi_override = confusables::has_bidi_override(&w.title)
-        || w.url.as_deref().is_some_and(confusables::has_bidi_override);
+    let bidi_override = confusables::has_bidi_override(title)
+        || url_bounded.is_some_and(confusables::has_bidi_override);
     if bidi_override {
         score += rules.weight_of("bidi_override", W_BIDI_OVERRIDE);
         signals.push("bidi_override".into());

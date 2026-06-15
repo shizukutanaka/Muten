@@ -4573,3 +4573,30 @@ fn math_bold_evasion_ip_alarm_lure_fires_on_alert() {
         v.signals
     );
 }
+
+#[test]
+fn math_bold_evasion_also_raises_compat_chars_tell() {
+    // Round-6 folding lets the content detector fire; the presence of the
+    // fancy-text glyphs themselves must ALSO raise the compat_chars_present
+    // evasion tell (parity between folding and the presence-signal).
+    let rules = Ruleset::default();
+    let evaded = math_bold("alert 5 viruses found scanning your computer remove now");
+    let v = classify(
+        &OverlayWindow {
+            title: evaded,
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "compat_chars_present"),
+        "fancy-text glyphs must raise compat_chars_present; signals = {:?}",
+        v.signals
+    );
+}

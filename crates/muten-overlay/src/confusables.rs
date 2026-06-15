@@ -391,18 +391,52 @@ pub fn script_of(c: char) -> Script {
     }
 }
 
-/// True if `s` contains an enclosed/circled Latin letter (Ⓐ–Ⓩ /
-/// ⓐ–ⓩ, U+24B6–U+24E9). These are used in phishing titles to evade
-/// plain-text blocklist matching — `ⓟⓐⓨⓟⓐⓛ` is invisible to
-/// `str::contains("paypal")` but looks like "paypal" to a human.
-/// `normalize_for_match` now folds them (via [`fold_char`]), so blocklist
-/// matching catches them; this function allows detecting their mere
-/// *presence* in a raw title as a high-confidence, low-FP evasion tell.
-/// Enclosed letters have essentially no legitimate use in a window title
-/// (contrast with the circled *numerals* ①②③ which appear in lists).
+/// True if `s` contains a **run of ≥4 consecutive Mathematical Alphanumeric
+/// *letters*** (U+1D400–U+1D7FF, the "fancy text" styles `fold_char` folds:
+/// 𝐛𝐨𝐥𝐝 / 𝑖𝑡𝑎𝑙𝑖𝑐 / 𝘀𝗮𝗻𝘀 / 𝚖𝚘𝚗𝚘) — i.e. a word spelled in fancy-text glyphs.
+///
+/// The run threshold is the false-positive guard. Unlike circled letters,
+/// these glyphs *do* have a legitimate use: mathematical notation renders
+/// *isolated* symbols (a single blackboard-bold variable, a bold vector 𝐯, a
+/// matrix name). What is never legitimate in a window title is a *word* spelled
+/// out of them — the "fancy text generator" evasion (`𝐲𝐨𝐮𝐫 𝐜𝐨𝐦𝐩𝐮𝐭𝐞𝐫`). A
+/// threshold of 4 consecutive math letters separates the two, mirroring the
+/// run-threshold discipline of [`has_excessive_combining_marks`] (≥3) and
+/// [`collapse_spread_characters`] (≥4). Math *digits* are excluded (they have
+/// more legitimate use); the common blackboard-bold set symbols ℝ/ℂ/ℍ live in
+/// the Letterlike Symbols block, outside U+1D400–U+1D7FF, and so never count.
+fn has_math_alpha_run(s: &str) -> bool {
+    const MIN_RUN: usize = 4;
+    let mut run = 0usize;
+    for c in s.chars() {
+        let is_math_letter =
+            fold_math_alnum(c as u32).is_some_and(|a| a.is_ascii_alphabetic());
+        if is_math_letter {
+            run += 1;
+            if run >= MIN_RUN {
+                return true;
+            }
+        } else {
+            run = 0;
+        }
+    }
+    false
+}
+
+/// True if `s` contains a **compatibility-form alphabetic evasion** — either an
+/// enclosed/circled Latin letter (Ⓐ–Ⓩ / ⓐ–ⓩ, U+24B6–U+24E9) or a word spelled
+/// in Mathematical Alphanumeric "fancy text" glyphs (see [`has_math_alpha_run`]).
+/// Both are used in phishing titles to evade plain-text blocklist matching —
+/// `ⓟⓐⓨⓟⓐⓛ` and `𝐩𝐚𝐲𝐩𝐚𝐥` are invisible to `str::contains("paypal")` but look
+/// like "paypal" to a human. `normalize_for_match` now folds both (via
+/// [`fold_char`]) so blocklist matching catches them; this function detects
+/// their *presence* in a raw title as a high-confidence, low-FP evasion tell.
+/// Enclosed letters have essentially no legitimate title use (contrast with
+/// circled *numerals* ①②③ in lists), and the math-letter arm requires a 4+-letter
+/// run so isolated legitimate math notation does not fire.
 #[must_use]
 pub fn has_compat_alpha(s: &str) -> bool {
-    s.chars().any(|c| matches!(c as u32, 0x24B6..=0x24E9))
+    s.chars().any(|c| matches!(c as u32, 0x24B6..=0x24E9)) || has_math_alpha_run(s)
 }
 
 /// Identify the decimal-digit *numbering system* of `c`, or `None` if
@@ -3576,6 +3610,36 @@ mod tests {
         ));
         // Circled NUMERALS ① ② (U+2460-U+2473) are not enclosed letters — don't fire.
         assert!(!has_compat_alpha("step ① complete ②"));
+    }
+
+    #[test]
+    fn has_compat_alpha_fires_on_math_fancy_text_word() {
+        // 𝐩𝐚𝐲𝐩𝐚𝐥 (mathematical bold, ≥4 consecutive letters) is the
+        // fancy-text evasion and must raise the compat-alpha tell.
+        assert!(has_compat_alpha(
+            "\u{1D429}\u{1D41A}\u{1D432}\u{1D429}\u{1D41A}\u{1D425}"
+        ));
+        // Italic word also fires.
+        assert!(has_compat_alpha("\u{1D44E}\u{1D459}\u{1D456}\u{1D454}\u{1D45B}")); // 𝑎𝑙𝑖𝑔𝑛
+    }
+
+    #[test]
+    fn has_compat_alpha_does_not_fire_on_isolated_math_letters() {
+        // Legitimate math notation uses ISOLATED styled symbols — a single
+        // bold vector or a 2–3 letter run must NOT fire (FP guard).
+        assert!(!has_compat_alpha("\u{1D42F}")); // single 𝐯 (bold vector)
+        assert!(!has_compat_alpha("\u{1D400}\u{1D401}")); // 𝐀𝐁 (2 letters)
+        assert!(!has_compat_alpha("\u{1D400}\u{1D401}\u{1D402}")); // 𝐀𝐁𝐂 (3 letters)
+        // Blackboard-bold set symbols ℝ ℂ live outside U+1D400 and never count.
+        assert!(!has_compat_alpha("\u{211D} and \u{2102}")); // ℝ and ℂ
+    }
+
+    #[test]
+    fn has_compat_alpha_math_run_resets_on_separator() {
+        // A space breaks the run: two 3-letter words don't reach the threshold.
+        // 𝐚𝐛𝐜 𝐝𝐞𝐟
+        let s = "\u{1D41A}\u{1D41B}\u{1D41C} \u{1D41D}\u{1D41E}\u{1D41F}";
+        assert!(!has_compat_alpha(s));
     }
 
     // ── digit_system / has_mixed_number_systems ──────────────────

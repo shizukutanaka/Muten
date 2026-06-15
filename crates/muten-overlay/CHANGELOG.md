@@ -16,6 +16,29 @@ dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
 ### Fixed
+- **Evasion-signal/folding parity: fancy-text glyphs were folded for matching
+  but raised no evasion tell; raw-evasion checks ran on the unbounded title**
+  (follow-up to Round 6). Round 6 taught `fold_char` to fold Mathematical
+  Alphanumeric Symbols (𝐛𝐨𝐥𝐝/𝑖𝑡𝑎𝑙𝑖𝑐/𝘀𝗮𝗻𝘀/𝚖𝚘𝚗𝚘) so blocklist matching catches
+  `𝐩𝐚𝐲𝐩𝐚𝐥`, but the `compat_chars_present` *presence-signal* (`has_compat_alpha`)
+  still only fired on circled Latin letters — so fancy-text phishing got folded
+  yet raised no evasion suspicion (the same folding/signal asymmetry the host fix
+  addressed for normalization). `has_compat_alpha` now also fires on a **run of
+  ≥4 consecutive Mathematical-Alphanumeric letters** (a word spelled in
+  fancy-text glyphs). The run threshold is the FP guard: unlike circled letters,
+  math letters have a legitimate *isolated* use (math notation — a single
+  blackboard-bold variable or bold vector), so 1–3 in a row never fire and the
+  common set symbols ℝ/ℂ/ℍ (Letterlike Symbols block, outside U+1D400) never
+  count — only word-spelling does. While fixing this, a **latent DoS** surfaced:
+  the six raw-evasion checks (`mixed_script`, `whole_script_confusable`,
+  `compat_chars_present`, `mixed_number_systems`, `excessive_combining_marks`,
+  `bidi_override`) all scanned the **unbounded** `w.title`/`w.url` — they had been
+  missed by the earlier `MAX_TITLE_CHARS` bound, which only covered the
+  match/normalize path. They now read a length-bounded title/URL (raw, so the
+  evasion evidence is preserved), closing the DoS for these checks too. 4 unit
+  tests (math word fires; isolated 1–3 letters and ℝ/ℂ don't; run resets on
+  separator) + 1 scoring scenario (math-bold scam also raises
+  compat_chars_present). 1297 tests total.
 - **Normalization drift: combining-mark stripping reached titles but not hosts**
   (strengths/weaknesses audit). `match_host` ran only `strip_invisibles →
   fold_host_confusables`, so the combining-diacritical-mark strip added to the
