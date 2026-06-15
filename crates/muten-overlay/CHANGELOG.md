@@ -16,6 +16,38 @@ dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
 ### Security
+- **Combining-diacritical-mark obfuscation bypasses all substring detectors**
+  (Socratic Round 5 — normalization pipeline audit). A targeted adversarial probe
+  found that neither `strip_symbols_and_emoji` (removes emoji/symbols) nor
+  `strip_invisibles` (removes BiDi/zero-width chars) strips Unicode combining
+  diacritical marks — the category of zero-advance modifier characters that
+  stack visually on top of a base letter without changing its phonetic identity.
+  An attacker can annotate every letter in a scam keyword with U+0337 (combining
+  short solidus overlay — the strikethrough effect), U+0332 (combining low line),
+  or any of hundreds of other combining marks to produce text that renders legibly
+  to a human reader yet defeats every one of the 75+ substring-based detectors
+  simultaneously, since `str::contains("virus")` fails on `"v̷i̷r̷u̷s̷"`. New
+  `strip_combining_marks(s: &str) -> String` in `confusables.rs` strips Unicode
+  ranges U+0300–U+036F (Combining Diacritical Marks, including the common
+  strikethrough/underline/overlay attack chars), U+0483–U+0489 (Combining
+  Cyrillic Marks, extended so that Cyrillic base letters can be cleanly folded
+  by `fold_confusables` after mark removal), U+1AB0–U+1AFF, U+1DC0–U+1DFF,
+  U+20D0–U+20FF, and U+FE20–U+FE2F. Wired into `normalize_for_match` between
+  `strip_invisibles` and `fold_confusables` — the correct position ensures
+  Cyrillic letter + mark → strip mark → fold Cyrillic base to Latin (pipeline
+  order verified by test). Precomposed characters (é = U+00E9) are unaffected
+  (they are single codepoints, not combining marks). The existing
+  `is_combining_mark` is extended to cover U+0483–U+0489. The existing
+  `has_excessive_combining_marks` (Zalgo-text signal) and the
+  `strip_combining_marks` used in `normalize_for_match` share the same predicate.
+  12 unit tests (strikethrough, acute overlay, plain ASCII pass-through,
+  precomposed é, Japanese pass-through, CDM Extended, CDM for Symbols, idempotent,
+  never-grows-count, Cyrillic-base pipeline, normalize defeat test ×2), 3 property
+  tests (never-grows, never-panics, idempotent on arbitrary Unicode), 3 scoring
+  scenario tests (fake_scanner_cue, ip_alarm_lure with diacritics; FP guard with
+  diacritics in non-alert geometry). 1273 tests total.
+
+### Security
 - **Terminal injection (ANSI escape injection) via attacker-controlled window ID**
   (Socratic Round 4 — output-side trust-boundary audit). A targeted review of
   every code path where attacker-controlled bytes reach human-readable terminal

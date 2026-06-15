@@ -1814,4 +1814,26 @@ proptest! {
             prop_assert!(!muten_overlay::confusables::has_family_emergency_scam(&s));
         }
     }
+
+    /// strip_combining_marks never grows the character count.
+    #[test]
+    fn strip_combining_marks_never_grows_char_count(s in "\\PC*") {
+        let out = muten_overlay::confusables::strip_combining_marks(&s);
+        prop_assert!(out.chars().count() <= s.chars().count());
+    }
+
+    /// strip_combining_marks never panics on arbitrary Unicode input.
+    #[test]
+    fn strip_combining_marks_never_panics(s in "\\PC*") {
+        let _ = muten_overlay::confusables::strip_combining_marks(&s);
+    }
+
+    /// strip_combining_marks is idempotent: applying it twice is the same
+    /// as applying it once.
+    #[test]
+    fn strip_combining_marks_idempotent(s in "\\PC*") {
+        let once = muten_overlay::confusables::strip_combining_marks(&s);
+        let twice = muten_overlay::confusables::strip_combining_marks(&once);
+        prop_assert_eq!(once, twice);
+    }
 }

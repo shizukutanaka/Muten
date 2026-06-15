@@ -4391,3 +4391,112 @@ fn family_emergency_scam_plus_phone_reaches_block() {
         v.score
     );
 }
+
+// ── Combining-mark evasion (Socratic Round 5) ────────────────────────────────
+//
+// An attacker can insert Unicode combining diacritical marks on every letter of
+// a scam keyword ("y̷o̷u̷r̷ c̷o̷m̷p̷u̷t̷e̷r̷ i̷s̷ i̷n̷f̷e̷c̷t̷e̷d̷") to defeat every substring
+// detector while remaining visually legible. The normalize pipeline must strip
+// these marks *before* matching. These integration tests go through the full
+// classify() path.
+
+fn diacritic_overlay(s: &str) -> String {
+    // Insert U+0337 (COMBINING SHORT SOLIDUS OVERLAY) after every alphabetic char.
+    let mut out = String::with_capacity(s.len() * 2);
+    for c in s.chars() {
+        out.push(c);
+        if c.is_alphabetic() {
+            out.push('\u{0337}');
+        }
+    }
+    out
+}
+
+#[test]
+fn combining_mark_evasion_fake_scanner_cue_fires_on_alert() {
+    // "alert 5 viruses found scanning your computer remove now" with U+0337 on
+    // every alphabetic character: strip_combining_marks must restore it before
+    // has_fake_scanner_cue fires.
+    let rules = Ruleset::default();
+    let evaded = diacritic_overlay("alert 5 viruses found scanning your computer remove now");
+    let v = classify(
+        &OverlayWindow {
+            title: evaded,
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "fake_scanner_cue"),
+        "combining-mark overlay evasion (fake_scanner_cue) must be defeated; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn combining_mark_evasion_ip_alarm_lure_fires_on_alert() {
+    // Test a different scam family to confirm the fix is pipeline-wide.
+    let rules = Ruleset::default();
+    let evaded = diacritic_overlay("your ip address has been hacked call support");
+    let v = classify(
+        &OverlayWindow {
+            title: evaded,
+            url: None,
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 50,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "ip_alarm_lure"),
+        "combining-mark overlay evasion (ip_alarm_lure) must be defeated; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn combining_mark_evasion_fp_guard_no_alert_does_not_fire() {
+    // Even with diacritics stripped, no content signal fires without alert shape.
+    let rules = Ruleset::default();
+    let evaded = diacritic_overlay("your computer is infected call support immediately");
+    let v = classify(
+        &OverlayWindow {
+            title: evaded,
+            url: None,
+            coverage_percent: 30,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 8_000,
+        },
+        &rules,
+    );
+    let content: Vec<&String> = v
+        .signals
+        .iter()
+        .filter(|s| {
+            !matches!(
+                s.as_str(),
+                "fullscreen" | "topmost" | "no_close_button" | "blocks_input"
+                    | "unsolicited" | "very_new" | "input_trap"
+                    | "sudden_fullscreen_takeover" | "user_initiated"
+            )
+        })
+        .collect();
+    assert!(
+        content.is_empty(),
+        "no content signal should fire without alert shape; got {:?}",
+        content
+    );
+}

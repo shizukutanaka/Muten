@@ -209,6 +209,21 @@ pub fn strip_invisibles(s: &str) -> String {
     s.chars().filter(|&c| !is_invisible(c)).collect()
 }
 
+/// Remove Unicode combining diacritical marks from `s`. Never lengthens the
+/// string (it only drops chars). Stripping combining marks defeats a common
+/// evasion technique: inserting visual-strikethrough (`U+0337`), underline
+/// (`U+0332`), or any of hundreds of other zero-semantic modifiers between
+/// the letters of a known scam keyword (`y̷o̷u̷r̷ c̷o̷m̷p̷u̷t̷e̷r̷ i̷s̷ i̷n̷f̷e̷c̷t̷e̷d̷`
+/// → `your computer is infected`) to defeat every substring-based detector
+/// while remaining visually legible to a human reader. Called in
+/// `normalize_for_match` between `strip_invisibles` and `fold_confusables`.
+/// Uses `is_combining_mark` which covers U+0300–U+036F, U+0483–U+0489,
+/// U+1AB0–U+1AFF, U+1DC0–U+1DFF, U+20D0–U+20FF, and U+FE20–U+FE2F.
+#[must_use]
+pub fn strip_combining_marks(s: &str) -> String {
+    s.chars().filter(|&c| !is_combining_mark(c)).collect()
+}
+
 /// True if `c` is an emoji, pictograph, or decorative symbol that has no
 /// role in alphanumeric text but can be inserted mid-word to defeat
 /// substring matching ("inf⚠️ected" → "infected" after stripping).
@@ -328,12 +343,17 @@ pub fn digit_system(c: char) -> Option<u8> {
 /// stacks onto the preceding base character). A focused, dependency-free
 /// subset of the Unicode combining-mark blocks: Combining Diacritical
 /// Marks and their three extension/supplement/symbol blocks, plus the
-/// combining half marks. Enough to spot the abuse this detects; not a
-/// complete `Mn`/`Mc` general-category table.
+/// Combining Cyrillic Marks and combining half marks. Enough to spot the
+/// abuse this detects; not a complete `Mn`/`Mc` general-category table.
+///
+/// U+0483–U+0489 (Combining Cyrillic) is included so that Cyrillic letters
+/// decorated with these marks are still stripped by `strip_combining_marks`
+/// before `fold_confusables` converts their bases to Latin.
 #[must_use]
 pub fn is_combining_mark(c: char) -> bool {
     matches!(c as u32,
         0x0300..=0x036F | // Combining Diacritical Marks
+        0x0483..=0x0489 | // Combining Cyrillic Marks
         0x1AB0..=0x1AFF | // Combining Diacritical Marks Extended
         0x1DC0..=0x1DFF | // Combining Diacritical Marks Supplement
         0x20D0..=0x20FF | // Combining Diacritical Marks for Symbols
@@ -637,19 +657,27 @@ pub fn sanitize_for_display(s: &str) -> String {
 }
 
 /// The single normalized form used for **blocklist title matching**:
-/// strip emoji/symbols → strip invisibles → fold confusables → collapse
-/// spread-character obfuscation → fold leetspeak → lowercase.  Idempotent.
-/// The emoji step runs first so mid-word insertions (e.g. `"inf⚠️ected"`)
-/// are collapsed before any other folding.  The spread-character collapse
-/// runs *before* leetspeak folding so spaced leet (`b 4 i 1` → `b4i1` →
-/// `bail`) is defeated too.  Not applied to the phone-number scan (which
-/// needs the original digits).
+/// strip emoji/symbols → strip invisibles → strip combining marks →
+/// fold confusables → collapse spread-character obfuscation → fold leetspeak →
+/// lowercase. Idempotent. Pipeline order rationale:
+///
+/// 1. Emoji/symbol strip first — mid-word emoji (`"inf⚠️ected"`) collapsed.
+/// 2. Invisible strip — zero-width joiners, BiDi overrides removed.
+/// 3. Combining-mark strip — diacritical overlays (`y̷o̷u̷r̷`) removed *before*
+///    confusable folding so Cyrillic base letters are cleanly foldable.
+/// 4. Confusable fold — homoglyphs (Cyrillic, Greek) mapped to Latin skeleton.
+/// 5. Spread-character collapse — `b a i l` / `b.a.i.l` rejoined before leet.
+/// 6. Leet fold — `v1rus` → `virus` (only in mixed-letter tokens).
+/// 7. Lowercase — final ASCII normalisation.
+///
+/// Not applied to the phone-number scan (which needs the original digits).
 #[must_use]
 pub fn normalize_for_match(s: &str) -> String {
     let s = bound_title_chars(s);
     let s = strip_symbols_and_emoji(s);
-    let stripped = strip_invisibles(&s);
-    let folded = fold_confusables(&stripped);
+    let s = strip_invisibles(&s);
+    let s = strip_combining_marks(&s);
+    let folded = fold_confusables(&s);
     let despread = collapse_spread_characters(&folded);
     fold_leet_in_words(&despread).to_ascii_lowercase()
 }
@@ -3081,6 +3109,96 @@ mod tests {
     fn strip_symbols_leaves_plain_ascii() {
         let s = "your computer is infected call 1-800-555-0100";
         assert_eq!(strip_symbols_and_emoji(s), s);
+    }
+
+    // ── strip_combining_marks ─────────────────────────────────────────────
+
+    #[test]
+    fn strip_combining_marks_strikethrough_overlay() {
+        // U+0337 (COMBINING SHORT SOLIDUS OVERLAY) applied to each letter of
+        // "virus" — visually looks strikethrough but breaks substring matching.
+        let marked = "v\u{0337}i\u{0337}r\u{0337}u\u{0337}s\u{0337}";
+        assert_eq!(strip_combining_marks(marked), "virus");
+    }
+
+    #[test]
+    fn strip_combining_marks_acute_accent() {
+        // U+0301 (COMBINING ACUTE ACCENT) between each letter.
+        let marked = "y\u{0301}o\u{0301}u\u{0301}r\u{0301} c\u{0301}o\u{0301}m\u{0301}p\u{0301}u\u{0301}t\u{0301}e\u{0301}r";
+        assert_eq!(strip_combining_marks(marked), "your computer");
+    }
+
+    #[test]
+    fn strip_combining_marks_leaves_plain_ascii() {
+        let s = "your computer is infected call 1-800-555-0100";
+        assert_eq!(strip_combining_marks(s), s);
+    }
+
+    #[test]
+    fn strip_combining_marks_leaves_precomposed() {
+        // Precomposed é (U+00E9) is a single codepoint — NOT a combining mark.
+        assert_eq!(strip_combining_marks("résumé"), "résumé");
+        assert_eq!(strip_combining_marks("café"), "café");
+    }
+
+    #[test]
+    fn strip_combining_marks_leaves_japanese() {
+        // Japanese kana and CJK are not in any stripped range.
+        let jp = "ウイルスに感染しました こんにちは";
+        assert_eq!(strip_combining_marks(jp), jp);
+    }
+
+    #[test]
+    fn strip_combining_marks_extended_cdm() {
+        // U+1AB0 (COMBINING DOUBLED CIRCUMFLEX ACCENT) — CDM Extended range.
+        let s = "a\u{1AB0}b\u{1AB0}c";
+        assert_eq!(strip_combining_marks(s), "abc");
+    }
+
+    #[test]
+    fn strip_combining_marks_cdm_for_symbols() {
+        // U+20D0 (COMBINING LEFT HARPOON ABOVE) — CDM for Symbols range.
+        let s = "x\u{20D0}y\u{20D0}z";
+        assert_eq!(strip_combining_marks(s), "xyz");
+    }
+
+    #[test]
+    fn strip_combining_marks_idempotent() {
+        let marked = "i\u{0301}n\u{0301}f\u{0301}e\u{0301}c\u{0301}t\u{0301}e\u{0301}d\u{0301}";
+        let once = strip_combining_marks(marked);
+        let twice = strip_combining_marks(&once);
+        assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn strip_combining_marks_never_grows() {
+        let marked = "a\u{0300}b\u{0301}c\u{0302}";
+        let out = strip_combining_marks(marked);
+        assert!(out.chars().count() <= marked.chars().count());
+    }
+
+    #[test]
+    fn normalize_defeats_diacritical_overlay_evasion() {
+        // "your computer is infected" with U+0337 overlays on every letter:
+        // the whole string must normalize to "your computer is infected".
+        let evaded = "y\u{0337}o\u{0337}u\u{0337}r\u{0337} \
+                      c\u{0337}o\u{0337}m\u{0337}p\u{0337}u\u{0337}t\u{0337}e\u{0337}r\u{0337} \
+                      i\u{0337}s\u{0337} \
+                      i\u{0337}n\u{0337}f\u{0337}e\u{0337}c\u{0337}t\u{0337}e\u{0337}d\u{0337}";
+        let norm = normalize_for_match(evaded);
+        assert!(
+            norm.contains("your computer is infected"),
+            "combining-mark overlay evasion must be defeated; got {norm:?}"
+        );
+    }
+
+    #[test]
+    fn normalize_defeats_combining_mark_on_cyrillic_base() {
+        // Cyrillic е (U+0435) with combining mark: strip mark first, then
+        // fold the Cyrillic base to 'e'. Pipeline order must be correct.
+        let s = "\u{0435}\u{0301}"; // Cyrillic е + combining acute
+        let norm = normalize_for_match(s);
+        assert_eq!(norm, "e", "Cyrillic base must fold after mark is stripped; got {norm:?}");
     }
 
     #[test]
