@@ -131,9 +131,66 @@ pub fn fold_char(c: char) -> char {
                     return ascii;
                 }
             }
+            // Mathematical Alphanumeric Symbols (U+1D400..U+1D7FF): the
+            // "fancy text" generators (𝐛𝐨𝐥𝐝 / 𝑖𝑡𝑎𝑙𝑖𝑐 / 𝘀𝗮𝗻𝘀 / 𝚖𝚘𝚗𝚘) abused to
+            // render a legible scam keyword from entirely different codepoints,
+            // defeating every substring detector. Handled by fold_math_alnum.
+            if let Some(ascii) = fold_math_alnum(u) {
+                return ascii;
+            }
             c
         }
     }
+}
+
+/// Fold a Mathematical Alphanumeric Symbol (U+1D400..U+1D7FF) to its ASCII
+/// letter/digit, or return `None` if `u` is not one we fold.
+///
+/// The block lays each *style* out as a contiguous run: 26 uppercase, then 26
+/// lowercase (for letters), or 10 digits. We fold the eight **hole-free**
+/// letter styles (bold, italic, bold-italic, the four sans-serif variants, and
+/// monospace) and all five digit styles. The script, fraktur, and
+/// double-struck letter styles are deliberately **out of scope**: those runs
+/// have codepoint "holes" (e.g. ℎ, ℜ, ℂ live in the Letterlike Symbols block
+/// U+2100..U+214F), so folding them correctly needs per-character handling we
+/// keep out for now — consistent with the crate's "focused subset, not the
+/// whole UTS#39 spec" philosophy. Each fold is 1:1 (char count preserved).
+fn fold_math_alnum(u: u32) -> Option<char> {
+    // Contiguous alphabetic styles: each is 52 codepoints (A–Z then a–z).
+    const LETTER_BASES: &[u32] = &[
+        0x1D400, // bold
+        0x1D434, // italic
+        0x1D468, // bold italic
+        0x1D5A0, // sans-serif
+        0x1D5D4, // sans-serif bold
+        0x1D608, // sans-serif italic
+        0x1D63C, // sans-serif bold italic
+        0x1D670, // monospace
+    ];
+    for &base in LETTER_BASES {
+        if (base..base + 52).contains(&u) {
+            let off = u - base;
+            return if off < 26 {
+                char::from_u32(off + b'A' as u32)
+            } else {
+                char::from_u32(off - 26 + b'a' as u32)
+            };
+        }
+    }
+    // Contiguous digit styles: each is 10 codepoints (0–9).
+    const DIGIT_BASES: &[u32] = &[
+        0x1D7CE, // bold
+        0x1D7D8, // double-struck
+        0x1D7E2, // sans-serif
+        0x1D7EC, // sans-serif bold
+        0x1D7F6, // monospace
+    ];
+    for &base in DIGIT_BASES {
+        if (base..base + 10).contains(&u) {
+            return char::from_u32(u - base + b'0' as u32);
+        }
+    }
+    None
 }
 
 /// Fold every confusable in `s` to its ASCII skeleton. Length in
@@ -3020,6 +3077,71 @@ mod tests {
     #[test]
     fn folds_diacritics() {
         assert_eq!(fold_confusables("ínféctéd"), "infected");
+    }
+
+    // ── Mathematical Alphanumeric Symbols (U+1D400..U+1D7FF) ──────────────
+
+    #[test]
+    fn folds_math_bold_letters() {
+        // 𝐢𝐧𝐟𝐞𝐜𝐭𝐞𝐝 (mathematical bold) → "infected"
+        let s = "\u{1D422}\u{1D427}\u{1D41F}\u{1D41E}\u{1D41C}\u{1D42D}\u{1D41E}\u{1D41D}";
+        assert_eq!(fold_confusables(s), "infected");
+    }
+
+    #[test]
+    fn folds_math_bold_uppercase() {
+        // 𝐀𝐋𝐄𝐑𝐓 (mathematical bold caps) → "ALERT"
+        let s = "\u{1D400}\u{1D40B}\u{1D404}\u{1D411}\u{1D413}";
+        assert_eq!(fold_confusables(s), "ALERT");
+    }
+
+    #[test]
+    fn folds_math_italic_letters() {
+        // 𝑣𝑖𝑟𝑢𝑠 (mathematical italic) → "virus"
+        let s = "\u{1D463}\u{1D456}\u{1D45F}\u{1D462}\u{1D460}";
+        assert_eq!(fold_confusables(s), "virus");
+    }
+
+    #[test]
+    fn folds_math_sans_and_monospace() {
+        // 𝗏𝗂𝗋𝗎𝗌 (sans-serif) and 𝚟𝚒𝚛𝚞𝚜 (monospace) both → "virus"
+        let sans = "\u{1D5CF}\u{1D5C2}\u{1D5CB}\u{1D5CE}\u{1D5CC}";
+        assert_eq!(fold_confusables(sans), "virus");
+        let mono = "\u{1D69F}\u{1D692}\u{1D69B}\u{1D69E}\u{1D69C}";
+        assert_eq!(fold_confusables(mono), "virus");
+    }
+
+    #[test]
+    fn folds_math_digits() {
+        // 𝟓 (bold 5), 𝟝 (double-struck 5), 𝟧 (sans 5), 𝟱 (sans-bold 5),
+        // 𝟻 (monospace 5) all → "5".
+        assert_eq!(fold_confusables("\u{1D7D3}"), "5"); // bold
+        assert_eq!(fold_confusables("\u{1D7DD}"), "5"); // double-struck
+        assert_eq!(fold_confusables("\u{1D7E7}"), "5"); // sans
+        assert_eq!(fold_confusables("\u{1D7F1}"), "5"); // sans-bold
+        assert_eq!(fold_confusables("\u{1D7FB}"), "5"); // monospace
+    }
+
+    #[test]
+    fn math_alnum_fold_preserves_char_count() {
+        // 1:1 fold — char count must be preserved, never grow.
+        let s = "\u{1D422}\u{1D427}\u{1D41F}"; // 𝐢𝐧𝐟
+        let folded = fold_confusables(s);
+        assert_eq!(folded.chars().count(), s.chars().count());
+    }
+
+    #[test]
+    fn math_alnum_fold_idempotent() {
+        let once = fold_confusables("\u{1D422}\u{1D427}\u{1D41F}\u{1D41E}\u{1D41C}\u{1D42D}\u{1D41E}\u{1D41D}");
+        let twice = fold_confusables(&once);
+        assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn normalize_defeats_math_bold_evasion() {
+        // Full sentence in mathematical bold must normalize to plain ASCII.
+        let s = "\u{1D422}\u{1D427}\u{1D41F}\u{1D41E}\u{1D41C}\u{1D42D}\u{1D41E}\u{1D41D}"; // 𝐢𝐧𝐟𝐞𝐜𝐭𝐞𝐝
+        assert_eq!(normalize_for_match(s), "infected");
     }
 
     #[test]

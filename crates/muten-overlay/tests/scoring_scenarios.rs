@@ -4500,3 +4500,76 @@ fn combining_mark_evasion_fp_guard_no_alert_does_not_fire() {
         content
     );
 }
+
+// ── Mathematical-alphanumeric ("fancy text") evasion (Socratic Round 6) ──────
+//
+// 𝐛𝐨𝐥𝐝 / 𝑖𝑡𝑎𝑙𝑖𝑐 / 𝘀𝗮𝗻𝘀 / 𝚖𝚘𝚗𝚘 text generators render a legible scam keyword
+// from entirely different codepoints (U+1D400..U+1D7FF), defeating every
+// substring detector. fold_confusables must map these back to ASCII.
+
+/// Render `s` in Mathematical Bold (letters + digits).
+fn math_bold(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            let u = c as u32;
+            if c.is_ascii_uppercase() {
+                char::from_u32(0x1D400 + (u - 'A' as u32)).unwrap()
+            } else if c.is_ascii_lowercase() {
+                char::from_u32(0x1D41A + (u - 'a' as u32)).unwrap()
+            } else if c.is_ascii_digit() {
+                char::from_u32(0x1D7CE + (u - '0' as u32)).unwrap()
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn math_bold_evasion_fake_scanner_cue_fires_on_alert() {
+    let rules = Ruleset::default();
+    let evaded = math_bold("alert 5 viruses found scanning your computer remove now");
+    let v = classify(
+        &OverlayWindow {
+            title: evaded,
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "fake_scanner_cue"),
+        "math-bold 'fancy text' evasion must be defeated; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn math_bold_evasion_ip_alarm_lure_fires_on_alert() {
+    // Different scam family — confirm the fold is pipeline-wide.
+    let rules = Ruleset::default();
+    let evaded = math_bold("your ip address has been hacked call support");
+    let v = classify(
+        &OverlayWindow {
+            title: evaded,
+            url: None,
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 50,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "ip_alarm_lure"),
+        "math-bold evasion (ip_alarm_lure) must be defeated; signals = {:?}",
+        v.signals
+    );
+}

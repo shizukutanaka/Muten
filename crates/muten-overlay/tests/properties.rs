@@ -1836,4 +1836,24 @@ proptest! {
         let twice = muten_overlay::confusables::strip_combining_marks(&once);
         prop_assert_eq!(once, twice);
     }
+
+    /// fold_confusables never grows the char count on arbitrary Unicode
+    /// (every fold, including the new Math Alphanumeric folds, is 1:1).
+    #[test]
+    fn fold_confusables_never_grows_char_count(s in "\\PC*") {
+        let out = muten_overlay::confusables::fold_confusables(&s);
+        prop_assert!(out.chars().count() <= s.chars().count());
+    }
+
+    /// Mathematical Alphanumeric Symbols (U+1D400..U+1D7FF) fed through
+    /// fold_confusables never panic and the fold is idempotent.
+    #[test]
+    fn math_alnum_fold_idempotent_no_panic(
+        s in proptest::collection::vec(0x1D400u32..=0x1D7FFu32, 0..40)
+    ) {
+        let input: String = s.iter().filter_map(|&u| char::from_u32(u)).collect();
+        let once = muten_overlay::confusables::fold_confusables(&input);
+        let twice = muten_overlay::confusables::fold_confusables(&once);
+        prop_assert_eq!(once, twice);
+    }
 }

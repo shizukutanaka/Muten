@@ -16,6 +16,31 @@ dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
 ### Security
+- **Mathematical Alphanumeric Symbols ("fancy text") bypass all substring
+  detectors** (Socratic Round 6 — confusable-coverage audit). An adversarial
+  probe found `fold_char` folds Cyrillic, Greek, Latin diacritics, full-width
+  ASCII (U+FF01–FF5E), and circled Latin (U+24B6–24E9) — but **not** the
+  Mathematical Alphanumeric Symbols block (U+1D400–U+1D7FF), the source of the
+  ubiquitous "fancy text" generators (𝐛𝐨𝐥𝐝, 𝑖𝑡𝑎𝑙𝑖𝑐, 𝘀𝗮𝗻𝘀, 𝚖𝚘𝚗𝚘). A scam keyword
+  rendered as `𝐚𝐥𝐞𝐫𝐭 𝟓 𝐯𝐢𝐫𝐮𝐬𝐞𝐬 𝐟𝐨𝐮𝐧𝐝` looks identical to "alert 5 viruses
+  found" but is entirely different codepoints, so `str::contains("virus")` fails
+  and all 75+ substring detectors are evaded at once (confirmed empirically: zero
+  content signals fired before the fix). New `fold_math_alnum(u: u32)` (called
+  from `fold_char`'s default arm, so every confusable-aware path benefits) folds
+  the eight hole-free letter styles (bold, italic, bold-italic, the four
+  sans-serif variants, monospace) and all five digit styles (bold,
+  double-struck, sans-serif, sans-serif-bold, monospace) back to ASCII. Script,
+  fraktur, and double-struck *letters* are deliberately out of scope: their runs
+  have codepoint holes (ℎ, ℜ, ℂ, … live in the Letterlike Symbols block) needing
+  per-character handling, consistent with the crate's "focused subset, not the
+  whole UTS#39 spec" philosophy. Each fold is 1:1 (char count preserved, never
+  grows). 8 unit tests (bold letters, bold caps, italic, sans+mono, all five
+  digit styles, char-count preservation, idempotent, full-sentence normalize)
+  + 2 property tests (fold never grows char count on arbitrary Unicode;
+  math-block fold idempotent/no-panic) + 2 scoring scenarios (fake_scanner_cue,
+  ip_alarm_lure rendered in math-bold fire end-to-end). 1285 tests total.
+
+### Security
 - **Combining-diacritical-mark obfuscation bypasses all substring detectors**
   (Socratic Round 5 — normalization pipeline audit). A targeted adversarial probe
   found that neither `strip_symbols_and_emoji` (removes emoji/symbols) nor
