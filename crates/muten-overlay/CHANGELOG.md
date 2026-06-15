@@ -15,6 +15,29 @@ guard, and expanded rogue-AV families. **API break**: `Verdict.signals` and
 dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
+### Security
+- **Repeat-flood evasion via polymorphic titles** (Socratic round 12 — the
+  flood *signature*, a surface never normalization-audited). The scareware
+  `RepeatTracker` groups appearances by `signature()`, which used only
+  `fold_confusables(title).to_ascii_lowercase()` — a **weaker** normalization
+  than the matcher's `normalize_for_match`. So a flood could be hidden by a
+  *polymorphic title*: re-pop the same alert with a per-appearance varying
+  zero-width character, combining mark, emoji, full-width / math-alphanumeric
+  glyph, or spacing jitter, and each appearance produced a different signature →
+  the repeat tracker never saw a repeat → flood detection was bypassed entirely.
+  This is the same normalization-drift class as the host-path bug: the matcher
+  was hardened over many rounds while the signature surface silently lagged.
+  `signature()` now runs the title through the *same* full `normalize_for_match`
+  pipeline (stripping invisibles/combining marks/emoji, folding
+  confusables/math-alphanumeric, collapsing spread characters and leet) plus an
+  internal-whitespace-run collapse, so all those evasions fold to one stable key.
+  Distinct *digits* are intentionally preserved (collapsing a `Warning #4821`
+  counter risks grouping genuinely different benign unsolicited notifications —
+  `3 new messages` / `4 new messages` — into a false flood). 2 tests
+  (polymorphic variants — zero-width, combining mark, emoji, math-bold, case +
+  spacing — share one signature; distinct digit counters stay separate). 1302
+  tests total.
+
 ### Fixed
 - **Repeat-flood detector not robust to a backward clock step** (Socratic
   round 11 — a new dimension: *time*, not text). The `RepeatTracker` sliding

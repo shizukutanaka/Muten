@@ -2315,12 +2315,33 @@ pub fn contains_phone_number(text: &str) -> bool {
 /// The scareware [`RepeatTracker`] needs "the same pop-up" to map to
 /// "the same key" across appearances. We define that here so callers
 /// don't each invent their own (inconsistent) scheme: the key is the
-/// normalized title plus the source host, which is stable across the
-/// rapid re-pops of an installed rogue AV while still distinguishing
-/// genuinely different alerts.
+/// **fully normalized** title plus the source host, which is stable
+/// across the rapid re-pops of an installed rogue AV while still
+/// distinguishing genuinely different alerts.
+///
+/// The title is run through the *same* [`normalize_for_match`] pipeline
+/// the classifier uses for blocklist matching — not a weaker fold — so a
+/// flood cannot be hidden by **polymorphic titles**: re-popping the same
+/// alert with a per-appearance varying zero-width character, combining
+/// mark, emoji, full-width / math-alphanumeric glyph, or intra-word
+/// spacing would otherwise yield a different signature each time and slip
+/// past repeat detection entirely. Folding these to one skeleton keeps
+/// the signature stable under exactly the evasions muten already defeats
+/// for matching (and closes the drift between the two normalization
+/// surfaces). Internal whitespace runs are also collapsed so spacing
+/// jitter between appearances can't fork the signature. Distinct *digits*
+/// (a `Warning #4821` style counter) are
+/// intentionally **preserved**: collapsing them risks grouping genuinely
+/// different benign unsolicited notifications (`3 new messages` /
+/// `4 new messages`) into a false flood.
 #[must_use]
 pub fn signature(w: &OverlayWindow) -> String {
-    let title = confusables::fold_confusables(w.title.trim()).to_ascii_lowercase();
+    // Collapse internal whitespace runs after normalization so a flood can't
+    // vary the spacing between letters/words across appearances to dodge
+    // grouping. Safe here because the signature is used only for repeat
+    // detection, never for a block decision.
+    let normalized = confusables::normalize_for_match(w.title.trim());
+    let title: String = normalized.split_whitespace().collect::<Vec<_>>().join(" ");
     // Use the crate's single host extractor so the repeat-signature host
     // matches the classifier's host exactly (drops `:port`, and a `://`
     // inside a query string can't hijack it).
@@ -3932,6 +3953,57 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(signature(&w), signature(&w2));
+    }
+
+    #[test]
+    fn signature_defeats_polymorphic_title_evasion() {
+        // A flood re-popping the "same" alert with a per-appearance varying
+        // unicode-evasion glyph must map to ONE signature, or repeat detection
+        // is trivially bypassed. Each variant below renders as "virus alert"
+        // but uses a different evasion the matcher already folds/strips.
+        let base = OverlayWindow {
+            title: "virus alert".into(),
+            url: Some("http://scam.example/".into()),
+            ..Default::default()
+        };
+        let expected = signature(&base);
+        let variants = [
+            "virus\u{200B} alert",                 // zero-width space inserted
+            "viru\u{0337}s alert",                 // combining mark on a letter
+            "virus alert \u{26A0}\u{FE0F}",        // trailing warning emoji
+            "\u{1D42F}\u{1D422}\u{1D42B}\u{1D42E}\u{1D42C} alert", // 𝐯𝐢𝐫𝐮𝐬 (math bold)
+            "  VIRUS   ALERT  ",                   // case + surrounding spaces
+        ];
+        for v in variants {
+            let w = OverlayWindow {
+                title: v.into(),
+                url: Some("http://scam.example/".into()),
+                ..Default::default()
+            };
+            assert_eq!(
+                signature(&w),
+                expected,
+                "polymorphic variant {v:?} must share the base signature"
+            );
+        }
+    }
+
+    #[test]
+    fn signature_preserves_distinct_digit_counters() {
+        // Digits are intentionally NOT collapsed: two benign unsolicited
+        // notifications differing only by a count must stay distinct, so they
+        // can't be grouped into a false flood.
+        let a = OverlayWindow {
+            title: "you have 3 new messages".into(),
+            url: None,
+            ..Default::default()
+        };
+        let b = OverlayWindow {
+            title: "you have 4 new messages".into(),
+            url: None,
+            ..Default::default()
+        };
+        assert_ne!(signature(&a), signature(&b));
     }
 
     #[test]
