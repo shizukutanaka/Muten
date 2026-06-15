@@ -111,6 +111,14 @@ pub fn fold_char(c: char) -> char {
         'ú' | 'ù' | 'û' | 'ü' | 'Ú' | 'Ù' | 'Û' | 'Ü' => 'u',
         'ç' | 'Ç' => 'c',
         'ñ' | 'Ñ' => 'n',
+        // ── Stroked Latin letters (visual homoglyphs of o/l/d) ──
+        // `ø`/`ł`/`đ` are pixel-near their unstroked ASCII counterparts and are
+        // used to dodge a blocklist the same way accents are (`bløcked`,
+        // `googłe`, `đhl`). Both cases fold to the lowercase ASCII skeleton, as
+        // the accented and Cyrillic/Greek arms do.
+        'ø' | 'Ø' => 'o',
+        'ł' | 'Ł' => 'l',
+        'đ' | 'Đ' => 'd',
         // ── a couple of symbol look-alikes ──
         '\u{0131}' => 'i', // dotless i
         '0' => '0',        // (kept; digits handled elsewhere)
@@ -3150,6 +3158,16 @@ mod tests {
     #[test]
     fn folds_diacritics() {
         assert_eq!(fold_confusables("ínféctéd"), "infected");
+    }
+
+    #[test]
+    fn folds_stroked_latin_homoglyphs() {
+        // ø→o, ł→l, đ→d (both cases) — visual homoglyphs used to dodge a
+        // blocklist the same way accents are.
+        assert_eq!(fold_confusables("bløcked"), "blocked");
+        assert_eq!(fold_confusables("googłe"), "google");
+        assert_eq!(fold_confusables("ØŁĐ"), "old");
+        assert_eq!(normalize_for_match("BLØCKED"), "blocked");
     }
 
     #[test]

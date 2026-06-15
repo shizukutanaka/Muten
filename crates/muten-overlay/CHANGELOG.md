@@ -16,6 +16,18 @@ dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
 ### Security
+- **Stroked Latin letters (`ø`/`ł`/`đ`) were not folded** (confusable-fold
+  letter-coverage audit, continuing the case-symmetry thread). `fold_char`
+  covered Cyrillic/Greek look-alikes, accented Latin (now both cases), full-width,
+  circled, and math-alphanumeric glyphs — but not the *stroked* Latin letters,
+  which are pixel-near their unstroked ASCII counterparts: `ø`≈o, `ł`≈l, `đ`≈d.
+  An attacker could dodge the matcher with `bløcked` / `googłe` / `đhl` (confirmed
+  empirically: `your ip address has been bløcked` fired zero content signals
+  before the fix). Both cases of all three now fold to the lowercase ASCII
+  skeleton (`ø`/`Ø`→o, `ł`/`Ł`→l, `đ`/`Đ`→d), exactly as the accent and
+  Cyrillic/Greek arms do. 1 unit test + the empirical `ip_alarm_lure` now fires.
+  1307 tests total.
+
 - **Unbounded URL scanned by the URL-content/brand detectors (DoS)** (follow-up
   to the round-6/round-12 input-bound work). The previous bound pass switched the
   six raw-evasion checks to a length-bounded title/URL, but **seven URL-content
