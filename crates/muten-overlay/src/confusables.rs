@@ -610,6 +610,32 @@ pub fn bound_title_chars(s: &str) -> &str {
     }
 }
 
+/// Sanitize an untrusted string for human-readable terminal output by
+/// replacing every ASCII C0 control character (U+0000–U+001F), DEL (U+007F),
+/// and C1 control character (U+0080–U+009F) with a space. This breaks ANSI
+/// escape-sequence injection (which requires ESC = U+001B, a C0 char), terminal
+/// title injection via OSC sequences, cursor-hiding via `\x1b[?25l`, and
+/// newline / carriage-return log-line splitting — all of which are possible
+/// when an attacker-controlled window ID or process name is printed directly to
+/// a terminal without sanitization.
+///
+/// Regular printable ASCII, multibyte Unicode (including Japanese), and
+/// printable Latin-1 characters (U+00A0–U+00FF) pass through unchanged.
+/// Apply this at every human-facing text output boundary (not JSON: serde_json
+/// escapes control chars automatically).
+#[must_use]
+pub fn sanitize_for_display(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if matches!(c, '\x00'..='\x1F' | '\x7F' | '\u{0080}'..='\u{009F}') {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
 /// The single normalized form used for **blocklist title matching**:
 /// strip emoji/symbols → strip invisibles → fold confusables → collapse
 /// spread-character obfuscation → fold leetspeak → lowercase.  Idempotent.
@@ -7891,5 +7917,89 @@ mod spread_char_tests {
         // Benign spaced text must not be conjured into a scam match.
         let raw = "w e l c o m e   t o   t h e   s h o w";
         assert!(!has_family_emergency_scam(&normalize_for_match(raw)));
+    }
+
+    // ── sanitize_for_display ──────────────────────────────────────────────────
+
+    #[test]
+    fn sanitize_plain_ascii_unchanged() {
+        let s = "window-42 overlay.exe";
+        assert_eq!(sanitize_for_display(s), s);
+    }
+
+    #[test]
+    fn sanitize_strips_esc_ansi_sequence() {
+        // ESC (U+001B) is C0 → stripped; the remaining `[31mRED[0m` is
+        // harmless printable ASCII that no longer forms an ANSI sequence.
+        let s = "\x1b[31mRED\x1b[0m";
+        let out = sanitize_for_display(s);
+        assert!(!out.contains('\x1b'), "ESC must be stripped; got {out:?}");
+        // Visible text is preserved (minus the now-harmless bracket/letters).
+        assert!(out.contains("RED"), "visible content must survive");
+    }
+
+    #[test]
+    fn sanitize_strips_osc_title_injection() {
+        // OSC (ESC ]) sets terminal title / other state — ESC is stripped.
+        let s = "\x1b]2;INJECTED\x07";
+        let out = sanitize_for_display(s);
+        assert!(!out.contains('\x1b'), "ESC must be stripped; got {out:?}");
+        assert!(!out.contains('\x07'), "BEL must be stripped; got {out:?}");
+    }
+
+    #[test]
+    fn sanitize_strips_newline_and_cr() {
+        let s = "line1\r\nline2";
+        let out = sanitize_for_display(s);
+        assert!(!out.contains('\r') && !out.contains('\n'), "got {out:?}");
+        assert!(out.contains("line1") && out.contains("line2"));
+    }
+
+    #[test]
+    fn sanitize_strips_null_and_del() {
+        let s = "abc\x00def\x7Fghi";
+        let out = sanitize_for_display(s);
+        assert!(!out.contains('\x00') && !out.contains('\x7F'), "got {out:?}");
+        assert!(out.contains("abc") && out.contains("def") && out.contains("ghi"));
+    }
+
+    #[test]
+    fn sanitize_strips_c1_controls() {
+        // U+0080 through U+009F are C1 control characters.
+        let s = "before\u{0080}after\u{009F}end";
+        let out = sanitize_for_display(s);
+        assert!(!out.chars().any(|c| ('\u{0080}'..='\u{009F}').contains(&c)),
+            "C1 controls must be stripped; got {out:?}");
+        assert!(out.contains("before") && out.contains("after") && out.contains("end"));
+    }
+
+    #[test]
+    fn sanitize_preserves_multibyte_unicode() {
+        // Japanese, emoji-free — must pass through unchanged (not C0/C1).
+        let s = "オーバーレイ-ID-42 overlayウィンドウ";
+        assert_eq!(sanitize_for_display(s), s);
+    }
+
+    #[test]
+    fn sanitize_empty_string() {
+        assert_eq!(sanitize_for_display(""), "");
+    }
+
+    #[test]
+    fn sanitize_all_controls_yields_spaces() {
+        // A string made entirely of C0 controls must not panic and must
+        // produce only spaces.
+        let s: String = (0x00u8..=0x1Fu8).map(|b| b as char).collect();
+        let out = sanitize_for_display(&s);
+        assert!(out.chars().all(|c| c == ' '), "got {out:?}");
+        assert_eq!(out.len(), s.len()); // one-to-one char substitution
+    }
+
+    #[test]
+    fn sanitize_cursor_hide_escape() {
+        // \x1b[?25l (hide cursor) — ESC must be stripped, leaving harmless text.
+        let s = "\x1b[?25l";
+        let out = sanitize_for_display(s);
+        assert!(!out.contains('\x1b'), "got {out:?}");
     }
 }

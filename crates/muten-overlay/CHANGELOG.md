@@ -16,6 +16,28 @@ dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
 ### Security
+- **Terminal injection (ANSI escape injection) via attacker-controlled window ID**
+  (Socratic Round 4 — output-side trust-boundary audit). A targeted review of
+  every code path where attacker-controlled bytes reach human-readable terminal
+  output found that `window_id` — read verbatim from the untrusted `"id"` field
+  in the input JSON — was printed without sanitization in two CLI subcommands:
+  `enforce` (text-format table) and `monitor` (text-format sweep log). An
+  attacker who can plant a crafted windows JSON file can embed ANSI escape
+  sequences in the window ID (`\x1b[2J` to clear the screen, `\x1b]2;...\x07`
+  to hijack the terminal title, `\x1b[?25l` to hide the cursor, `\r\n` to split
+  log lines). New `sanitize_for_display(s: &str) -> String` in `confusables.rs`
+  strips every ASCII C0 control character (U+0000–U+001F, which includes ESC =
+  U+001B), DEL (U+007F), and C1 control character (U+0080–U+009F), replacing
+  each with a space. ESC-stripped sequences are harmless: the `[31m` remainder is
+  plain printable ASCII that no terminal interprets as a color code. Applied at
+  both output boundaries in `cli.rs`. JSON output is unaffected (serde_json
+  escapes control chars as `\uXXXX` automatically); the audit chain holds raw IDs
+  for forensic fidelity. 10 unit tests (plain ASCII pass-through, ESC/ANSI strip,
+  OSC injection, `\r\n` strip, null+DEL strip, C1 block strip, multibyte
+  Unicode pass-through, empty string, all-control string, cursor-hide sequence).
+  1256 tests total.
+
+### Security
 - **Algorithmic-complexity DoS via unbounded title/URL length** (Socratic
   resource-safety audit). A probe of pathological input found that a single
   ~5 MB window title stalled one `classify()` call for ~89 seconds (and a 2 MB

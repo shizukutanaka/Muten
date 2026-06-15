@@ -14,6 +14,7 @@
 #![forbid(unsafe_code)]
 
 use clap::{Parser, Subcommand};
+use muten_overlay::confusables::sanitize_for_display;
 use muten_overlay::sink::merkle_root_of_log;
 use muten_overlay::{
     all_signals, classify, enforce, verify_chain, ChainedFileSink, Decision, EnumeratedWindow,
@@ -645,7 +646,7 @@ fn cmd_enforce(
             );
             println!(
                 "{:10} {decision} score={} dismissed={} signals=[{}]{}",
-                o.window_id,
+                sanitize_for_display(&o.window_id),
                 o.score,
                 o.dismissed,
                 o.signals.join(", "),
@@ -790,7 +791,7 @@ fn cmd_monitor(
                     "t={:<8} {:20} {:10} {}",
                     ev.timestamp_ms,
                     ev.kind,
-                    ev.window_id,
+                    sanitize_for_display(&ev.window_id),
                     serde_json::to_string(&ev.detail).unwrap_or_default()
                 );
             }
