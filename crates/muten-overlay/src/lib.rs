@@ -7068,6 +7068,28 @@ mod tests {
         }
     }
 
+    /// High-fidelity completeness guard. `Verdict::confidence()` rates a
+    /// Suspicious/Block verdict by counting how many of its signals are
+    /// "high-fidelity" (hard for an attacker to trigger on a benign window).
+    /// Every AND-pair content detector is high-fidelity by construction, but
+    /// `is_high_fidelity()` is a hand-maintained `matches!` list with no link
+    /// to `CONTENT_SIGNALS` — so adding a detector and forgetting to list it
+    /// here would silently make `confidence()` treat a genuine content tell as
+    /// mere "geometry noise" (Low/Medium), under-reporting it to SIEM with no
+    /// test failing. This pins the invariant: every content signal is
+    /// high-fidelity.
+    #[test]
+    fn every_content_signal_is_high_fidelity() {
+        for name in CONTENT_SIGNALS {
+            assert!(
+                is_high_fidelity(name),
+                "content signal {name:?} is not marked high-fidelity — add it to \
+                 is_high_fidelity() or confidence() will under-report it as \
+                 geometry noise"
+            );
+        }
+    }
+
     /// Additive-scoring contract guard (Socratic round 3). The 106
     /// `reaches_suspicious` / `reaches_block` scenario tests assert only a
     /// score threshold, which the window geometry (+ phone) already clears

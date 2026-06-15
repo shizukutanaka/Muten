@@ -15,6 +15,21 @@ guard, and expanded rogue-AV families. **API break**: `Verdict.signals` and
 dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
+### Changed
+- **High-fidelity completeness meta-guard** (structural hardening; confidence
+  drift). `Verdict::confidence()` rates a Suspicious/Block verdict by counting
+  its "high-fidelity" signals (those hard for an attacker to trigger on a benign
+  window), via the hand-maintained `is_high_fidelity()` list. Every AND-pair
+  content detector is high-fidelity by construction, but nothing linked that list
+  to `CONTENT_SIGNALS` — so adding a detector and forgetting to register it here
+  would silently make `confidence()` treat a genuine content tell as mere
+  "geometry noise" (Low/Medium), under-reporting it to SIEM with no test failing.
+  An audit confirmed the list is currently complete (all 54 content signals are
+  high-fidelity); a new `every_content_signal_is_high_fidelity` guard now pins the
+  invariant, turning future drift into a localized test failure (the same
+  philosophy as `every_content_signal_is_fully_wired` and the registry guard).
+  1305 tests total.
+
 ### Security
 - **Case-asymmetric confusable folding: uppercase accented Latin evaded the
   matcher** (Socratic round 13 — confusable-fold case symmetry). `fold_char`
