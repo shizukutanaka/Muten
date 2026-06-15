@@ -16,6 +16,24 @@ dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
 ### Fixed
+- **Repeat-flood detector not robust to a backward clock step** (Socratic
+  round 11 — a new dimension: *time*, not text). The `RepeatTracker` sliding
+  window was **half-open** — it kept timestamps `t >= now - window_ms`, bounding
+  only the lower edge. The injected clock is wall-clock in production and can step
+  *backward* (NTP correction, manual set, VM snapshot restore, host migration).
+  After a backward jump, an appearance recorded *before* the jump becomes
+  "future-dated" (`t > now_ms`) yet still satisfied `t >= cutoff`, so it lingered
+  in the window: it inflated repeat counts (a stale entry could help a benign
+  unsolicited repeat cross the flood threshold → **false scareware detection**)
+  and escaped `prune` (memory could grow across repeated clock steps).
+  `saturating_sub` prevented the underflow *panic* but not this semantic
+  corruption. `record`, `count`, and `prune` now use a **closed** window
+  (`now - window_ms <= t <= now_ms`) via a shared `in_window` helper. Under a
+  monotonic clock every recorded `t <= now_ms`, so the new upper bound is a
+  no-op — behavior is identical except that stale future-dated entries are
+  discarded after a regression. 3 regression tests (future-dated entry excluded;
+  flood count not inflated; prune drops future-dated entries). 1300 tests total.
+
 - **Evasion-signal/folding parity: fancy-text glyphs were folded for matching
   but raised no evasion tell; raw-evasion checks ran on the unbounded title**
   (follow-up to Round 6). Round 6 taught `fold_char` to fold Mathematical

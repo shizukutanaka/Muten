@@ -103,9 +103,9 @@ impl RepeatTracker {
     /// number of appearances now within the window (including this
     /// one). Prunes expired entries for this signature.
     pub fn record(&mut self, sig: &str, now_ms: u64) -> u32 {
-        let cutoff = now_ms.saturating_sub(self.window_ms);
+        let window_ms = self.window_ms;
         let entry = self.seen.entry(sig.to_string()).or_default();
-        entry.retain(|&t| t >= cutoff);
+        entry.retain(|&t| Self::in_window(t, now_ms, window_ms));
         entry.push(now_ms);
         entry.len() as u32
     }
@@ -113,21 +113,39 @@ impl RepeatTracker {
     /// Current count for a signature without recording a new hit.
     #[must_use]
     pub fn count(&self, sig: &str, now_ms: u64) -> u32 {
-        let cutoff = now_ms.saturating_sub(self.window_ms);
+        let window_ms = self.window_ms;
         self.seen
             .get(sig)
-            .map(|v| v.iter().filter(|&&t| t >= cutoff).count() as u32)
+            .map(|v| v.iter().filter(|&&t| Self::in_window(t, now_ms, window_ms)).count() as u32)
             .unwrap_or(0)
     }
 
     /// Drop all tracking state for signatures with no recent activity,
     /// keeping memory bounded over long uptimes. Call periodically.
     pub fn prune(&mut self, now_ms: u64) {
-        let cutoff = now_ms.saturating_sub(self.window_ms);
+        let window_ms = self.window_ms;
         for v in self.seen.values_mut() {
-            v.retain(|&t| t >= cutoff);
+            v.retain(|&t| Self::in_window(t, now_ms, window_ms));
         }
         self.seen.retain(|_, v| !v.is_empty());
+    }
+
+    /// True if timestamp `t` falls within the **closed** sliding window ending
+    /// at `now_ms`: `now_ms - window_ms <= t <= now_ms`.
+    ///
+    /// The **upper** bound is the clock-regression guard. The injected clock is
+    /// wall-clock in production and can step *backward* (NTP correction, manual
+    /// set, VM snapshot restore, host migration). With only a lower bound, an
+    /// entry recorded before a backward jump becomes "future-dated"
+    /// (`t > now_ms`) and would linger in the window — inflating repeat counts
+    /// (risking a false scareware-flood detection) and escaping `prune`. Under a
+    /// monotonic clock every recorded `t <= now_ms`, so the upper bound is a
+    /// no-op and behavior is unchanged; it only takes effect to discard stale
+    /// future-dated entries after a regression. `saturating_sub` keeps the lower
+    /// bound from underflowing early in process life (`now_ms < window_ms`).
+    fn in_window(t: u64, now_ms: u64, window_ms: u64) -> bool {
+        let cutoff = now_ms.saturating_sub(window_ms);
+        cutoff <= t && t <= now_ms
     }
 }
 
@@ -280,6 +298,59 @@ mod tests {
         let nb = t.record("alert-b", 3_000);
         assert_eq!(nb, 1);
         assert_eq!(t.count("alert-a", 3_000), 2);
+    }
+
+    /// Clock-regression robustness (Socratic round 11). The injected clock is
+    /// wall-clock in production and can step *backward* (NTP correction, manual
+    /// set, VM snapshot restore). The window is closed on both sides, so an
+    /// entry recorded before a backward jump (now "future-dated", `t > now_ms`)
+    /// must NOT be counted — otherwise stale entries linger and could push a
+    /// benign repeat over the flood threshold (false scareware detection) or
+    /// escape pruning. Under a monotonic clock this is a no-op (every recorded
+    /// `t <= now_ms`).
+    #[test]
+    fn future_dated_entry_excluded_after_clock_regression() {
+        let window_ms = 120_000;
+        let mut t = RepeatTracker::new(window_ms);
+        // Record at a high time, then the clock steps back by an hour.
+        t.record("sig", 3_600_000);
+        // count at the regressed (earlier) time: the future-dated entry
+        // (t = 3_600_000 > now = 1_000) must be excluded.
+        assert_eq!(
+            t.count("sig", 1_000),
+            0,
+            "a future-dated entry (recorded before a backward clock jump) must \
+             not be counted in the window"
+        );
+    }
+
+    #[test]
+    fn clock_regression_does_not_inflate_flood_count() {
+        // A single pre-jump appearance + a few post-jump appearances at the
+        // regressed clock must count only the in-window post-jump ones, so the
+        // stale future entry can't help cross the flood threshold.
+        let window_ms = 120_000;
+        let mut t = RepeatTracker::new(window_ms);
+        t.record("flood", 10_000_000); // pre-jump, far in the "future" after reset
+        // Clock resets near zero; two genuine appearances arrive.
+        t.record("flood", 1_000);
+        let n = t.record("flood", 2_000);
+        assert_eq!(
+            n, 2,
+            "only the two in-window post-regression appearances count; the \
+             future-dated entry is discarded"
+        );
+    }
+
+    #[test]
+    fn prune_drops_future_dated_entries() {
+        // prune must also discard future-dated entries after a regression, so
+        // memory cannot grow unboundedly across repeated clock steps.
+        let window_ms = 120_000;
+        let mut t = RepeatTracker::new(window_ms);
+        t.record("sig", 5_000_000);
+        t.prune(1_000); // regressed clock
+        assert_eq!(t.count("sig", 1_000), 0, "future-dated entry must be pruned");
     }
 
     #[test]
