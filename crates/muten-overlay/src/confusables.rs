@@ -239,6 +239,38 @@ pub fn skeleton(s: &str) -> String {
     fold_host_confusables(s).to_ascii_lowercase()
 }
 
+/// The host-side analogue of [`normalize_for_match`]: the defensive
+/// normalization applied to a URL host (and to a host blocklist rule) before
+/// comparison. It mirrors the *evasion-stripping* layers of the title pipeline
+/// that are meaningful for a hostname:
+///
+/// 1. `bound_title_chars` — cap length (DoS guard; a host has no upper bound).
+/// 2. `strip_invisibles` — drop zero-width / BiDi characters (`ev\u{200B}il`).
+/// 3. `strip_combining_marks` — drop combining diacritics (`paypa\u{0337}l`),
+///    matching the title pipeline so the same homograph is caught on both
+///    surfaces.
+/// 4. `fold_host_confusables` — fold homoglyphs **and** the typosquat
+///    digit/letter look-alikes (`0→o 1→l 5→s 3→e`, plus the math-alphanumeric
+///    and full-width folds via [`fold_char`]).
+/// 5. lower-case.
+///
+/// The emoji, spread-character, and leet-word steps of the title pipeline are
+/// intentionally omitted: a host has no spaces to spread across, and the
+/// digit-folding in `fold_host_confusables` already subsumes leet for domains.
+///
+/// **Anti-drift.** Both the URL host and each host rule are run through this
+/// one function in [`match_host`](crate::Ruleset::match_host), so the two sides
+/// stay symmetric and a future normalization layer is a single, reviewable
+/// change for both — they can no longer silently fall out of step (the bug this
+/// replaced: combining-mark stripping reached titles but not hosts).
+#[must_use]
+pub fn normalize_host_for_match(s: &str) -> String {
+    let s = bound_title_chars(s);
+    let s = strip_invisibles(s);
+    let s = strip_combining_marks(&s);
+    fold_host_confusables(&s).to_ascii_lowercase()
+}
+
 /// True if `c` is a zero-width, formatting, or BiDi-control character.
 ///
 /// These are invisible to a human but split a word for a naive
@@ -3142,6 +3174,69 @@ mod tests {
         // Full sentence in mathematical bold must normalize to plain ASCII.
         let s = "\u{1D422}\u{1D427}\u{1D41F}\u{1D41E}\u{1D41C}\u{1D42D}\u{1D41E}\u{1D41D}"; // 𝐢𝐧𝐟𝐞𝐜𝐭𝐞𝐝
         assert_eq!(normalize_for_match(s), "infected");
+    }
+
+    // ── normalize_host_for_match (host-side pipeline parity) ──────────────
+
+    #[test]
+    fn normalize_host_folds_typosquat_and_homoglyph() {
+        // Digit typosquat + Cyrillic homoglyph fold to the brand skeleton.
+        assert_eq!(normalize_host_for_match("micr0s0ft.example"), "microsoft.example");
+        // Cyrillic а (U+0430) folds to ascii a.
+        assert_eq!(normalize_host_for_match("p\u{0430}ypal.com"), "paypal.com");
+    }
+
+    #[test]
+    fn normalize_host_strips_invisibles_and_combining_marks() {
+        // Zero-width and combining-mark host evasions both collapse — the host
+        // path now mirrors the title path's mark stripping.
+        assert_eq!(normalize_host_for_match("ev\u{200B}il.example"), "evil.example");
+        assert_eq!(normalize_host_for_match("paypa\u{0337}l.com"), "paypal.com");
+        assert_eq!(normalize_host_for_match("paypa\u{0301}l.com"), "paypal.com");
+    }
+
+    #[test]
+    fn normalize_host_lowercases() {
+        assert_eq!(normalize_host_for_match("Evil.EXAMPLE"), "evil.example");
+    }
+
+    #[test]
+    fn normalize_host_leaves_clean_host_unchanged() {
+        assert_eq!(normalize_host_for_match("github.com"), "github.com");
+        assert_eq!(normalize_host_for_match("example.org"), "example.org");
+    }
+
+    #[test]
+    fn host_pipeline_strips_same_evasion_classes_as_title_pipeline() {
+        // Anti-drift guard: every invisible / combining-mark class the title
+        // pipeline removes must also be removed by the host pipeline, so the
+        // two normalization paths cannot silently diverge again. We probe a
+        // representative char from each stripped class embedded in a host-shaped
+        // string and assert neither pipeline leaves it behind.
+        let probes = [
+            '\u{200B}', // zero-width space (invisible)
+            '\u{FEFF}', // BOM / ZWNBSP (invisible)
+            '\u{200E}', // LRM (BiDi)
+            '\u{0301}', // combining acute (combining mark)
+            '\u{0337}', // combining short solidus overlay (combining mark)
+            '\u{20D0}', // combining left harpoon (CDM for symbols)
+        ];
+        for p in probes {
+            let host_in = format!("ab{p}cd.example");
+            let title_in = format!("ab{p}cd");
+            let host_out = normalize_host_for_match(&host_in);
+            let title_out = normalize_for_match(&title_in);
+            assert!(
+                !host_out.contains(p),
+                "host pipeline left {p:?} (U+{:04X}) behind: {host_out:?}",
+                p as u32
+            );
+            assert!(
+                !title_out.contains(p),
+                "title pipeline left {p:?} (U+{:04X}) behind: {title_out:?}",
+                p as u32
+            );
+        }
     }
 
     #[test]

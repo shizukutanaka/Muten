@@ -540,14 +540,16 @@ impl Ruleset {
     #[must_use]
     pub fn match_host(&self, url: &str) -> Option<String> {
         let host = host_of(url)?;
-        // Drop any zero-width/BiDi characters first (e.g. `ev\u{200B}il`),
-        // then fold typosquat/homoglyph confusables (0→o, 1→l, Cyrillic
-        // о→o, …) so `micros0ft.example` / `evіl.example` can't dodge an
-        // ASCII host blocklist. We compare folded-host suffixes against
-        // folded rules, but return the *original* matched rule string
-        // for the audit log.
-        let host = crate::confusables::strip_invisibles(&host);
-        let folded_host = crate::confusables::fold_host_confusables(&host);
+        // Normalize the host through the shared host pipeline: drop zero-width/
+        // BiDi characters (`ev\u{200B}il`), drop combining diacritics
+        // (`paypa\u{0337}l`), then fold typosquat/homoglyph confusables (0→o,
+        // 1→l, Cyrillic о→o, math-alphanumeric, …) and lower-case — so
+        // `micros0ft.example` / `evіl.example` / `paypa\u{0337}l.example` can't
+        // dodge an ASCII host blocklist. Both the host and each rule go through
+        // the *same* `normalize_host_for_match`, keeping the two sides symmetric
+        // and preventing the title/host pipelines from silently drifting apart.
+        // We return the *original* matched rule string for the audit log.
+        let folded_host = crate::confusables::normalize_host_for_match(&host);
         let labels: Vec<&str> = folded_host.split('.').collect();
         for i in 0..labels.len() {
             let suffix = labels[i..].join(".");
@@ -555,9 +557,9 @@ impl Ruleset {
             if self.hosts.contains(&suffix) {
                 return Some(suffix);
             }
-            // Folded comparison against each rule (host set is small).
+            // Normalized comparison against each rule (host set is small).
             for rule in &self.hosts {
-                if crate::confusables::fold_host_confusables(rule) == suffix {
+                if crate::confusables::normalize_host_for_match(rule) == suffix {
                     return Some(rule.clone());
                 }
             }
@@ -932,6 +934,29 @@ mod tests {
         // "paypа1-secure" uses Cyrillic а (U+0430) and digit 1.
         let hit = rs.match_host("https://paypа1-secure.example/login");
         assert_eq!(hit.as_deref(), Some("paypal-secure.example"));
+    }
+
+    #[test]
+    fn combining_mark_host_still_matches() {
+        // Regression: combining-mark stripping reached the title pipeline
+        // (Round 5) but not the host pipeline. A homograph host annotated with
+        // a combining diacritic (U+0337 overlay on the 'l') must not dodge the
+        // blocklist now that match_host shares the title pipeline's mark strip.
+        let rs = Ruleset::from_lines(&["host: paypal-secure.example"]);
+        let hit = rs.match_host("https://paypa\u{0337}l-secure.example/login");
+        assert_eq!(hit.as_deref(), Some("paypal-secure.example"));
+        // Acute accent (nearly invisible in a domain) is also stripped.
+        let hit2 = rs.match_host("https://paypa\u{0301}l-secure.example/login");
+        assert_eq!(hit2.as_deref(), Some("paypal-secure.example"));
+    }
+
+    #[test]
+    fn combining_mark_host_does_not_false_match() {
+        // The mark strip must not conjure a match for an unrelated host.
+        let rs = Ruleset::from_lines(&["host: paypal-secure.example"]);
+        assert!(rs
+            .match_host("https://git\u{0337}hub.com/user/repo")
+            .is_none());
     }
 
     #[test]

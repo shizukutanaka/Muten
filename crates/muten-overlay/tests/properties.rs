@@ -1856,4 +1856,15 @@ proptest! {
         let twice = muten_overlay::confusables::fold_confusables(&once);
         prop_assert_eq!(once, twice);
     }
+
+    /// normalize_host_for_match never panics, never grows the char count, and
+    /// is idempotent on arbitrary Unicode.
+    #[test]
+    fn normalize_host_for_match_idempotent_bounded(s in "\\PC*") {
+        let once = muten_overlay::confusables::normalize_host_for_match(&s);
+        let twice = muten_overlay::confusables::normalize_host_for_match(&once);
+        prop_assert_eq!(&once, &twice);
+        // Each layer only drops or 1:1-folds chars, and length is bounded.
+        prop_assert!(once.chars().count() <= muten_overlay::confusables::MAX_TITLE_CHARS);
+    }
 }

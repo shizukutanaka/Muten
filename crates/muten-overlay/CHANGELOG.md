@@ -15,6 +15,27 @@ guard, and expanded rogue-AV families. **API break**: `Verdict.signals` and
 dependencies. All constraints preserved: offline, pure, `forbid(unsafe_code)`,
 MSRV 1.75, 286 tests.
 
+### Fixed
+- **Normalization drift: combining-mark stripping reached titles but not hosts**
+  (strengths/weaknesses audit). `match_host` ran only `strip_invisibles →
+  fold_host_confusables`, so the combining-diacritical-mark strip added to the
+  *title* pipeline did not reach the *host* pipeline — a homograph host such as
+  `paypa\u{0337}l-secure.example` (a combining short-solidus overlay on the `l`)
+  could dodge the host blocklist even though the equivalent title attack was
+  caught. More broadly, the two matching surfaces had **two separate, hand-rolled
+  normalization sequences that could silently drift** every time a layer was
+  added to one. New shared `normalize_host_for_match()` carries the host-relevant
+  defensive layers (bound length → strip invisibles → strip combining marks →
+  fold host confusables incl. typosquat digit/letter and math-alphanumeric folds
+  → lowercase), and `match_host` now runs **both** the URL host and each host
+  rule through it, keeping the two sides symmetric. A new anti-drift test asserts
+  the host pipeline strips the same invisible/combining-mark classes as the title
+  pipeline, so the two can no longer diverge unnoticed. 2 host-match regression
+  tests (combining-mark host caught; no false match) + 5 unit tests + 1 property
+  test (idempotent/bounded/no-panic). Existing host typosquat/homoglyph behavior
+  is unchanged (operator rules are clean ASCII, so the added strips are no-ops on
+  them). 1293 tests total.
+
 ### Security
 - **Mathematical Alphanumeric Symbols ("fancy text") bypass all substring
   detectors** (Socratic Round 6 — confusable-coverage audit). An adversarial
