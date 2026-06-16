@@ -4881,3 +4881,70 @@ fn parenthesized_letter_evasion_also_raises_compat_chars_tell() {
         v.signals
     );
 }
+
+// ── Combining-mark phone-number evasion tests ──────────────────────────────
+//
+// `contains_phone_number` scans at the byte level; inserting combining
+// diacritical marks (U+0337 etc.) between digits interrupts the scan.
+// After the call-site fix (strip_combining_marks before scanning) the
+// heuristic must fire on an alert-shaped window showing a diacritic-camouflaged
+// support number.
+
+#[test]
+fn combining_mark_phone_evasion_fires_phone_number() {
+    // "your computer is infected — call 1̶-̶8̶0̶0̶-̶5̶5̶5̶-̶0̶1̶0̶0̶ now"
+    // with U+0337 (combining short solidus overlay) after every character.
+    let phone_with_marks: String = "1-800-555-0100"
+        .chars()
+        .flat_map(|c| [c, '\u{0337}'])
+        .collect();
+    let title = format!("your computer is infected — call {phone_with_marks} now");
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title,
+            url: None,
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 50,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "phone_number"),
+        "diacritic-camouflaged phone number must fire phone_number after combining-mark strip; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn combining_mark_phone_fp_guard_no_alert_does_not_fire() {
+    // Even with marks stripped, no phone signal fires without alert shape.
+    let phone_with_marks: String = "1-800-555-0100"
+        .chars()
+        .flat_map(|c| [c, '\u{0337}'])
+        .collect();
+    let title = format!("call {phone_with_marks} please");
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title,
+            url: None,
+            coverage_percent: 30,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 8_000,
+        },
+        &rules,
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "phone_number"),
+        "phone signal must not fire without alert shape; signals = {:?}",
+        v.signals
+    );
+}
