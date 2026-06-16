@@ -4625,3 +4625,101 @@ fn math_bold_evasion_also_raises_compat_chars_tell() {
         v.signals
     );
 }
+
+// ── Ligature evasion tests ─────────────────────────────────────────────────
+//
+// Attackers can use Alphabetic Presentation Form codepoints (U+FB00–U+FB06,
+// the "fi"/"fl"/"ff" ligatures from the PDF/typography world) or Latin
+// digraphs (æ, œ, ß) to write legible scam keywords that defeat naive
+// `contains()` checks.  `expand_ligatures` in the normalize_for_match pipeline
+// must defeat these before the content detectors run.
+
+#[test]
+fn ligature_fi_evasion_fires_fake_scanner_cue() {
+    // U+FB01 (fi-ligature) splits the detection keyword "identified":
+    // "identi\u{FB01}ed" looks like "identified" to a human but fools a naïve
+    // `contains("identified")` check.  After expand_ligatures it becomes
+    // "identified", and the pair ("threat" + "identified") satisfies the
+    // threat_count branch of has_fake_scanner_cue.
+    let rules = Ruleset::default();
+    let evaded = "3 threats identi\u{FB01}ed scanning your computer remove now";
+    let v = classify(
+        &OverlayWindow {
+            title: evaded.into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "fake_scanner_cue"),
+        "fi-ligature in 'identified' must fire fake_scanner_cue after expansion; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn ligature_ss_evasion_fires_fake_scanner_cue() {
+    // "viruß" (ß instead of "ss") → after expand_ligatures → "viruss" which
+    // contains "virus" as a substring, so fake_scanner_cue must still fire.
+    let rules = Ruleset::default();
+    let evaded = "alert 5 viru\u{DF} found scanning your computer remove now";
+    let v = classify(
+        &OverlayWindow {
+            title: evaded.into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "fake_scanner_cue"),
+        "ß evasion in 'viruß found scanning' must fire fake_scanner_cue; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn ligature_evasion_fp_guard_no_alert_does_not_fire() {
+    // Even with ligatures expanded, no content signal fires without alert shape.
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "your \u{FB01}les have been encrypted".into(),
+            url: None,
+            coverage_percent: 30,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 8_000,
+        },
+        &rules,
+    );
+    let content: Vec<&String> = v
+        .signals
+        .iter()
+        .filter(|s| {
+            !matches!(
+                s.as_str(),
+                "fullscreen" | "topmost" | "no_close_button" | "blocks_input"
+                    | "unsolicited" | "very_new" | "input_trap"
+                    | "sudden_fullscreen_takeover" | "user_initiated"
+            )
+        })
+        .collect();
+    assert!(
+        content.is_empty(),
+        "non-alert ligature title must not fire content signals; got {content:?}"
+    );
+}

@@ -1867,4 +1867,22 @@ proptest! {
         // Each layer only drops or 1:1-folds chars, and length is bounded.
         prop_assert!(once.chars().count() <= muten_overlay::confusables::MAX_TITLE_CHARS);
     }
+
+    /// expand_ligatures is idempotent on arbitrary Unicode: running it twice
+    /// must produce the same output as running it once, because all expansions
+    /// produce ASCII output with no ligature codepoints.
+    #[test]
+    fn expand_ligatures_idempotent_no_panic(s in "\\PC*") {
+        let once = muten_overlay::confusables::expand_ligatures(&s);
+        let twice = muten_overlay::confusables::expand_ligatures(&once);
+        prop_assert_eq!(once, twice);
+    }
+
+    /// expand_ligatures never shrinks the string — each input char maps to at
+    /// least one output char (expansions only grow).
+    #[test]
+    fn expand_ligatures_never_shrinks(s in "\\PC*") {
+        let out = muten_overlay::confusables::expand_ligatures(&s);
+        prop_assert!(out.chars().count() >= s.chars().count());
+    }
 }

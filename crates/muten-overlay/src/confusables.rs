@@ -281,7 +281,8 @@ pub fn skeleton(s: &str) -> String {
 #[must_use]
 pub fn normalize_host_for_match(s: &str) -> String {
     let s = bound_title_chars(s);
-    let s = strip_invisibles(s);
+    let s = expand_ligatures(s);
+    let s = strip_invisibles(&s);
     let s = strip_combining_marks(&s);
     fold_host_confusables(&s).to_ascii_lowercase()
 }
@@ -794,25 +795,79 @@ pub fn sanitize_for_display(s: &str) -> String {
         .collect()
 }
 
+/// Expand typographic ligatures and digraphs to their ASCII letter sequences.
+///
+/// PDF rendering and "styled-text" generators emit ligature codepoints
+/// (U+FB00–U+FB06) instead of the equivalent ASCII pairs: the fi-ligature
+/// `ﬁ` followed by `"le"` is visually identical to `"file"` but fails
+/// `str::contains("file")`. Standalone letters `æ`, `œ`, `ĳ`, and `ß`
+/// appear in phishing domains (`paypæl.com`) and scam keywords
+/// (`viruß`, `ﬁle encrypted`) for the same reason.
+///
+/// Every input char expands to ≤ 3 ASCII chars, so the output is ≤ 3× the
+/// input length. The expansion itself is idempotent (output contains no
+/// ligature codepoints), never panics, and is pure.
+///
+/// Inserted into [`normalize_for_match`] and [`normalize_host_for_match`]
+/// immediately after the emoji/symbol strip so downstream steps (invisible
+/// strip, fold, leet) operate on ASCII skeleton only.
+#[must_use]
+pub fn expand_ligatures(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 8);
+    for c in s.chars() {
+        match c {
+            // ── Alphabetic Presentation Forms (U+FB00–U+FB06) ──
+            // PDF and "fancy font" generators emit these in place of the
+            // ASCII letter pairs they represent, defeating naive contains().
+            '\u{FB00}' => out.push_str("ff"),
+            '\u{FB01}' => out.push_str("fi"),
+            '\u{FB02}' => out.push_str("fl"),
+            '\u{FB03}' => out.push_str("ffi"),
+            '\u{FB04}' => out.push_str("ffl"),
+            '\u{FB05}' | '\u{FB06}' => out.push_str("st"), // long-s + t variants
+            // ── Latin digraphs / ligatures ──
+            // `æ`/`Æ` and `œ`/`Œ` appear in phishing domains (`paypæl.com`,
+            // `micrœsoft.com`).  UTS#39 treats these as digraphs, so we expand
+            // to the two-letter ASCII sequence rather than collapsing to one.
+            // Case is preserved so the rest of the pipeline (`to_ascii_lowercase`
+            // at the end) can do the final case fold uniformly.
+            'æ' => out.push_str("ae"),
+            'Æ' => out.push_str("AE"),
+            'œ' => out.push_str("oe"),
+            'Œ' => out.push_str("OE"),
+            'ĳ' => out.push_str("ij"),
+            'Ĳ' => out.push_str("IJ"),
+            // ── German sharp-s (ß → ss per Unicode NFKC casefold) ──
+            // `viruß` → `viruss` (which contains "virus" as a substring).
+            'ß' => out.push_str("ss"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// The single normalized form used for **blocklist title matching**:
-/// strip emoji/symbols → strip invisibles → strip combining marks →
-/// fold confusables → collapse spread-character obfuscation → fold leetspeak →
-/// lowercase. Idempotent. Pipeline order rationale:
+/// strip emoji/symbols → expand ligatures → strip invisibles →
+/// strip combining marks → fold confusables →
+/// collapse spread-character obfuscation → fold leetspeak → lowercase.
+/// Idempotent. Pipeline order rationale:
 ///
 /// 1. Emoji/symbol strip first — mid-word emoji (`"inf⚠️ected"`) collapsed.
-/// 2. Invisible strip — zero-width joiners, BiDi overrides removed.
-/// 3. Combining-mark strip — diacritical overlays (`y̷o̷u̷r̷`) removed *before*
+/// 2. Ligature expansion — `ﬁ`→`fi`, `æ`→`ae`, `ß`→`ss`, etc.
+/// 3. Invisible strip — zero-width joiners, BiDi overrides removed.
+/// 4. Combining-mark strip — diacritical overlays (`y̷o̷u̷r̷`) removed *before*
 ///    confusable folding so Cyrillic base letters are cleanly foldable.
-/// 4. Confusable fold — homoglyphs (Cyrillic, Greek) mapped to Latin skeleton.
-/// 5. Spread-character collapse — `b a i l` / `b.a.i.l` rejoined before leet.
-/// 6. Leet fold — `v1rus` → `virus` (only in mixed-letter tokens).
-/// 7. Lowercase — final ASCII normalisation.
+/// 5. Confusable fold — homoglyphs (Cyrillic, Greek) mapped to Latin skeleton.
+/// 6. Spread-character collapse — `b a i l` / `b.a.i.l` rejoined before leet.
+/// 7. Leet fold — `v1rus` → `virus` (only in mixed-letter tokens).
+/// 8. Lowercase — final ASCII normalisation.
 ///
 /// Not applied to the phone-number scan (which needs the original digits).
 #[must_use]
 pub fn normalize_for_match(s: &str) -> String {
     let s = bound_title_chars(s);
     let s = strip_symbols_and_emoji(s);
+    let s = expand_ligatures(&s);
     let s = strip_invisibles(&s);
     let s = strip_combining_marks(&s);
     let folded = fold_confusables(&s);
@@ -3168,6 +3223,70 @@ mod tests {
         assert_eq!(fold_confusables("googłe"), "google");
         assert_eq!(fold_confusables("ØŁĐ"), "old");
         assert_eq!(normalize_for_match("BLØCKED"), "blocked");
+    }
+
+    // ── expand_ligatures ────────────────────────────────────────────────────
+
+    #[test]
+    fn expand_ligatures_alphabetic_presentation_forms() {
+        // U+FB01 (fi-ligature) + "le" → "file"
+        assert_eq!(expand_ligatures("\u{FB01}le"), "file");
+        // U+FB02 (fl-ligature) + "ash" → "flash"
+        assert_eq!(expand_ligatures("\u{FB02}ash"), "flash");
+        // U+FB00 (ff) → "ff"
+        assert_eq!(expand_ligatures("\u{FB00}"), "ff");
+        // U+FB03 (ffi) → "ffi"
+        assert_eq!(expand_ligatures("\u{FB03}cial"), "fficial");
+        // U+FB04 (ffl) → "ffl"
+        assert_eq!(expand_ligatures("\u{FB04}"), "ffl");
+        // U+FB05 / U+FB06 (long-s + t) → "st"
+        assert_eq!(expand_ligatures("\u{FB05}"), "st");
+        assert_eq!(expand_ligatures("\u{FB06}"), "st");
+    }
+
+    #[test]
+    fn expand_ligatures_latin_digraphs_and_sharp_s() {
+        // æ/Æ → "ae": phishing domain paypæl.com
+        assert_eq!(expand_ligatures("paypæl"), "paypael");
+        assert_eq!(expand_ligatures("PAYP\u{C6}L"), "PAYPAEL");
+        // œ/Œ → "oe"
+        assert_eq!(expand_ligatures("c\u{153}ur"), "coeur");
+        assert_eq!(expand_ligatures("\u{152}"), "OE");
+        // ĳ → "ij"
+        assert_eq!(expand_ligatures("\u{133}"), "ij");
+        // ß → "ss": "viruß" contains "virus" as a substring after expansion
+        assert_eq!(expand_ligatures("viru\u{DF}"), "viruss");
+        let expanded = expand_ligatures("viru\u{DF}");
+        assert!(expanded.contains("virus"), "{expanded:?} must contain 'virus'");
+    }
+
+    #[test]
+    fn expand_ligatures_leaves_ascii_and_japanese_unchanged() {
+        assert_eq!(expand_ligatures("hello world"), "hello world");
+        assert_eq!(expand_ligatures("1-800-555-0100"), "1-800-555-0100");
+        assert_eq!(expand_ligatures(""), "");
+        // Japanese must pass through unaltered.
+        let jp = "ウイルス感染を検出しました";
+        assert_eq!(expand_ligatures(jp), jp);
+    }
+
+    #[test]
+    fn expand_ligatures_idempotent() {
+        let inputs: &[&str] = &["\u{FB01}le", "paypæl", "viru\u{DF}", "normal text", "æœĳ"];
+        for s in inputs {
+            let once = expand_ligatures(s);
+            let twice = expand_ligatures(&once);
+            assert_eq!(once, twice, "expand_ligatures not idempotent on {s:?}");
+        }
+    }
+
+    #[test]
+    fn normalize_for_match_expands_ligatures_in_pipeline() {
+        // fi-ligature + combining mark: both must be neutralised together.
+        assert_eq!(normalize_for_match("\u{FB01}le"), "file");
+        assert_eq!(normalize_for_match("viru\u{DF}"), "viruss");
+        // æ evasion fully resolved by the pipeline (Æ→ae then lowercase).
+        assert_eq!(normalize_for_match("PAYPÆL"), "paypael");
     }
 
     #[test]
