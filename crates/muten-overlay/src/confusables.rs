@@ -425,8 +425,7 @@ fn has_math_alpha_run(s: &str) -> bool {
     const MIN_RUN: usize = 4;
     let mut run = 0usize;
     for c in s.chars() {
-        let is_math_letter =
-            fold_math_alnum(c as u32).is_some_and(|a| a.is_ascii_alphabetic());
+        let is_math_letter = fold_math_alnum(c as u32).is_some_and(|a| a.is_ascii_alphabetic());
         if is_math_letter {
             run += 1;
             if run >= MIN_RUN {
@@ -846,21 +845,177 @@ pub fn expand_ligatures(s: &str) -> String {
     out
 }
 
+/// Map a half-width katakana base char (U+FF66–U+FF9D, plus the half-width
+/// punctuation U+FF61–U+FF65 and prolonged-sound mark) to its full-width
+/// equivalent, or `None` if `c` is not a mappable half-width form. The
+/// half-width block orders kana differently from the full-width block, so an
+/// explicit table is required (no simple offset).
+fn halfwidth_kana_to_fullwidth(c: char) -> Option<char> {
+    let full = match c {
+        // Punctuation / marks
+        '\u{FF61}' => '\u{3002}', // 。
+        '\u{FF62}' => '\u{300C}', // 「
+        '\u{FF63}' => '\u{300D}', // 」
+        '\u{FF64}' => '\u{3001}', // 、
+        '\u{FF65}' => '\u{30FB}', // ・
+        '\u{FF70}' => '\u{30FC}', // ー prolonged sound mark
+        // Small kana
+        '\u{FF67}' => '\u{30A1}', // ァ
+        '\u{FF68}' => '\u{30A3}', // ィ
+        '\u{FF69}' => '\u{30A5}', // ゥ
+        '\u{FF6A}' => '\u{30A7}', // ェ
+        '\u{FF6B}' => '\u{30A9}', // ォ
+        '\u{FF6C}' => '\u{30E3}', // ャ
+        '\u{FF6D}' => '\u{30E5}', // ュ
+        '\u{FF6E}' => '\u{30E7}', // ョ
+        '\u{FF6F}' => '\u{30C3}', // ッ
+        // Full kana
+        '\u{FF66}' => '\u{30F2}', // ヲ
+        '\u{FF71}' => '\u{30A2}', // ア
+        '\u{FF72}' => '\u{30A4}', // イ
+        '\u{FF73}' => '\u{30A6}', // ウ
+        '\u{FF74}' => '\u{30A8}', // エ
+        '\u{FF75}' => '\u{30AA}', // オ
+        '\u{FF76}' => '\u{30AB}', // カ
+        '\u{FF77}' => '\u{30AD}', // キ
+        '\u{FF78}' => '\u{30AF}', // ク
+        '\u{FF79}' => '\u{30B1}', // ケ
+        '\u{FF7A}' => '\u{30B3}', // コ
+        '\u{FF7B}' => '\u{30B5}', // サ
+        '\u{FF7C}' => '\u{30B7}', // シ
+        '\u{FF7D}' => '\u{30B9}', // ス
+        '\u{FF7E}' => '\u{30BB}', // セ
+        '\u{FF7F}' => '\u{30BD}', // ソ
+        '\u{FF80}' => '\u{30BF}', // タ
+        '\u{FF81}' => '\u{30C1}', // チ
+        '\u{FF82}' => '\u{30C4}', // ツ
+        '\u{FF83}' => '\u{30C6}', // テ
+        '\u{FF84}' => '\u{30C8}', // ト
+        '\u{FF85}' => '\u{30CA}', // ナ
+        '\u{FF86}' => '\u{30CB}', // ニ
+        '\u{FF87}' => '\u{30CC}', // ヌ
+        '\u{FF88}' => '\u{30CD}', // ネ
+        '\u{FF89}' => '\u{30CE}', // ノ
+        '\u{FF8A}' => '\u{30CF}', // ハ
+        '\u{FF8B}' => '\u{30D2}', // ヒ
+        '\u{FF8C}' => '\u{30D5}', // フ
+        '\u{FF8D}' => '\u{30D8}', // ヘ
+        '\u{FF8E}' => '\u{30DB}', // ホ
+        '\u{FF8F}' => '\u{30DE}', // マ
+        '\u{FF90}' => '\u{30DF}', // ミ
+        '\u{FF91}' => '\u{30E0}', // ム
+        '\u{FF92}' => '\u{30E1}', // メ
+        '\u{FF93}' => '\u{30E2}', // モ
+        '\u{FF94}' => '\u{30E4}', // ヤ
+        '\u{FF95}' => '\u{30E6}', // ユ
+        '\u{FF96}' => '\u{30E8}', // ヨ
+        '\u{FF97}' => '\u{30E9}', // ラ
+        '\u{FF98}' => '\u{30EA}', // リ
+        '\u{FF99}' => '\u{30EB}', // ル
+        '\u{FF9A}' => '\u{30EC}', // レ
+        '\u{FF9B}' => '\u{30ED}', // ロ
+        '\u{FF9C}' => '\u{30EF}', // ワ
+        '\u{FF9D}' => '\u{30F3}', // ン
+        _ => return None,
+    };
+    Some(full)
+}
+
+/// Compose a full-width katakana base with a voiced sound mark (dakuten),
+/// e.g. カ→ガ, ハ→バ, ウ→ヴ, or `None` if the base takes no dakuten.
+fn compose_dakuten(base: char) -> Option<char> {
+    let u = base as u32;
+    match u {
+        0x30A6 => char::from_u32(0x30F4), // ウ → ヴ
+        // カ..ト rows and ハ..ホ row: voiced form is base + 1.
+        0x30AB | 0x30AD | 0x30AF | 0x30B1 | 0x30B3 // カキクケコ
+        | 0x30B5 | 0x30B7 | 0x30B9 | 0x30BB | 0x30BD // サシスセソ
+        | 0x30BF | 0x30C1 | 0x30C4 | 0x30C6 | 0x30C8 // タチツテト
+        | 0x30CF | 0x30D2 | 0x30D5 | 0x30D8 | 0x30DB // ハヒフヘホ
+            => char::from_u32(u + 1),
+        _ => None,
+    }
+}
+
+/// Compose a full-width katakana base with a semi-voiced sound mark
+/// (handakuten), e.g. ハ→パ, ホ→ポ, or `None` if the base takes no handakuten
+/// (only the ハ..ホ row does).
+fn compose_handakuten(base: char) -> Option<char> {
+    let u = base as u32;
+    match u {
+        0x30CF | 0x30D2 | 0x30D5 | 0x30D8 | 0x30DB => char::from_u32(u + 2),
+        _ => None,
+    }
+}
+
+/// Fold half-width katakana (U+FF61–U+FF9F) to full-width katakana, composing
+/// the trailing half-width voiced/semi-voiced sound marks (ﾞ U+FF9E / ﾟ U+FF9F)
+/// into the preceding base where Unicode defines a precomposed form
+/// (`ｻﾎﾟｰﾄ` → `サポート`, `ｳｲﾙｽ` → `ウイルス`).
+///
+/// Japanese support-scam / fake-AV overlays render their keywords in half-width
+/// katakana to dodge a detector that matches the full-width forms (`ウイルス`,
+/// `スキャン`, `サポート`) — the strings are visually all-but-identical to a
+/// reader but are entirely different codepoints. Folding here, early in
+/// `normalize_for_match`, lets the existing Japanese content detectors fire on
+/// the half-width variant. Output never grows the char count (each base maps
+/// 1:1, and a base+mark pair collapses to one precomposed char).
+///
+/// A lone dakuten/handakuten mark with no composable base, and any half-width
+/// char outside the mappable set, is left to fall through (the marks then
+/// simply do not appear in any detection keyword, so they are inert).
+#[must_use]
+pub fn fold_halfwidth_katakana(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if let Some(base) = halfwidth_kana_to_fullwidth(c) {
+            // Look ahead for a half-width voiced / semi-voiced mark to compose.
+            match chars.get(i + 1) {
+                Some('\u{FF9E}') => {
+                    if let Some(voiced) = compose_dakuten(base) {
+                        out.push(voiced);
+                        i += 2;
+                        continue;
+                    }
+                }
+                Some('\u{FF9F}') => {
+                    if let Some(semi) = compose_handakuten(base) {
+                        out.push(semi);
+                        i += 2;
+                        continue;
+                    }
+                }
+                _ => {}
+            }
+            out.push(base);
+            i += 1;
+        } else {
+            out.push(c);
+            i += 1;
+        }
+    }
+    out
+}
+
 /// The single normalized form used for **blocklist title matching**:
-/// strip emoji/symbols → expand ligatures → strip invisibles →
-/// strip combining marks → fold confusables →
+/// strip emoji/symbols → expand ligatures → fold half-width katakana →
+/// strip invisibles → strip combining marks → fold confusables →
 /// collapse spread-character obfuscation → fold leetspeak → lowercase.
 /// Idempotent. Pipeline order rationale:
 ///
 /// 1. Emoji/symbol strip first — mid-word emoji (`"inf⚠️ected"`) collapsed.
 /// 2. Ligature expansion — `ﬁ`→`fi`, `æ`→`ae`, `ß`→`ss`, etc.
-/// 3. Invisible strip — zero-width joiners, BiDi overrides removed.
-/// 4. Combining-mark strip — diacritical overlays (`y̷o̷u̷r̷`) removed *before*
+/// 3. Half-width katakana fold — `ｳｲﾙｽ`→`ウイルス`, `ｻﾎﾟｰﾄ`→`サポート`.
+/// 4. Invisible strip — zero-width joiners, BiDi overrides removed.
+/// 5. Combining-mark strip — diacritical overlays (`y̷o̷u̷r̷`) removed *before*
 ///    confusable folding so Cyrillic base letters are cleanly foldable.
-/// 5. Confusable fold — homoglyphs (Cyrillic, Greek) mapped to Latin skeleton.
-/// 6. Spread-character collapse — `b a i l` / `b.a.i.l` rejoined before leet.
-/// 7. Leet fold — `v1rus` → `virus` (only in mixed-letter tokens).
-/// 8. Lowercase — final ASCII normalisation.
+/// 6. Confusable fold — homoglyphs (Cyrillic, Greek) mapped to Latin skeleton.
+/// 7. Spread-character collapse — `b a i l` / `b.a.i.l` rejoined before leet.
+/// 8. Leet fold — `v1rus` → `virus` (only in mixed-letter tokens).
+/// 9. Lowercase — final ASCII normalisation.
 ///
 /// Not applied to the phone-number scan (which needs the original digits).
 #[must_use]
@@ -868,6 +1023,7 @@ pub fn normalize_for_match(s: &str) -> String {
     let s = bound_title_chars(s);
     let s = strip_symbols_and_emoji(s);
     let s = expand_ligatures(&s);
+    let s = fold_halfwidth_katakana(&s);
     let s = strip_invisibles(&s);
     let s = strip_combining_marks(&s);
     let folded = fold_confusables(&s);
@@ -3257,7 +3413,10 @@ mod tests {
         // ß → "ss": "viruß" contains "virus" as a substring after expansion
         assert_eq!(expand_ligatures("viru\u{DF}"), "viruss");
         let expanded = expand_ligatures("viru\u{DF}");
-        assert!(expanded.contains("virus"), "{expanded:?} must contain 'virus'");
+        assert!(
+            expanded.contains("virus"),
+            "{expanded:?} must contain 'virus'"
+        );
     }
 
     #[test]
@@ -3289,6 +3448,66 @@ mod tests {
         assert_eq!(normalize_for_match("PAYPÆL"), "paypael");
     }
 
+    // ── fold_halfwidth_katakana ─────────────────────────────────────────────
+
+    #[test]
+    fn fold_halfwidth_katakana_basic_words() {
+        // ｳｲﾙｽ → ウイルス (virus); no dakuten needed.
+        assert_eq!(fold_halfwidth_katakana("ｳｲﾙｽ"), "ウイルス");
+        // ｽｷｬﾝ → スキャン (scan); small ャ included.
+        assert_eq!(fold_halfwidth_katakana("ｽｷｬﾝ"), "スキャン");
+        // ﾏﾙｳｪｱ → マルウェア (malware).
+        assert_eq!(fold_halfwidth_katakana("ﾏﾙｳｪｱ"), "マルウェア");
+    }
+
+    #[test]
+    fn fold_halfwidth_katakana_composes_dakuten_handakuten() {
+        // ｻﾎﾟｰﾄ → サポート (support): ﾎ + ﾟ handakuten → ポ.
+        assert_eq!(fold_halfwidth_katakana("ｻﾎﾟｰﾄ"), "サポート");
+        // ｽﾊﾟｲｳｪｱ → スパイウェア (spyware): ﾊ + ﾟ → パ.
+        assert_eq!(fold_halfwidth_katakana("ｽﾊﾟｲｳｪｱ"), "スパイウェア");
+        // dakuten: ｶﾞ → ガ, ｳﾞ → ヴ.
+        assert_eq!(fold_halfwidth_katakana("ｶﾞ"), "ガ");
+        assert_eq!(fold_halfwidth_katakana("ｳﾞ"), "ヴ");
+        // half-width punctuation maps too: ｡ → 。, ･ → ・.
+        assert_eq!(fold_halfwidth_katakana("ｱ｡"), "ア。");
+    }
+
+    #[test]
+    fn fold_halfwidth_katakana_leaves_other_text_unchanged() {
+        // Full-width katakana already-normal text passes through unchanged.
+        assert_eq!(fold_halfwidth_katakana("ウイルス"), "ウイルス");
+        // ASCII and kanji unaffected.
+        assert_eq!(fold_halfwidth_katakana("virus 感染 99%"), "virus 感染 99%");
+        assert_eq!(fold_halfwidth_katakana(""), "");
+        // A lone half-width voiced mark with no composable base is left inert
+        // (it maps to nothing in any detection keyword).
+        assert_eq!(fold_halfwidth_katakana("ｱﾞ"), "アﾞ");
+    }
+
+    #[test]
+    fn fold_halfwidth_katakana_idempotent_and_non_growing() {
+        let inputs: &[&str] = &["ｻﾎﾟｰﾄ", "ｳｲﾙｽ", "ｶﾞｷﾞ", "normal ascii", "ｽｷｬﾝ中"];
+        for s in inputs {
+            let once = fold_halfwidth_katakana(s);
+            let twice = fold_halfwidth_katakana(&once);
+            assert_eq!(once, twice, "not idempotent on {s:?}");
+            assert!(
+                once.chars().count() <= s.chars().count(),
+                "fold grew char count on {s:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_for_match_folds_halfwidth_katakana() {
+        // Half-width scam keywords must normalize to the full-width form the
+        // Japanese content detectors match against.
+        assert_eq!(normalize_for_match("ｳｲﾙｽ"), "ウイルス");
+        assert_eq!(normalize_for_match("ｻﾎﾟｰﾄ詐欺"), "サポート詐欺");
+        assert_eq!(normalize_for_match("ｽｷｬﾝ中"), "スキャン中");
+    }
+
     #[test]
     fn folds_uppercase_diacritics_case_symmetric() {
         // Uppercase accented Latin must lose its accent in `fold_confusables`
@@ -3298,8 +3517,8 @@ mod tests {
         // `to_ascii_lowercase` (ASCII-only) leaves `É`/`Í`/`Á` intact and
         // `VÍRUS`/`PÁYPÁL` evade a matcher that catches `vírus`/`páypál`.
         assert_eq!(fold_confusables("INFÉCTED"), "INFeCTED"); // accent gone, case kept
-        // Every accented uppercase vowel/consonant folds to its lowercase
-        // ASCII skeleton (these arms map straight to lowercase, like Cyrillic).
+                                                              // Every accented uppercase vowel/consonant folds to its lowercase
+                                                              // ASCII skeleton (these arms map straight to lowercase, like Cyrillic).
         assert_eq!(
             fold_confusables("ÀÂÄÃÅ ÈÊË ÌÎÏ ÒÔÖÕ ÙÛÜ Ç Ñ").replace(' ', ""),
             "aaaaaeeeiiioooouuucn"
@@ -3364,7 +3583,9 @@ mod tests {
 
     #[test]
     fn math_alnum_fold_idempotent() {
-        let once = fold_confusables("\u{1D422}\u{1D427}\u{1D41F}\u{1D41E}\u{1D41C}\u{1D42D}\u{1D41E}\u{1D41D}");
+        let once = fold_confusables(
+            "\u{1D422}\u{1D427}\u{1D41F}\u{1D41E}\u{1D41C}\u{1D42D}\u{1D41E}\u{1D41D}",
+        );
         let twice = fold_confusables(&once);
         assert_eq!(once, twice);
     }
@@ -3381,7 +3602,10 @@ mod tests {
     #[test]
     fn normalize_host_folds_typosquat_and_homoglyph() {
         // Digit typosquat + Cyrillic homoglyph fold to the brand skeleton.
-        assert_eq!(normalize_host_for_match("micr0s0ft.example"), "microsoft.example");
+        assert_eq!(
+            normalize_host_for_match("micr0s0ft.example"),
+            "microsoft.example"
+        );
         // Cyrillic а (U+0430) folds to ascii a.
         assert_eq!(normalize_host_for_match("p\u{0430}ypal.com"), "paypal.com");
     }
@@ -3390,7 +3614,10 @@ mod tests {
     fn normalize_host_strips_invisibles_and_combining_marks() {
         // Zero-width and combining-mark host evasions both collapse — the host
         // path now mirrors the title path's mark stripping.
-        assert_eq!(normalize_host_for_match("ev\u{200B}il.example"), "evil.example");
+        assert_eq!(
+            normalize_host_for_match("ev\u{200B}il.example"),
+            "evil.example"
+        );
         assert_eq!(normalize_host_for_match("paypa\u{0337}l.com"), "paypal.com");
         assert_eq!(normalize_host_for_match("paypa\u{0301}l.com"), "paypal.com");
     }
@@ -3615,7 +3842,10 @@ mod tests {
         // fold the Cyrillic base to 'e'. Pipeline order must be correct.
         let s = "\u{0435}\u{0301}"; // Cyrillic е + combining acute
         let norm = normalize_for_match(s);
-        assert_eq!(norm, "e", "Cyrillic base must fold after mark is stripped; got {norm:?}");
+        assert_eq!(
+            norm, "e",
+            "Cyrillic base must fold after mark is stripped; got {norm:?}"
+        );
     }
 
     #[test]
@@ -3786,7 +4016,9 @@ mod tests {
             "\u{1D429}\u{1D41A}\u{1D432}\u{1D429}\u{1D41A}\u{1D425}"
         ));
         // Italic word also fires.
-        assert!(has_compat_alpha("\u{1D44E}\u{1D459}\u{1D456}\u{1D454}\u{1D45B}")); // 𝑎𝑙𝑖𝑔𝑛
+        assert!(has_compat_alpha(
+            "\u{1D44E}\u{1D459}\u{1D456}\u{1D454}\u{1D45B}"
+        )); // 𝑎𝑙𝑖𝑔𝑛
     }
 
     #[test]
@@ -3796,7 +4028,7 @@ mod tests {
         assert!(!has_compat_alpha("\u{1D42F}")); // single 𝐯 (bold vector)
         assert!(!has_compat_alpha("\u{1D400}\u{1D401}")); // 𝐀𝐁 (2 letters)
         assert!(!has_compat_alpha("\u{1D400}\u{1D401}\u{1D402}")); // 𝐀𝐁𝐂 (3 letters)
-        // Blackboard-bold set symbols ℝ ℂ live outside U+1D400 and never count.
+                                                                   // Blackboard-bold set symbols ℝ ℂ live outside U+1D400 and never count.
         assert!(!has_compat_alpha("\u{211D} and \u{2102}")); // ℝ and ℂ
     }
 
@@ -8524,7 +8756,10 @@ mod spread_char_tests {
     fn sanitize_strips_null_and_del() {
         let s = "abc\x00def\x7Fghi";
         let out = sanitize_for_display(s);
-        assert!(!out.contains('\x00') && !out.contains('\x7F'), "got {out:?}");
+        assert!(
+            !out.contains('\x00') && !out.contains('\x7F'),
+            "got {out:?}"
+        );
         assert!(out.contains("abc") && out.contains("def") && out.contains("ghi"));
     }
 
@@ -8533,8 +8768,10 @@ mod spread_char_tests {
         // U+0080 through U+009F are C1 control characters.
         let s = "before\u{0080}after\u{009F}end";
         let out = sanitize_for_display(s);
-        assert!(!out.chars().any(|c| ('\u{0080}'..='\u{009F}').contains(&c)),
-            "C1 controls must be stripped; got {out:?}");
+        assert!(
+            !out.chars().any(|c| ('\u{0080}'..='\u{009F}').contains(&c)),
+            "C1 controls must be stripped; got {out:?}"
+        );
         assert!(out.contains("before") && out.contains("after") && out.contains("end"));
     }
 

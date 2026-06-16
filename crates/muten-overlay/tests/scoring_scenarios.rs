@@ -4488,9 +4488,15 @@ fn combining_mark_evasion_fp_guard_no_alert_does_not_fire() {
         .filter(|s| {
             !matches!(
                 s.as_str(),
-                "fullscreen" | "topmost" | "no_close_button" | "blocks_input"
-                    | "unsolicited" | "very_new" | "input_trap"
-                    | "sudden_fullscreen_takeover" | "user_initiated"
+                "fullscreen"
+                    | "topmost"
+                    | "no_close_button"
+                    | "blocks_input"
+                    | "unsolicited"
+                    | "very_new"
+                    | "input_trap"
+                    | "sudden_fullscreen_takeover"
+                    | "user_initiated"
             )
         })
         .collect();
@@ -4712,14 +4718,93 @@ fn ligature_evasion_fp_guard_no_alert_does_not_fire() {
         .filter(|s| {
             !matches!(
                 s.as_str(),
-                "fullscreen" | "topmost" | "no_close_button" | "blocks_input"
-                    | "unsolicited" | "very_new" | "input_trap"
-                    | "sudden_fullscreen_takeover" | "user_initiated"
+                "fullscreen"
+                    | "topmost"
+                    | "no_close_button"
+                    | "blocks_input"
+                    | "unsolicited"
+                    | "very_new"
+                    | "input_trap"
+                    | "sudden_fullscreen_takeover"
+                    | "user_initiated"
             )
         })
         .collect();
     assert!(
         content.is_empty(),
         "non-alert ligature title must not fire content signals; got {content:?}"
+    );
+}
+
+// ── Half-width katakana evasion tests ──────────────────────────────────────
+//
+// Japanese support-scam / fake-AV overlays render their keywords in half-width
+// katakana (U+FF61–U+FF9F) to dodge a detector matching the full-width forms.
+// `fold_halfwidth_katakana` in normalize_for_match must restore the full-width
+// keyword (`ｳｲﾙｽ`→`ウイルス`, `ｻﾎﾟｰﾄ`→`サポート`) so the JP content detectors fire.
+
+#[test]
+fn halfwidth_katakana_evasion_fires_fake_scanner_cue() {
+    // "ｽｷｬﾝ中 ｳｲﾙｽ が見つかりました" — half-width スキャン中 + ウイルス + 見つかりました.
+    // jp_scanning needs スキャン中 + ウイルス; the half-width text must fold first.
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "ｽｷｬﾝ中 ｳｲﾙｽ が見つかりました".into(),
+            url: None,
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 50,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "fake_scanner_cue"),
+        "half-width katakana scam keywords must fire fake_scanner_cue after folding; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn halfwidth_katakana_evasion_fp_guard_no_alert_does_not_fire() {
+    // Even folded, no content signal fires without alert shape.
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "ｽｷｬﾝ中 ｳｲﾙｽ が見つかりました".into(),
+            url: None,
+            coverage_percent: 30,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 8_000,
+        },
+        &rules,
+    );
+    let content: Vec<&String> = v
+        .signals
+        .iter()
+        .filter(|s| {
+            !matches!(
+                s.as_str(),
+                "fullscreen"
+                    | "topmost"
+                    | "no_close_button"
+                    | "blocks_input"
+                    | "unsolicited"
+                    | "very_new"
+                    | "input_trap"
+                    | "sudden_fullscreen_takeover"
+                    | "user_initiated"
+            )
+        })
+        .collect();
+    assert!(
+        content.is_empty(),
+        "non-alert half-width katakana title must not fire content signals; got {content:?}"
     );
 }

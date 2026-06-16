@@ -1885,4 +1885,26 @@ proptest! {
         let out = muten_overlay::confusables::expand_ligatures(&s);
         prop_assert!(out.chars().count() >= s.chars().count());
     }
+
+    /// fold_halfwidth_katakana never panics, is idempotent, and never grows the
+    /// char count (each base maps 1:1; a base+mark pair collapses to one char).
+    #[test]
+    fn fold_halfwidth_katakana_idempotent_non_growing(s in "\\PC*") {
+        let once = muten_overlay::confusables::fold_halfwidth_katakana(&s);
+        let twice = muten_overlay::confusables::fold_halfwidth_katakana(&once);
+        prop_assert_eq!(&once, &twice);
+        prop_assert!(once.chars().count() <= s.chars().count());
+    }
+
+    /// fold_halfwidth_katakana over the actual half-width block (U+FF61..U+FF9F)
+    /// never panics and always yields valid output.
+    #[test]
+    fn fold_halfwidth_katakana_over_block_no_panic(
+        s in proptest::collection::vec(0xFF61u32..=0xFF9Fu32, 0..40)
+    ) {
+        let input: String = s.iter().filter_map(|&u| char::from_u32(u)).collect();
+        let once = muten_overlay::confusables::fold_halfwidth_katakana(&input);
+        let twice = muten_overlay::confusables::fold_halfwidth_katakana(&once);
+        prop_assert_eq!(once, twice);
+    }
 }

@@ -116,7 +116,11 @@ impl RepeatTracker {
         let window_ms = self.window_ms;
         self.seen
             .get(sig)
-            .map(|v| v.iter().filter(|&&t| Self::in_window(t, now_ms, window_ms)).count() as u32)
+            .map(|v| {
+                v.iter()
+                    .filter(|&&t| Self::in_window(t, now_ms, window_ms))
+                    .count() as u32
+            })
             .unwrap_or(0)
     }
 
@@ -332,7 +336,7 @@ mod tests {
         let window_ms = 120_000;
         let mut t = RepeatTracker::new(window_ms);
         t.record("flood", 10_000_000); // pre-jump, far in the "future" after reset
-        // Clock resets near zero; two genuine appearances arrive.
+                                       // Clock resets near zero; two genuine appearances arrive.
         t.record("flood", 1_000);
         let n = t.record("flood", 2_000);
         assert_eq!(
@@ -350,7 +354,11 @@ mod tests {
         let mut t = RepeatTracker::new(window_ms);
         t.record("sig", 5_000_000);
         t.prune(1_000); // regressed clock
-        assert_eq!(t.count("sig", 1_000), 0, "future-dated entry must be pruned");
+        assert_eq!(
+            t.count("sig", 1_000),
+            0,
+            "future-dated entry must be pruned"
+        );
     }
 
     #[test]

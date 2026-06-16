@@ -1901,8 +1901,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // not fire (false-positive guard for the JP market). The weight
     // nudges toward Suspicious; it never blocks on its own.
     let mixed_script = confusables::has_confusable_mixed_script(title)
-        || url_bounded
-            .is_some_and(|u| confusables::has_confusable_mixed_script(url_host(u)));
+        || url_bounded.is_some_and(|u| confusables::has_confusable_mixed_script(url_host(u)));
     if mixed_script {
         score += rules.weight_of("mixed_script", W_MIXED_SCRIPT);
         signals.push("mixed_script".into());
@@ -2004,11 +2003,7 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // *equal* a brand). The hyphen-delimiter requirement keeps legitimate
     // concatenations (`windowsupdate.com`) from firing. Additive, not an
     // auto-block, consistent with `brand_impersonation`.
-    if url_bounded
-        .map(url_host)
-        .and_then(combosquat)
-        .is_some()
-    {
+    if url_bounded.map(url_host).and_then(combosquat).is_some() {
         score += rules.weight_of("combosquat_brand", W_COMBOSQUAT);
         signals.push("combosquat_brand".into());
     }
@@ -3965,11 +3960,11 @@ mod tests {
         };
         let expected = signature(&base);
         let variants = [
-            "virus\u{200B} alert",                 // zero-width space inserted
-            "viru\u{0337}s alert",                 // combining mark on a letter
-            "virus alert \u{26A0}\u{FE0F}",        // trailing warning emoji
+            "virus\u{200B} alert",          // zero-width space inserted
+            "viru\u{0337}s alert",          // combining mark on a letter
+            "virus alert \u{26A0}\u{FE0F}", // trailing warning emoji
             "\u{1D42F}\u{1D422}\u{1D42B}\u{1D42E}\u{1D42C} alert", // 𝐯𝐢𝐫𝐮𝐬 (math bold)
-            "  VIRUS   ALERT  ",                   // case + surrounding spaces
+            "  VIRUS   ALERT  ",            // case + surrounding spaces
         ];
         for v in variants {
             let w = OverlayWindow {
