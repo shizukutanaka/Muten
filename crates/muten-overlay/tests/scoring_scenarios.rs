@@ -4808,3 +4808,76 @@ fn halfwidth_katakana_evasion_fp_guard_no_alert_does_not_fire() {
         "non-alert half-width katakana title must not fire content signals; got {content:?}"
     );
 }
+
+// ── Parenthesized-letter evasion tests ─────────────────────────────────────
+//
+// Parenthesized Latin small letters (⒜–⒵, U+249C–U+24B5) are the same enclosed-
+// alphanumerics evasion class as the already-handled circled letters: visually
+// legible, but invisible to a substring detector. `fold_char` now folds them so
+// the content detectors fire, and `has_compat_alpha` raises the presence tell.
+
+/// Build a parenthesized-letter version of an ASCII string (letters only;
+/// digits/spaces pass through). 'a'→⒜ (U+249C) … 'z'→⒵ (U+24B5).
+fn parenthesized_letters(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_lowercase() {
+                char::from_u32(0x249C + (c as u32 - 'a' as u32)).unwrap()
+            } else if c.is_ascii_uppercase() {
+                char::from_u32(0x249C + (c.to_ascii_lowercase() as u32 - 'a' as u32)).unwrap()
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn parenthesized_letter_evasion_fires_fake_scanner_cue() {
+    let rules = Ruleset::default();
+    let evaded = parenthesized_letters("alert 5 viruses found scanning your computer remove now");
+    let v = classify(
+        &OverlayWindow {
+            title: evaded,
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "fake_scanner_cue"),
+        "parenthesized-letter evasion must fire fake_scanner_cue after folding; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn parenthesized_letter_evasion_also_raises_compat_chars_tell() {
+    // Parity: folding lets the content detector fire, and the glyphs themselves
+    // must ALSO raise the compat_chars_present evasion tell.
+    let rules = Ruleset::default();
+    let evaded = parenthesized_letters("alert 5 viruses found scanning your computer remove now");
+    let v = classify(
+        &OverlayWindow {
+            title: evaded,
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "compat_chars_present"),
+        "parenthesized-letter glyphs must raise compat_chars_present; signals = {:?}",
+        v.signals
+    );
+}

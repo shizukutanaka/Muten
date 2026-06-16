@@ -146,6 +146,16 @@ pub fn fold_char(c: char) -> char {
                     return ascii;
                 }
             }
+            // Parenthesized Latin Small Letters ⒜(U+249C)..⒵(U+24B5).
+            // Same enclosed-alphanumerics evasion class as the circled letters
+            // above — ⒫⒜⒴⒫⒜⒧ → paypal — but a separate Unicode block (only
+            // lowercase forms exist). Folds 1:1 to a-z.
+            if (0x249C..=0x24B5).contains(&u) {
+                // ⒜→a … ⒵→z
+                if let Some(ascii) = char::from_u32(u - 0x249C + b'a' as u32) {
+                    return ascii;
+                }
+            }
             // Mathematical Alphanumeric Symbols (U+1D400..U+1D7FF): the
             // "fancy text" generators (𝐛𝐨𝐥𝐝 / 𝑖𝑡𝑎𝑙𝑖𝑐 / 𝘀𝗮𝗻𝘀 / 𝚖𝚘𝚗𝚘) abused to
             // render a legible scam keyword from entirely different codepoints,
@@ -439,19 +449,24 @@ fn has_math_alpha_run(s: &str) -> bool {
 }
 
 /// True if `s` contains a **compatibility-form alphabetic evasion** — either an
-/// enclosed/circled Latin letter (Ⓐ–Ⓩ / ⓐ–ⓩ, U+24B6–U+24E9) or a word spelled
-/// in Mathematical Alphanumeric "fancy text" glyphs (see [`has_math_alpha_run`]).
-/// Both are used in phishing titles to evade plain-text blocklist matching —
-/// `ⓟⓐⓨⓟⓐⓛ` and `𝐩𝐚𝐲𝐩𝐚𝐥` are invisible to `str::contains("paypal")` but look
-/// like "paypal" to a human. `normalize_for_match` now folds both (via
-/// [`fold_char`]) so blocklist matching catches them; this function detects
-/// their *presence* in a raw title as a high-confidence, low-FP evasion tell.
-/// Enclosed letters have essentially no legitimate title use (contrast with
-/// circled *numerals* ①②③ in lists), and the math-letter arm requires a 4+-letter
-/// run so isolated legitimate math notation does not fire.
+/// enclosed Latin letter (parenthesized ⒜–⒵ U+249C–U+24B5, or circled Ⓐ–Ⓩ / ⓐ–ⓩ
+/// U+24B6–U+24E9) or a word spelled in Mathematical Alphanumeric "fancy text"
+/// glyphs (see [`has_math_alpha_run`]). Both are used in phishing titles to
+/// evade plain-text blocklist matching — `ⓟⓐⓨⓟⓐⓛ`, `⒫⒜⒴⒫⒜⒧`, and `𝐩𝐚𝐲𝐩𝐚𝐥` are
+/// invisible to `str::contains("paypal")` but look like "paypal" to a human.
+/// `normalize_for_match` now folds all of them (via [`fold_char`]) so blocklist
+/// matching catches them; this function detects their *presence* in a raw title
+/// as a high-confidence, low-FP evasion tell. Enclosed letters have essentially
+/// no legitimate title use (contrast with circled *numerals* ①②③ in lists, which
+/// live below U+249C), and the math-letter arm requires a 4+-letter run so
+/// isolated legitimate math notation does not fire.
+///
+/// The enclosed-letter range `U+249C..=U+24E9` is contiguous and gap-free:
+/// parenthesized small letters (249C–24B5) abut circled capitals (24B6–24CF)
+/// which abut circled small letters (24D0–24E9), all Latin letters.
 #[must_use]
 pub fn has_compat_alpha(s: &str) -> bool {
-    s.chars().any(|c| matches!(c as u32, 0x24B6..=0x24E9)) || has_math_alpha_run(s)
+    s.chars().any(|c| matches!(c as u32, 0x249C..=0x24E9)) || has_math_alpha_run(s)
 }
 
 /// Identify the decimal-digit *numbering system* of `c`, or `None` if
@@ -3978,6 +3993,35 @@ mod tests {
         assert_eq!(fold_char('\u{24D0}'), 'a'); // ⓐ
         assert_eq!(fold_char('\u{24DF}'), 'p'); // ⓟ
         assert_eq!(fold_char('\u{24E9}'), 'z'); // ⓩ
+    }
+
+    #[test]
+    fn fold_char_handles_parenthesized_letters() {
+        // ⒜(U+249C)→'a', ⒫(U+24AB)→'p', ⒵(U+24B5)→'z'.
+        assert_eq!(fold_char('\u{249C}'), 'a'); // ⒜
+        assert_eq!(fold_char('\u{24AB}'), 'p'); // ⒫
+        assert_eq!(fold_char('\u{24B5}'), 'z'); // ⒵
+    }
+
+    #[test]
+    fn fold_confusables_maps_parenthesized_letters_to_ascii() {
+        // ⒫⒜⒴⒫⒜⒧ folds to "paypal"; ⒱⒤⒭⒰⒮ → "virus".
+        assert_eq!(
+            fold_confusables("\u{24AB}\u{249C}\u{24B4}\u{24AB}\u{249C}\u{24A7}"),
+            "paypal"
+        );
+        assert_eq!(
+            fold_confusables("\u{24B1}\u{24A4}\u{24AD}\u{24B0}\u{24AE}"),
+            "virus"
+        );
+    }
+
+    #[test]
+    fn has_compat_alpha_fires_on_parenthesized_letters() {
+        // ⒱⒤⒭⒰⒮ (parenthesized "virus") is the same enclosed-alphanumerics
+        // evasion class as the circled letters and must raise the tell.
+        assert!(has_compat_alpha("\u{24B1}\u{24A4}\u{24AD}\u{24B0}\u{24AE}"));
+        assert!(has_compat_alpha("\u{249C}")); // single ⒜
     }
 
     #[test]
