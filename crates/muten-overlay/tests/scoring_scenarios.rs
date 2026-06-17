@@ -4948,3 +4948,33 @@ fn combining_mark_phone_fp_guard_no_alert_does_not_fire() {
         v.signals
     );
 }
+
+#[test]
+fn zero_width_phone_evasion_fires_phone_number() {
+    // Parallel to the combining-mark case: ZWSP (U+200B) between digits is
+    // invisible but breaks the byte-level scan unless stripped first.
+    let phone_with_zw: String = "1-800-555-0100"
+        .chars()
+        .flat_map(|c| [c, '\u{200B}'])
+        .collect();
+    let title = format!("your computer is infected — call {phone_with_zw} now");
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title,
+            url: None,
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 50,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "phone_number"),
+        "zero-width-camouflaged phone number must fire phone_number after invisible strip; signals = {:?}",
+        v.signals
+    );
+}

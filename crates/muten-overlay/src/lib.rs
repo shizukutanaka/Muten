@@ -1329,16 +1329,20 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // that merely contains a number (a dialer, a contacts app) isn't
     // penalized.
     //
-    // `contains_phone_number` scans at the byte level; combining diacritical
-    // marks (U+0300–U+036F etc.) inserted between digits break the byte scan
-    // without any visual change. We strip combining marks after confusable-
-    // folding so that `1̶-̶8̶0̶0̶-̶5̶5̶5̶-̶0̶1̶0̶0̶` is read as `1-800-555-0100`.
+    // `contains_phone_number` scans at the byte level; both combining
+    // diacritical marks (U+0300–U+036F etc.) and zero-width / invisible
+    // characters (ZWSP U+200B, ZWNJ, ZWJ, BOM, soft hyphen, …) inserted
+    // between digits break the byte scan without any visual change. We strip
+    // both — after confusable-folding — so that `1̶-̶8̶0̶0̶-̶5̶5̶5̶-̶0̶1̶0̶0̶` and
+    // `1‌-‌8‌0‌0‌-‌5‌5‌5‌-‌0‌1‌0‌0` are read as `1-800-555-0100`.
     // Leet folding is deliberately NOT applied here (it is not in normalize_
     // for_match for this path either) because `fold_leet_in_words` maps digit
     // 0→o, 1→i which would corrupt the digit run; digits never have leet codes.
     let alert_shaped =
         w.coverage_percent >= FULLSCREEN_COVERAGE || w.blocks_input || !w.has_close_button;
-    let phone_scan_text = confusables::strip_combining_marks(&confusables::fold_confusables(title));
+    let phone_scan_text = confusables::strip_invisibles(&confusables::strip_combining_marks(
+        &confusables::fold_confusables(title),
+    ));
     if alert_shaped && contains_phone_number(&phone_scan_text) {
         score += rules.weight_of("phone_number", W_PHONE_NUMBER);
         signals.push("phone_number".into());
@@ -2717,6 +2721,33 @@ mod tests {
         assert!(
             contains_phone_number(&cleaned),
             "phone number must be detected after stripping combining marks: {cleaned:?}"
+        );
+    }
+
+    /// Zero-width / invisible phone evasion guard, parallel to the combining-
+    /// mark case. Inserting ZWSP (U+200B), ZWNJ, ZWJ, BOM, or soft hyphen
+    /// between digits is invisible to a human but breaks the byte-level scan.
+    /// The call site strips invisibles (alongside combining marks) before
+    /// scanning, so the number is still detected.
+    #[test]
+    fn phone_number_detected_despite_zero_width_chars() {
+        // Insert U+200B (ZERO WIDTH SPACE) after every char.
+        let zw: String = "1-800-555-0100"
+            .chars()
+            .flat_map(|c| [c, '\u{200B}'])
+            .collect();
+        // Raw input fails (pre-fix behavior, documented for reference).
+        assert!(
+            !contains_phone_number(&zw),
+            "byte-level scan cannot see through zero-width chars — expected"
+        );
+        // After the full call-site cleanup (fold + strip marks + strip invisibles):
+        let cleaned = confusables::strip_invisibles(&confusables::strip_combining_marks(
+            &confusables::fold_confusables(&zw),
+        ));
+        assert!(
+            contains_phone_number(&cleaned),
+            "phone number must be detected after stripping invisibles: {cleaned:?}"
         );
     }
 
