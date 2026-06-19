@@ -893,6 +893,25 @@ mod tests {
     }
 
     #[test]
+    fn title_match_is_robust_to_unicode_space_separators() {
+        // A multi-word blocklist phrase (ASCII spaces) must still match a title
+        // whose word separators are visually-identical Unicode spaces — NBSP,
+        // ideographic, narrow-NBSP, em space — a real evasion against phrase
+        // matching that leaves the rendered text unchanged.
+        let rs = Ruleset::from_lines(&["title: your computer is infected"]);
+        assert!(
+            rs.match_title("your\u{00A0}computer\u{00A0}is\u{00A0}infected")
+                .is_some(),
+            "NBSP-separated title must match the ASCII-spaced rule"
+        );
+        assert!(
+            rs.match_title("your\u{3000}computer\u{202F}is\u{2003}infected")
+                .is_some(),
+            "mixed Unicode-space separators must match"
+        );
+    }
+
+    #[test]
     fn comment_stripping() {
         let rs = Ruleset::from_lines(&["host: evil.example # inline comment"]);
         assert_eq!(rs.host_count(), 1);

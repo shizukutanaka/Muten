@@ -1907,4 +1907,14 @@ proptest! {
         let twice = muten_overlay::confusables::fold_halfwidth_katakana(&once);
         prop_assert_eq!(once, twice);
     }
+
+    /// fold_unicode_spaces never panics, is idempotent, and preserves the char
+    /// count exactly (every fold is a 1:1 char→space replacement).
+    #[test]
+    fn fold_unicode_spaces_idempotent_preserves_len(s in "\\PC*") {
+        let once = muten_overlay::confusables::fold_unicode_spaces(&s);
+        let twice = muten_overlay::confusables::fold_unicode_spaces(&once);
+        prop_assert_eq!(&once, &twice);
+        prop_assert_eq!(once.chars().count(), s.chars().count());
+    }
 }

@@ -1015,22 +1015,59 @@ pub fn fold_halfwidth_katakana(s: &str) -> String {
     out
 }
 
+/// True if `c` is a whitespace character that should be treated as a plain
+/// ASCII space for matching purposes — any Unicode space-separator (general
+/// category `Zs`) plus the ASCII control whitespace and NEL. Zero-width
+/// characters (ZWSP U+200B etc.) are deliberately **excluded**: those carry no
+/// visual width and are removed by [`strip_invisibles`], not converted to a
+/// space (converting them would forge word boundaries that aren't there).
+fn is_unicode_space(c: char) -> bool {
+    matches!(c,
+        '\u{0009}'..='\u{000D}' | // tab, LF, VT, FF, CR
+        '\u{0085}' |              // NEL
+        '\u{00A0}' |              // NO-BREAK SPACE
+        '\u{1680}' |              // OGHAM SPACE MARK
+        '\u{2000}'..='\u{200A}' | // EN QUAD .. HAIR SPACE
+        '\u{202F}' |              // NARROW NO-BREAK SPACE
+        '\u{205F}' |              // MEDIUM MATHEMATICAL SPACE
+        '\u{3000}'                // IDEOGRAPHIC SPACE
+    )
+}
+
+/// Fold every Unicode space-separator to a plain ASCII space (U+0020).
+///
+/// Detection phrases and blocklist rules are written with ASCII spaces between
+/// words (`"your computer is infected"`). An attacker can replace those spaces
+/// with a visually-identical Unicode space — non-breaking (U+00A0), ideographic
+/// (U+3000), narrow no-break (U+202F), any of the en/em quad family — so that a
+/// human still reads the phrase but `str::contains("your computer is infected")`
+/// fails. Folding them all to ASCII space defeats this while preserving the
+/// char count (1:1). Idempotent, pure, never panics.
+#[must_use]
+pub fn fold_unicode_spaces(s: &str) -> String {
+    s.chars()
+        .map(|c| if is_unicode_space(c) { ' ' } else { c })
+        .collect()
+}
+
 /// The single normalized form used for **blocklist title matching**:
 /// strip emoji/symbols → expand ligatures → fold half-width katakana →
-/// strip invisibles → strip combining marks → fold confusables →
-/// collapse spread-character obfuscation → fold leetspeak → lowercase.
-/// Idempotent. Pipeline order rationale:
+/// fold Unicode spaces → strip invisibles → strip combining marks →
+/// fold confusables → collapse spread-character obfuscation → fold leetspeak →
+/// lowercase. Idempotent. Pipeline order rationale:
 ///
 /// 1. Emoji/symbol strip first — mid-word emoji (`"inf⚠️ected"`) collapsed.
 /// 2. Ligature expansion — `ﬁ`→`fi`, `æ`→`ae`, `ß`→`ss`, etc.
 /// 3. Half-width katakana fold — `ｳｲﾙｽ`→`ウイルス`, `ｻﾎﾟｰﾄ`→`サポート`.
-/// 4. Invisible strip — zero-width joiners, BiDi overrides removed.
-/// 5. Combining-mark strip — diacritical overlays (`y̷o̷u̷r̷`) removed *before*
+/// 4. Unicode-space fold — NBSP / ideographic / en-em spaces → ASCII space, so
+///    `"your\u{00A0}computer"` matches the ASCII-spaced blocklist phrase.
+/// 5. Invisible strip — zero-width joiners, BiDi overrides removed.
+/// 6. Combining-mark strip — diacritical overlays (`y̷o̷u̷r̷`) removed *before*
 ///    confusable folding so Cyrillic base letters are cleanly foldable.
-/// 6. Confusable fold — homoglyphs (Cyrillic, Greek) mapped to Latin skeleton.
-/// 7. Spread-character collapse — `b a i l` / `b.a.i.l` rejoined before leet.
-/// 8. Leet fold — `v1rus` → `virus` (only in mixed-letter tokens).
-/// 9. Lowercase — final ASCII normalisation.
+/// 7. Confusable fold — homoglyphs (Cyrillic, Greek) mapped to Latin skeleton.
+/// 8. Spread-character collapse — `b a i l` / `b.a.i.l` rejoined before leet.
+/// 9. Leet fold — `v1rus` → `virus` (only in mixed-letter tokens).
+/// 10. Lowercase — final ASCII normalisation.
 ///
 /// Not applied to the phone-number scan (which needs the original digits).
 #[must_use]
@@ -1039,6 +1076,7 @@ pub fn normalize_for_match(s: &str) -> String {
     let s = strip_symbols_and_emoji(s);
     let s = expand_ligatures(&s);
     let s = fold_halfwidth_katakana(&s);
+    let s = fold_unicode_spaces(&s);
     let s = strip_invisibles(&s);
     let s = strip_combining_marks(&s);
     let folded = fold_confusables(&s);
@@ -3521,6 +3559,62 @@ mod tests {
         assert_eq!(normalize_for_match("ｳｲﾙｽ"), "ウイルス");
         assert_eq!(normalize_for_match("ｻﾎﾟｰﾄ詐欺"), "サポート詐欺");
         assert_eq!(normalize_for_match("ｽｷｬﾝ中"), "スキャン中");
+    }
+
+    // ── fold_unicode_spaces ─────────────────────────────────────────────────
+
+    #[test]
+    fn fold_unicode_spaces_maps_all_space_separators() {
+        // NBSP, ideographic, narrow-NBSP, en/em family, ogham, math space.
+        assert_eq!(fold_unicode_spaces("a\u{00A0}b"), "a b");
+        assert_eq!(fold_unicode_spaces("a\u{3000}b"), "a b");
+        assert_eq!(fold_unicode_spaces("a\u{202F}b"), "a b");
+        assert_eq!(fold_unicode_spaces("a\u{2003}b"), "a b"); // em space
+        assert_eq!(fold_unicode_spaces("a\u{2009}b"), "a b"); // thin space
+        assert_eq!(fold_unicode_spaces("a\u{205F}b"), "a b");
+        assert_eq!(fold_unicode_spaces("a\u{1680}b"), "a b");
+        // ASCII control whitespace folds too.
+        assert_eq!(fold_unicode_spaces("a\tb\nc"), "a b c");
+    }
+
+    #[test]
+    fn fold_unicode_spaces_leaves_other_text_unchanged() {
+        assert_eq!(fold_unicode_spaces("plain ascii"), "plain ascii");
+        assert_eq!(fold_unicode_spaces(""), "");
+        // Zero-width space is NOT folded to a space (it's an invisible, removed
+        // elsewhere) — fold_unicode_spaces must leave it untouched.
+        assert_eq!(fold_unicode_spaces("a\u{200B}b"), "a\u{200B}b");
+        // Japanese kana/kanji unaffected.
+        assert_eq!(fold_unicode_spaces("ウイルス感染"), "ウイルス感染");
+    }
+
+    #[test]
+    fn fold_unicode_spaces_idempotent_and_non_growing() {
+        for s in ["a\u{00A0}b", "x\u{3000}y\u{202F}z", "plain", "\t\n"] {
+            let once = fold_unicode_spaces(s);
+            let twice = fold_unicode_spaces(&once);
+            assert_eq!(once, twice, "not idempotent on {s:?}");
+            assert_eq!(
+                once.chars().count(),
+                s.chars().count(),
+                "char count must be preserved (1:1) on {s:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_for_match_folds_unicode_spaces() {
+        // NBSP-separated scam phrase must normalize to the ASCII-spaced form the
+        // blocklist and phrase detectors match against.
+        assert_eq!(
+            normalize_for_match("your\u{00A0}computer\u{00A0}is\u{00A0}infected"),
+            "your computer is infected"
+        );
+        // Mixed Unicode spaces collapse to ASCII spaces too.
+        assert_eq!(
+            normalize_for_match("call\u{3000}support\u{202F}now"),
+            "call support now"
+        );
     }
 
     #[test]
