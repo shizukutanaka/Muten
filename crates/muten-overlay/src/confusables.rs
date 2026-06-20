@@ -124,6 +124,14 @@ pub fn fold_char(c: char) -> char {
         'Τ' => 't',
         'Υ' => 'y',
         'Χ' => 'x',
+        // Round 18 additions — Greek uppercase/lowercase gaps.
+        // We had ω→w (R14) but not the uppercase Ω, ζ (R−) but not the
+        // uppercase equivalent was already Ζ→z, however lowercase ζ was
+        // missing. And π/Π (pi) look like n/N in many fonts (two legs, top bar).
+        'Ω' => 'w', // U+03A9 GREEK CAPITAL LETTER OMEGA → w
+        'π' => 'n', // U+03C0 GREEK SMALL LETTER PI → n (two-legged, looks like n)
+        'Π' => 'n', // U+03A0 GREEK CAPITAL LETTER PI → n
+        'ζ' => 'z', // U+03B6 GREEK SMALL LETTER ZETA → z
         // ── Latin diacritics commonly used to dodge filters ──
         // Both cases are folded: `to_ascii_lowercase()` (applied later in
         // `normalize_for_match`) only lowers ASCII A–Z, so an *uppercase*
@@ -193,6 +201,12 @@ pub fn fold_char(c: char) -> char {
         '\u{2131}' => 'f', // ℱ SCRIPT CAPITAL F → f
         '\u{2133}' => 'm', // ℳ SCRIPT CAPITAL M → m
         '\u{2134}' => 'o', // ℴ SCRIPT SMALL O → o  ← "yℴur cℴmputer"
+        // Round 18 additions — Letterlike Symbols holes not covered by earlier rounds:
+        '\u{2107}' => 'e', // ℇ EULER CONSTANT — italic/script 'e'; used in "ℇncrypted"
+        '\u{2118}' => 'p', // ℘ WEIERSTRASS ELLIPTIC FUNCTION — script 'P'; "℘aypal"
+        '\u{2126}' => 'w', // Ω OHM SIGN — Unicode compatibility char, same glyph as
+                           //   U+03A9 (GREEK CAPITAL LETTER OMEGA) but a distinct
+                           //   codepoint that fold_char previously left unfolded.
         // ── Roman Numeral letter substitutes (U+2160–U+217F) ────────────────────
         // The Unicode Number Forms block contains Roman numeral codepoints that
         // look exactly like single Latin letters. An attacker can use them mid-word
@@ -10391,6 +10405,87 @@ mod spread_char_tests {
             0x0251u32, 0x0261, 0x0262, 0x026A, 0x0274, 0x0280, 0x028F, 0x0299, 0x029C, 0x029F,
             0x1D00, 0x1D04, 0x1D05, 0x1D07, 0x1D0A, 0x1D0B, 0x1D0D, 0x1D0F, 0x1D18, 0x1D1B, 0x1D1C,
             0x1D20, 0x1D21, 0x1D22, 0xA730, 0xA731,
+        ] {
+            let c = char::from_u32(u).unwrap();
+            let folded = fold_char(c);
+            assert_eq!(fold_char(folded), folded, "not idempotent for U+{u:04X}");
+        }
+    }
+
+    // ── Round 18: Greek uppercase gaps (Ω/π/Π/ζ) + Letterlike Symbols holes ──
+    // Adversarial gap: we folded ω→w (R14) but not the uppercase Ω; we folded
+    // η→n (R14) but not π/Π (pi looks like n/N in two-legged sans-serif fonts);
+    // we have Ζ→z but not ζ (lowercase zeta). In Letterlike Symbols: ℇ (Euler
+    // constant, a script italic e), ℘ (Weierstrass P, a script capital p), and
+    // Ω (U+2126 OHM SIGN, visually identical to U+03A9 but a distinct codepoint)
+    // were all passing through fold_char unchanged.
+
+    #[test]
+    fn fold_char_maps_greek_capital_omega_to_w() {
+        assert_eq!(fold_char('Ω'), 'w'); // U+03A9 — "Ωarning" evasion
+    }
+
+    #[test]
+    fn fold_char_maps_greek_pi_to_n() {
+        assert_eq!(fold_char('π'), 'n'); // U+03C0 — "iπfected"
+        assert_eq!(fold_char('Π'), 'n'); // U+03A0 — capital PI
+    }
+
+    #[test]
+    fn fold_char_maps_greek_zeta_to_z() {
+        assert_eq!(fold_char('ζ'), 'z'); // U+03B6
+    }
+
+    #[test]
+    fn fold_char_maps_ohm_sign_to_w() {
+        // U+2126 OHM SIGN — compatibility character, same glyph as Ω (U+03A9).
+        assert_eq!(fold_char('\u{2126}'), 'w');
+    }
+
+    #[test]
+    fn fold_char_maps_weierstrass_p_to_p() {
+        assert_eq!(fold_char('\u{2118}'), 'p'); // ℘ script capital P
+    }
+
+    #[test]
+    fn fold_char_maps_euler_constant_to_e() {
+        assert_eq!(fold_char('\u{2107}'), 'e'); // ℇ italic/script e
+    }
+
+    #[test]
+    fn normalize_defeats_capital_omega_in_warning() {
+        // "Ωarning" — uppercase Omega (U+03A9) for 'W'.
+        assert_eq!(normalize_for_match("\u{03A9}arning"), "warning");
+    }
+
+    #[test]
+    fn normalize_defeats_pi_in_infected() {
+        // "iπfected" — Greek small pi (U+03C0) for 'n'.
+        assert_eq!(normalize_for_match("i\u{03C0}fected"), "infected");
+    }
+
+    #[test]
+    fn normalize_defeats_ohm_sign_in_windows() {
+        // "Ωindows" using OHM SIGN (U+2126) rather than Greek Omega.
+        assert_eq!(normalize_for_match("\u{2126}indows"), "windows");
+    }
+
+    #[test]
+    fn normalize_defeats_weierstrass_p_in_paypal() {
+        // "℘aypal" — Weierstrass P (U+2118) for 'p'.
+        assert_eq!(normalize_for_match("\u{2118}aypal"), "paypal");
+    }
+
+    #[test]
+    fn fold_char_round18_additions_idempotent() {
+        for &u in &[
+            0x03A9u32, // Ω Greek capital omega
+            0x03C0,    // π Greek small pi
+            0x03A0,    // Π Greek capital pi
+            0x03B6,    // ζ Greek small zeta
+            0x2126,    // Ω OHM SIGN
+            0x2118,    // ℘ Weierstrass P
+            0x2107,    // ℇ Euler constant
         ] {
             let c = char::from_u32(u).unwrap();
             let folded = fold_char(c);
