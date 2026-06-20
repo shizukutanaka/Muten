@@ -120,14 +120,15 @@ pub fn fold_char(c: char) -> char {
         'ł' | 'Ł' => 'l',
         'đ' | 'Đ' => 'd',
         // ── Letterlike Symbols (U+2100–U+214F) ─────────────────────────────────
-        // fold_math_alnum handles U+1D400–U+1D7FF (eight hole-free letter styles).
-        // The double-struck / script / fraktur letter styles in U+2100–U+214F have
-        // codepoint holes (e.g. ℎ U+210E lives here, not in the math block), so
-        // fold_math_alnum deliberately excludes them.  We hand-list the subset that
-        // is both visually letter-like and likely to appear in scam text (phishers
-        // reaching for exotic glyphs to dodge exact-match filters).
+        // fold_math_alnum handles U+1D400–U+1D7FF (ten hole-free letter styles as
+        // of round 12, including bold script and bold fraktur).  The regular
+        // Script, Fraktur, and Double-struck letter styles in U+1D49C–U+1D56B have
+        // codepoint holes — for those hole positions, the Unicode Consortium placed
+        // the character in U+2100–U+214F instead (e.g. ℎ U+210E for italic h,
+        // ℬ U+212C for script B).  We hand-list the subset that is both visually
+        // letter-like and likely to appear in scam text.
         '\u{210A}' => 'g', // ℊ SCRIPT SMALL G
-        '\u{210B}' | '\u{210C}' | '\u{210D}' => 'h', // ℋ ℌ ℍ → h (less common but consistent)
+        '\u{210B}' | '\u{210C}' | '\u{210D}' => 'h', // ℋ ℌ ℍ → h
         '\u{210E}' => 'h', // ℎ PLANCK CONSTANT (looks like h)
         '\u{2110}' | '\u{2111}' => 'i', // ℐ ℑ SCRIPT/FRAKTUR CAPITAL I → i
         '\u{2112}' => 'l', // ℒ SCRIPT CAPITAL L → l
@@ -137,6 +138,15 @@ pub fn fold_char(c: char) -> char {
         '\u{211A}' => 'q', // ℚ DOUBLE-STRUCK CAPITAL Q → q
         '\u{211B}' | '\u{211C}' | '\u{211D}' => 'r', // ℛ ℜ ℝ SCRIPT/FRAKTUR/DS R → r
         '\u{2124}' => 'z', // ℤ DOUBLE-STRUCK CAPITAL Z → z
+        // Round 12 additions — hole-filling chars missed in round 11:
+        '\u{212C}' => 'b', // ℬ SCRIPT CAPITAL B
+        '\u{212D}' => 'c', // ℭ FRAKTUR CAPITAL C
+        '\u{2102}' => 'c', // ℂ DOUBLE-STRUCK CAPITAL C
+        '\u{2128}' => 'z', // ℨ FRAKTUR CAPITAL Z (alt spelling; 2124 already = z)
+        '\u{2146}' => 'd', // ⅆ DOUBLE-STRUCK ITALIC SMALL D
+        '\u{2147}' => 'e', // ⅇ DOUBLE-STRUCK ITALIC SMALL E
+        '\u{2148}' => 'i', // ⅈ DOUBLE-STRUCK ITALIC SMALL I
+        '\u{2149}' => 'j', // ⅉ DOUBLE-STRUCK ITALIC SMALL J
         '\u{212F}' => 'e', // ℯ SCRIPT SMALL E → e
         '\u{2130}' => 'e', // ℰ SCRIPT CAPITAL E → e
         '\u{2131}' => 'f', // ℱ SCRIPT CAPITAL F → f
@@ -287,20 +297,28 @@ pub fn fold_char(c: char) -> char {
 /// letter/digit, or return `None` if `u` is not one we fold.
 ///
 /// The block lays each *style* out as a contiguous run: 26 uppercase, then 26
-/// lowercase (for letters), or 10 digits. We fold the eight **hole-free**
-/// letter styles (bold, italic, bold-italic, the four sans-serif variants, and
-/// monospace) and all five digit styles. The script, fraktur, and
-/// double-struck letter styles are deliberately **out of scope**: those runs
-/// have codepoint "holes" (e.g. ℎ, ℜ, ℂ live in the Letterlike Symbols block
-/// U+2100..U+214F), so folding them correctly needs per-character handling we
-/// keep out for now — consistent with the crate's "focused subset, not the
-/// whole UTS#39 spec" philosophy. Each fold is 1:1 (char count preserved).
+/// lowercase (for letters), or 10 digits. We fold **ten** letter styles:
+/// - The eight originally-covered hole-free styles (bold, italic, bold-italic,
+///   the four sans-serif variants, monospace).
+/// - **Mathematical Bold Script** (U+1D4D0–U+1D503, A–Z then a–z, NO holes):
+///   `𝓐𝓑𝓒…𝓪𝓫𝓬` — the most popular "fancy text" style that attackers use;
+///   this style had no holes so was always safe to cover via contiguous range.
+/// - **Mathematical Bold Fraktur** (U+1D56C–U+1D59F, A–Z then a–z, NO holes):
+///   `𝕬𝕭𝕮…𝖆𝖇𝖈` — gothic/blackletter style, same no-hole property.
+///
+/// The regular Script, Fraktur, and Double-struck styles are still omitted from
+/// the range table (they have codepoint holes), but individual hole-filling
+/// characters in those styles are mapped explicitly in `fold_char`'s
+/// Letterlike Symbols section (rounds 11–12). Each fold is 1:1 (char count
+/// preserved).
 fn fold_math_alnum(u: u32) -> Option<char> {
     // Contiguous alphabetic styles: each is 52 codepoints (A–Z then a–z).
     const LETTER_BASES: &[u32] = &[
         0x1D400, // bold
         0x1D434, // italic
         0x1D468, // bold italic
+        0x1D4D0, // bold script    ← NEW (no holes; popular fancy-text style)
+        0x1D56C, // bold fraktur   ← NEW (no holes; gothic style)
         0x1D5A0, // sans-serif
         0x1D5D4, // sans-serif bold
         0x1D608, // sans-serif italic
@@ -4103,6 +4121,55 @@ mod tests {
             fold_confusables("y\u{2134}ur c\u{2134}mputer"),
             "your computer"
         );
+    }
+
+    // ── Bold Script / Bold Fraktur folding (Round 12) ────────────────────
+
+    #[test]
+    fn fold_math_alnum_covers_bold_script() {
+        // U+1D4D0 = 𝓐 (MATHEMATICAL BOLD SCRIPT CAPITAL A), no holes.
+        assert_eq!(fold_math_alnum(0x1D4D0), Some('A')); // 𝓐 → A
+                                                         // P is the 16th letter (0-indexed 15): U+1D4D0 + 15 = U+1D4DF
+        assert_eq!(fold_math_alnum(0x1D4DF), Some('P')); // 𝓟 → P
+                                                         // Lowercase: base + 26 = U+1D4EA = 𝓪
+        assert_eq!(fold_math_alnum(0x1D4EA), Some('a')); // 𝓪 → a
+                                                         // y = 25th lowercase (0-indexed 24): U+1D4EA + 24 = U+1D502
+        assert_eq!(fold_math_alnum(0x1D502), Some('y')); // 𝔂 → y
+    }
+
+    #[test]
+    fn fold_math_alnum_covers_bold_fraktur() {
+        // U+1D56C = 𝕬 (MATHEMATICAL BOLD FRAKTUR CAPITAL A), no holes.
+        assert_eq!(fold_math_alnum(0x1D56C), Some('A')); // 𝕬 → A
+                                                         // P = 16th letter: U+1D56C + 15 = U+1D57B
+        assert_eq!(fold_math_alnum(0x1D57B), Some('P')); // 𝕻 → P
+                                                         // Lowercase a: U+1D56C + 26 = U+1D586
+        assert_eq!(fold_math_alnum(0x1D586), Some('a')); // 𝖆 → a
+    }
+
+    #[test]
+    fn fold_confusables_normalizes_bold_script_brand() {
+        // "𝓹𝓪𝔂𝓹𝓪𝓵" — bold script "paypal" (U+1D4DF=P, U+1D4EA=a, U+1D502=y,
+        // U+1D4F9=p, U+1D4EA=a, U+1D4F5=l) → "Paypal" → to_ascii_lowercase →
+        // "paypal".  Confirms that the blocklist / brand match would fire.
+        let bold_script_paypal = "\u{1D4DF}\u{1D4EA}\u{1D502}\u{1D4F9}\u{1D4EA}\u{1D4F5}";
+        assert_eq!(
+            fold_confusables(bold_script_paypal).to_ascii_lowercase(),
+            "paypal"
+        );
+    }
+
+    #[test]
+    fn fold_char_maps_round12_letterlike_additions() {
+        // Hole-filling chars missed in round 11.
+        assert_eq!(fold_char('\u{212C}'), 'b'); // ℬ Script Capital B
+        assert_eq!(fold_char('\u{212D}'), 'c'); // ℭ Fraktur Capital C
+        assert_eq!(fold_char('\u{2102}'), 'c'); // ℂ Double-struck Capital C
+        assert_eq!(fold_char('\u{2128}'), 'z'); // ℨ Fraktur Capital Z
+        assert_eq!(fold_char('\u{2146}'), 'd'); // ⅆ DS Italic Small D
+        assert_eq!(fold_char('\u{2147}'), 'e'); // ⅇ DS Italic Small E
+        assert_eq!(fold_char('\u{2148}'), 'i'); // ⅈ DS Italic Small I
+        assert_eq!(fold_char('\u{2149}'), 'j'); // ⅉ DS Italic Small J
     }
 
     #[test]
