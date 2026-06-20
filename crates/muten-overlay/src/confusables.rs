@@ -73,6 +73,18 @@ pub fn fold_char(c: char) -> char {
         'У' => 'y',
         'І' => 'i',
         'Ј' => 'j',
+        // Round 15 additions — Cyrillic confusables beyond the high-frequency
+        // set above. These come from extended-Cyrillic blocks (U+0480–U+052F)
+        // used in minority-language orthographies but pressed into homoglyph
+        // service: shha һ/Һ (U+04BB/04BA) is an exact 'h', palochka Ӏ (U+04C0)
+        // is a bare vertical stroke read as 'l'/'I', komi-de ԁ (U+0501) is 'd',
+        // qa ԛ (U+051B) is 'q', we ԝ (U+051D) is 'w'.
+        '\u{04BB}' => 'h', // һ CYRILLIC SMALL LETTER SHHA → h
+        '\u{04BA}' => 'h', // Һ CYRILLIC CAPITAL LETTER SHHA → h
+        '\u{04C0}' => 'l', // Ӏ CYRILLIC LETTER PALOCHKA → l
+        '\u{0501}' => 'd', // ԁ CYRILLIC SMALL LETTER KOMI DE → d
+        '\u{051B}' => 'q', // ԛ CYRILLIC SMALL LETTER QA → q
+        '\u{051D}' => 'w', // ԝ CYRILLIC SMALL LETTER WE → w
         // ── Greek look-alikes ──
         'α' => 'a',
         'ο' => 'o',
@@ -90,6 +102,14 @@ pub fn fold_char(c: char) -> char {
         'ω' => 'w', // U+03C9 OMEGA — has a distinct 'w' shape
         'γ' => 'y', // U+03B3 GAMMA — lowercase gamma resembles 'y'
         'μ' => 'u', // U+03BC MU — Greek mu looks like 'u' with a tail
+        // Round 15 additions — Greek lunate sigma & yot. The lunate sigma ϲ
+        // (U+03F2) is pixel-identical to Latin 'c' in nearly every font — a
+        // stronger homoglyph than any letter above — and was completely
+        // unguarded ("ϲall now", "seϲurity alert", "aϲϲount loϲked"). The
+        // capital lunate sigma Ϲ (U+03F9) and yot ϳ (U+03F3) round out the pair.
+        '\u{03F2}' => 'c', // ϲ GREEK LUNATE SIGMA SYMBOL → c
+        '\u{03F9}' => 'c', // Ϲ GREEK CAPITAL LUNATE SIGMA SYMBOL → c
+        '\u{03F3}' => 'j', // ϳ GREEK LETTER YOT → j
         'Α' => 'a',
         'Β' => 'b',
         'Ε' => 'e',
@@ -632,7 +652,7 @@ pub fn has_bidi_override(s: &str) -> bool {
 pub enum Script {
     /// ASCII + Latin-1/Extended-A/B letters.
     Latin,
-    /// Cyrillic block (U+0400–U+04FF).
+    /// Cyrillic + Cyrillic Supplement blocks (U+0400–U+052F).
     Cyrillic,
     /// Greek and Coptic block (U+0370–U+03FF).
     Greek,
@@ -648,7 +668,11 @@ pub fn script_of(c: char) -> Script {
         0x41..=0x5A | 0x61..=0x7A => Script::Latin, // ASCII letters
         0x00C0..=0x024F => Script::Latin,           // Latin-1 Suppl. + Extended-A/B
         0x0370..=0x03FF => Script::Greek,           // Greek and Coptic
-        0x0400..=0x04FF => Script::Cyrillic,        // Cyrillic
+        // Cyrillic + Cyrillic Supplement (U+0500–U+052F): the supplement holds
+        // the extended-Cyrillic homoglyphs folded in `fold_char` (komi-de ԁ,
+        // qa ԛ, we ԝ), so it must be classified Cyrillic for mixed-script /
+        // whole-script detection to stay consistent with the fold table.
+        0x0400..=0x052F => Script::Cyrillic, // Cyrillic + Cyrillic Supplement
         _ => Script::Other,
     }
 }
@@ -9983,6 +10007,100 @@ mod spread_char_tests {
                 folded,
                 "fold_char not idempotent for {c}"
             );
+        }
+    }
+
+    // ── Round 15: Greek lunate sigma/yot + extended Cyrillic confusables ─────
+    // Adversarial gap: the lunate sigma ϲ (U+03F2) is pixel-identical to Latin
+    // 'c' yet was unguarded; the Cyrillic Supplement block (U+0500–U+052F) also
+    // supplies komi-de/qa/we homoglyphs not in the high-frequency table.
+
+    #[test]
+    fn fold_char_maps_greek_lunate_sigma_to_c() {
+        assert_eq!(fold_char('\u{03F2}'), 'c'); // ϲ small
+        assert_eq!(fold_char('\u{03F9}'), 'c'); // Ϲ capital
+    }
+
+    #[test]
+    fn fold_char_maps_greek_yot_to_j() {
+        assert_eq!(fold_char('\u{03F3}'), 'j'); // ϳ
+    }
+
+    #[test]
+    fn fold_char_maps_cyrillic_shha_to_h() {
+        assert_eq!(fold_char('\u{04BB}'), 'h'); // һ small
+        assert_eq!(fold_char('\u{04BA}'), 'h'); // Һ capital
+    }
+
+    #[test]
+    fn fold_char_maps_cyrillic_palochka_to_l() {
+        assert_eq!(fold_char('\u{04C0}'), 'l'); // Ӏ
+    }
+
+    #[test]
+    fn fold_char_maps_cyrillic_supplement_homoglyphs() {
+        assert_eq!(fold_char('\u{0501}'), 'd'); // ԁ komi de
+        assert_eq!(fold_char('\u{051B}'), 'q'); // ԛ qa
+        assert_eq!(fold_char('\u{051D}'), 'w'); // ԝ we
+    }
+
+    #[test]
+    fn normalize_defeats_lunate_sigma_in_call() {
+        // "ϲall now" — lunate sigma (U+03F2) for 'c'. Pixel-identical evasion.
+        assert_eq!(normalize_for_match("\u{03F2}all now"), "call now");
+    }
+
+    #[test]
+    fn normalize_defeats_lunate_sigma_in_security() {
+        // "seϲurity alert" — lunate sigma buried mid-word.
+        assert_eq!(
+            normalize_for_match("se\u{03F2}urity alert"),
+            "security alert"
+        );
+    }
+
+    #[test]
+    fn normalize_defeats_cyrillic_supplement_in_word() {
+        // "ԝin\u{0501}ows up\u{0501}ate" — we(w) + komi-de(d) for "windows update".
+        assert_eq!(
+            normalize_for_match("\u{051D}in\u{0501}ows up\u{0501}ate"),
+            "windows update"
+        );
+    }
+
+    #[test]
+    fn script_of_classifies_cyrillic_supplement() {
+        // The widened Cyrillic range must classify the supplement block so
+        // mixed-script / whole-script detection stays consistent with the fold.
+        assert_eq!(script_of('\u{0501}'), Script::Cyrillic); // ԁ
+        assert_eq!(script_of('\u{051B}'), Script::Cyrillic); // ԛ
+        assert_eq!(script_of('\u{051D}'), Script::Cyrillic); // ԝ
+        assert_eq!(script_of('\u{052F}'), Script::Cyrillic); // last of supplement
+    }
+
+    #[test]
+    fn mixed_script_fires_on_cyrillic_supplement_latin_mix() {
+        // "ԝindows" — Cyrillic we (U+051D) mixed with Latin in one token.
+        assert!(has_confusable_mixed_script("\u{051D}indows"));
+    }
+
+    #[test]
+    fn whole_script_confusable_fires_on_lunate_sigma_word() {
+        // "ϲοԁе" — lunate sigma(c) + Greek omicron(o)... mixed scripts in one
+        // token are skipped by whole-script; use a pure-Greek lunate word instead.
+        // "ϲοαϲh" → all Greek (ϲ,ο,α,ϲ,h?) — h is not greek; keep it Greek-only:
+        // "ϲαϲϲ" all Greek lunate sigma + alpha, all fold to ASCII.
+        assert!(has_whole_script_confusable("\u{03F2}α\u{03F2}\u{03F2}"));
+    }
+
+    #[test]
+    fn fold_char_round15_additions_idempotent() {
+        for &u in &[
+            0x03F2u32, 0x03F9, 0x03F3, 0x04BB, 0x04BA, 0x04C0, 0x0501, 0x051B, 0x051D,
+        ] {
+            let c = char::from_u32(u).unwrap();
+            let folded = fold_char(c);
+            assert_eq!(fold_char(folded), folded, "not idempotent for U+{u:04X}");
         }
     }
 }
