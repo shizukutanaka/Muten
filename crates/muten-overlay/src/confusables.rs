@@ -220,6 +220,45 @@ pub fn fold_char(c: char) -> char {
         '\u{217D}' => 'c', // ⅽ roman numeral one hundred → c
         '\u{217E}' => 'd', // ⅾ roman numeral five hundred → d
         '\u{217F}' => 'm', // ⅿ roman numeral one thousand → m
+        // ── Latin Small-Capital / Script letters (round 17) ─────────────────────
+        // "Fancy text" generators (online tools that render normal-looking text
+        // using IPA / Phonetic Extension / Latin-Extended-D codepoints) produce
+        // window titles like "ᴜʀɢᴇɴᴛ ᴀʟᴇʀᴛ" or "ɪɴꜰᴇᴄᴛᴇᴅ" that are visually
+        // identical to ASCII but invisible to str::contains. None of these chars
+        // are classified as Cyrillic or Greek by `script_of`, so they bypass both
+        // mixed-script and whole-script detection — the fold here is the ONLY
+        // existing defence.
+        //
+        // IPA Extensions (U+0250–U+02AF) — small-capital and script letters:
+        '\u{0251}' => 'a', // ɑ LATIN SMALL LETTER ALPHA
+        '\u{0261}' => 'g', // ɡ LATIN SMALL LETTER SCRIPT G
+        '\u{0262}' => 'g', // ɢ LATIN LETTER SMALL CAPITAL G
+        '\u{026A}' => 'i', // ɪ LATIN LETTER SMALL CAPITAL I
+        '\u{0274}' => 'n', // ɴ LATIN LETTER SMALL CAPITAL N
+        '\u{0280}' => 'r', // ʀ LATIN LETTER SMALL CAPITAL R
+        '\u{028F}' => 'y', // ʏ LATIN LETTER SMALL CAPITAL Y
+        '\u{0299}' => 'b', // ʙ LATIN LETTER SMALL CAPITAL B
+        '\u{029C}' => 'h', // ʜ LATIN LETTER SMALL CAPITAL H
+        '\u{029F}' => 'l', // ʟ LATIN LETTER SMALL CAPITAL L
+        // Phonetic Extensions (U+1D00–U+1D2F) — small-capital letters:
+        '\u{1D00}' => 'a', // ᴀ LATIN LETTER SMALL CAPITAL A
+        '\u{1D04}' => 'c', // ᴄ LATIN LETTER SMALL CAPITAL C
+        '\u{1D05}' => 'd', // ᴅ LATIN LETTER SMALL CAPITAL D
+        '\u{1D07}' => 'e', // ᴇ LATIN LETTER SMALL CAPITAL E
+        '\u{1D0A}' => 'j', // ᴊ LATIN LETTER SMALL CAPITAL J
+        '\u{1D0B}' => 'k', // ᴋ LATIN LETTER SMALL CAPITAL K
+        '\u{1D0D}' => 'm', // ᴍ LATIN LETTER SMALL CAPITAL M
+        '\u{1D0F}' => 'o', // ᴏ LATIN LETTER SMALL CAPITAL O
+        '\u{1D18}' => 'p', // ᴘ LATIN LETTER SMALL CAPITAL P
+        '\u{1D1B}' => 't', // ᴛ LATIN LETTER SMALL CAPITAL T
+        '\u{1D1C}' => 'u', // ᴜ LATIN LETTER SMALL CAPITAL U
+        '\u{1D20}' => 'v', // ᴠ LATIN LETTER SMALL CAPITAL V
+        '\u{1D21}' => 'w', // ᴡ LATIN LETTER SMALL CAPITAL W
+        '\u{1D22}' => 'z', // ᴢ LATIN LETTER SMALL CAPITAL Z
+        // Latin Extended-D (U+A720–U+A7FF) — small-capital letters absent from
+        // IPA/Phonetic Extensions (fills 'f' and 's' gaps):
+        '\u{A730}' => 'f', // ꜰ LATIN LETTER SMALL CAPITAL F
+        '\u{A731}' => 's', // ꜱ LATIN LETTER SMALL CAPITAL S
         '\u{0131}' => 'i', // dotless i
         '0' => '0',        // (kept; digits handled elsewhere)
         // ── Dash / hyphen variants ───────────────────────────────────────────
@@ -753,7 +792,52 @@ fn has_math_alpha_run(s: &str) -> bool {
 /// parenthesized small letters (249C–24B5) abut circled capitals (24B6–24CF)
 /// which abut circled small letters (24D0–24E9), all Latin letters.
 /// The supplement ranges (U+1F110–U+1F189) cover the four capital-only A–Z
-/// variants; each 26-char run is gap-free within itself.
+/// variants; each 26-char run is gap-free within itself. Round 17 extends the
+/// function to also catch small-capital runs (IPA/Phonetic/Latin-Extended-D).
+/// True if `c` is one of the IPA/Phonetic-Extension/Latin-Extended-D small-
+/// capital or script letters that `fold_char` maps to ASCII. Used by
+/// [`has_small_caps_run`] to detect "fancy text" small-cap evasion titles.
+fn is_small_cap(c: char) -> bool {
+    matches!(
+        c as u32,
+        // IPA Extensions (U+0250–U+02AF)
+        0x0251 | 0x0261 | 0x0262 | 0x026A | 0x0274 | 0x0280 | 0x028F | 0x0299 | 0x029C | 0x029F
+        // Phonetic Extensions (U+1D00–U+1D2F)
+        | 0x1D00 | 0x1D04 | 0x1D05 | 0x1D07 | 0x1D0A | 0x1D0B | 0x1D0D | 0x1D0F
+        | 0x1D18 | 0x1D1B | 0x1D1C | 0x1D20 | 0x1D21 | 0x1D22
+        // Latin Extended-D (U+A720–U+A7FF)
+        | 0xA730 | 0xA731
+    )
+}
+
+/// True if `s` contains a **run of ≥4 consecutive small-capital letters**
+/// (IPA / Phonetic Extension / Latin-Extended-D codepoints folded in
+/// [`fold_char`]). "Fancy text" generators produce titles like
+/// "ᴜʀɢᴇɴᴛ ᴀʟᴇʀᴛ" or "ɪɴꜰᴇᴄᴛᴇᴅ" using these codepoints — pixel-identical
+/// to ASCII but invisible to `str::contains`. The run threshold of 4 is the
+/// false-positive guard: legitimate uses of small-cap codepoints (linguistic
+/// abbreviations like ᴅɴᴀ, phonetic transcriptions) seldom string more than
+/// 3 together in an app window title.
+fn has_small_caps_run(s: &str) -> bool {
+    const MIN_RUN: usize = 4;
+    let mut run = 0usize;
+    for c in s.chars() {
+        if is_small_cap(c) {
+            run += 1;
+            if run >= MIN_RUN {
+                return true;
+            }
+        } else {
+            run = 0;
+        }
+    }
+    false
+}
+
+/// True if `s` contains a **compatibility-form alphabetic evasion** (see the
+/// full description above `is_small_cap`) — enclosed/circled letters, enclosed
+/// alphanumeric supplement forms, mathematical fancy-text runs, or a run of
+/// ≥4 consecutive small-capital letters from IPA/Phonetic/Latin-Extended-D.
 #[must_use]
 pub fn has_compat_alpha(s: &str) -> bool {
     s.chars().any(|c| {
@@ -765,6 +849,7 @@ pub fn has_compat_alpha(s: &str) -> bool {
             0x1F110..=0x1F129 | 0x1F130..=0x1F149
             | 0x1F150..=0x1F169 | 0x1F170..=0x1F189)
     }) || has_math_alpha_run(s)
+        || has_small_caps_run(s)
 }
 
 /// Identify the decimal-digit *numbering system* of `c`, or `None` if
@@ -10200,6 +10285,112 @@ mod spread_char_tests {
         for &u in &[
             0x2160u32, 0x2164, 0x2169, 0x216C, 0x216D, 0x216E, 0x216F, 0x2170, 0x2174, 0x2179,
             0x217C, 0x217D, 0x217E, 0x217F,
+        ] {
+            let c = char::from_u32(u).unwrap();
+            let folded = fold_char(c);
+            assert_eq!(fold_char(folded), folded, "not idempotent for U+{u:04X}");
+        }
+    }
+
+    // ── Round 17: Latin small-capital / script letters ───────────────────────
+    // Adversarial gap: fancy-text generators produce "ᴜʀɢᴇɴᴛ ᴀʟᴇʀᴛ" /
+    // "ɪɴꜰᴇᴄᴛᴇᴅ" from IPA Extensions + Phonetic Extensions codepoints.
+    // These bypass script_of (classified as Other), has_whole_script_confusable,
+    // and has_confusable_mixed_script entirely — fold_char was the only
+    // missing piece.
+
+    #[test]
+    fn fold_char_maps_ipa_small_capitals() {
+        assert_eq!(fold_char('\u{0251}'), 'a'); // ɑ alpha
+        assert_eq!(fold_char('\u{0261}'), 'g'); // ɡ script g
+        assert_eq!(fold_char('\u{0262}'), 'g'); // ɢ small cap G
+        assert_eq!(fold_char('\u{026A}'), 'i'); // ɪ small cap I
+        assert_eq!(fold_char('\u{0274}'), 'n'); // ɴ small cap N
+        assert_eq!(fold_char('\u{0280}'), 'r'); // ʀ small cap R
+        assert_eq!(fold_char('\u{028F}'), 'y'); // ʏ small cap Y
+        assert_eq!(fold_char('\u{0299}'), 'b'); // ʙ small cap B
+        assert_eq!(fold_char('\u{029C}'), 'h'); // ʜ small cap H
+        assert_eq!(fold_char('\u{029F}'), 'l'); // ʟ small cap L
+    }
+
+    #[test]
+    fn fold_char_maps_phonetic_ext_small_capitals() {
+        assert_eq!(fold_char('\u{1D00}'), 'a'); // ᴀ
+        assert_eq!(fold_char('\u{1D04}'), 'c'); // ᴄ
+        assert_eq!(fold_char('\u{1D05}'), 'd'); // ᴅ
+        assert_eq!(fold_char('\u{1D07}'), 'e'); // ᴇ
+        assert_eq!(fold_char('\u{1D0A}'), 'j'); // ᴊ
+        assert_eq!(fold_char('\u{1D0B}'), 'k'); // ᴋ
+        assert_eq!(fold_char('\u{1D0D}'), 'm'); // ᴍ
+        assert_eq!(fold_char('\u{1D0F}'), 'o'); // ᴏ
+        assert_eq!(fold_char('\u{1D18}'), 'p'); // ᴘ
+        assert_eq!(fold_char('\u{1D1B}'), 't'); // ᴛ
+        assert_eq!(fold_char('\u{1D1C}'), 'u'); // ᴜ
+        assert_eq!(fold_char('\u{1D20}'), 'v'); // ᴠ
+        assert_eq!(fold_char('\u{1D21}'), 'w'); // ᴡ
+        assert_eq!(fold_char('\u{1D22}'), 'z'); // ᴢ
+    }
+
+    #[test]
+    fn fold_char_maps_latin_extended_d_small_caps_f_s() {
+        assert_eq!(fold_char('\u{A730}'), 'f'); // ꜰ
+        assert_eq!(fold_char('\u{A731}'), 's'); // ꜱ
+    }
+
+    #[test]
+    fn normalize_defeats_small_caps_infected() {
+        // "ɪɴꜰᴇᴄᴛᴇᴅ" — full small-caps spelling of "infected".
+        let evaded = "\u{026A}\u{0274}\u{A730}\u{1D07}\u{1D04}\u{1D1B}\u{1D07}\u{1D05}";
+        assert_eq!(normalize_for_match(evaded), "infected");
+    }
+
+    #[test]
+    fn normalize_defeats_small_caps_urgent_alert() {
+        // "ᴜʀɢᴇɴᴛ ᴀʟᴇʀᴛ" — full small-caps.
+        let evaded = "\u{1D1C}\u{0280}\u{0262}\u{1D07}\u{0274}\u{1D1B} \u{1D00}\u{029F}\u{1D07}\u{0280}\u{1D1B}";
+        assert_eq!(normalize_for_match(evaded), "urgent alert");
+    }
+
+    #[test]
+    fn normalize_defeats_small_caps_microsoft() {
+        // "ᴍɪᴄʀᴏꜱᴏꜰᴛ" — brand name in small-caps evasion.
+        let evaded = "\u{1D0D}\u{026A}\u{1D04}\u{0280}\u{1D0F}\u{A731}\u{1D0F}\u{A730}\u{1D1B}";
+        assert_eq!(normalize_for_match(evaded), "microsoft");
+    }
+
+    #[test]
+    fn has_small_caps_run_fires_on_four_or_more() {
+        // 4+ consecutive small-caps → fires.
+        let four_caps = "\u{1D1C}\u{0280}\u{0262}\u{1D07}"; // ᴜʀɢᴇ
+        assert!(has_small_caps_run(four_caps));
+        // Exactly 3 → does NOT fire (below threshold).
+        let three_caps = "\u{1D1C}\u{0280}\u{0262}"; // ᴜʀɢ
+        assert!(!has_small_caps_run(three_caps));
+    }
+
+    #[test]
+    fn has_compat_alpha_detects_small_caps_run() {
+        // has_compat_alpha now covers small-cap runs (same signal as enclosed
+        // letters / math-alpha: compat_chars_present).
+        let evaded = "\u{026A}\u{0274}\u{A730}\u{1D07}\u{1D04}\u{1D1B}\u{1D07}\u{1D05}"; // ɪɴꜰᴇᴄᴛᴇᴅ
+        assert!(has_compat_alpha(evaded));
+        // Plain ASCII must not fire.
+        assert!(!has_compat_alpha("infected"));
+    }
+
+    #[test]
+    fn has_small_caps_run_does_not_fire_on_three_letter_abbrev() {
+        // ᴅɴᴀ (DNA) — only 3 small caps, below the MIN_RUN=4 threshold.
+        let dna = "\u{1D05}\u{0274}\u{1D00}"; // ᴅɴᴀ
+        assert!(!has_small_caps_run(dna));
+    }
+
+    #[test]
+    fn fold_char_small_caps_all_idempotent() {
+        for &u in &[
+            0x0251u32, 0x0261, 0x0262, 0x026A, 0x0274, 0x0280, 0x028F, 0x0299, 0x029C, 0x029F,
+            0x1D00, 0x1D04, 0x1D05, 0x1D07, 0x1D0A, 0x1D0B, 0x1D0D, 0x1D0F, 0x1D18, 0x1D1B, 0x1D1C,
+            0x1D20, 0x1D21, 0x1D22, 0xA730, 0xA731,
         ] {
             let c = char::from_u32(u).unwrap();
             let folded = fold_char(c);
