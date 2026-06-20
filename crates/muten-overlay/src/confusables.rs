@@ -739,8 +739,15 @@ pub fn has_confusable_mixed_script(s: &str) -> bool {
     false
 }
 
-/// Map a single leetspeak digit to the letter it stands in for. Only
-/// the unambiguous substitutions used to dodge text filters.
+/// Map a single leetspeak character to the letter it stands in for.
+///
+/// Covers digit substitutions (0→o, 1→i, 3→e, 4→a, 5→s, 7→t) and the two
+/// high-frequency ASCII symbol substitutions used in scam text to bypass
+/// keyword filters: `$→s` ("$upport", "micro$oft", "window$") and `@→a`
+/// ("@lert", "@ccount"). Both are folded only when they appear inside a
+/// token that contains at least one ASCII letter (see [`push_leet_token`]),
+/// so standalone price amounts (`$100`, `$19.99`) and email-address `@` in
+/// otherwise digit-only tokens are never touched.
 fn fold_leet_digit(c: char) -> char {
     match c {
         '0' => 'o',
@@ -749,15 +756,16 @@ fn fold_leet_digit(c: char) -> char {
         '4' => 'a',
         '5' => 's',
         '7' => 't',
+        '$' => 's', // "micro$oft" → "microsoft", "$upport" → "support"
+        '@' => 'a', // "@lert" → "alert", "@ccount" → "account"
         other => other,
     }
 }
 
 fn push_leet_token(token: &str, out: &mut String) {
     // Only de-leet a token that *contains a letter* — `v1rus`→`virus`,
-    // `1nfected`→`infected`. A pure-digit token (`1800`, `0100`, a
-    // year, a count) is left untouched so phone numbers and quantities
-    // survive. This keeps leet-folding from corrupting numeric text.
+    // `1nfected`→`infected`. A pure-digit/symbol token (`1800`, `$100`) is
+    // left untouched so phone numbers and prices survive.
     if token.chars().any(|c| c.is_ascii_alphabetic()) {
         out.extend(token.chars().map(fold_leet_digit));
     } else {
@@ -765,16 +773,23 @@ fn push_leet_token(token: &str, out: &mut String) {
     }
 }
 
-/// Fold leetspeak digit substitutions back to letters, but only inside
-/// alphanumeric tokens that already contain a letter (see
-/// `push_leet_token`). Separators and pure-digit runs are preserved
-/// verbatim. (IMPROVEMENT_ROADMAP C8-6.)
+/// Fold leetspeak substitutions back to letters, but only inside
+/// alphanumeric-or-symbol tokens that already contain a letter.
+///
+/// `$` and `@` are treated as token-adjacent characters (not separators)
+/// so that `"micro$oft"` is one token and folds to `"microsoft"`, while
+/// `"$100"` (no ASCII letter) is left unchanged. Pure-digit and
+/// pure-symbol tokens are passed through verbatim.
+/// (IMPROVEMENT_ROADMAP C8-6.)
 #[must_use]
 pub fn fold_leet_in_words(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut token = String::new();
     for c in s.chars() {
-        if c.is_alphanumeric() {
+        // `$` and `@` join alphanumeric tokens so that "micro$oft" is one
+        // token and folds to "microsoft".  Pure-symbol sequences like "$100"
+        // have no ASCII letter, so push_leet_token leaves them untouched.
+        if c.is_alphanumeric() || c == '$' || c == '@' {
             token.push(c);
         } else {
             push_leet_token(&token, &mut out);
@@ -1174,7 +1189,7 @@ pub fn collapse_ascii_spaces(s: &str) -> String {
 
 /// The single normalized form used for **blocklist title matching**:
 /// strip emoji/symbols → expand ligatures → fold half-width katakana →
-/// fold Unicode spaces → collapse ASCII spaces → strip invisibles → strip combining marks →
+/// fold Unicode spaces → strip invisibles → collapse ASCII spaces → strip combining marks →
 /// fold confusables → collapse spread-character obfuscation → fold leetspeak →
 /// lowercase. Idempotent. Pipeline order rationale:
 ///
@@ -1183,14 +1198,22 @@ pub fn collapse_ascii_spaces(s: &str) -> String {
 /// 3. Half-width katakana fold — `ｳｲﾙｽ`→`ウイルス`, `ｻﾎﾟｰﾄ`→`サポート`.
 /// 4. Unicode-space fold — NBSP / ideographic / en-em spaces → ASCII space, so
 ///    `"your\u{00A0}computer"` matches the ASCII-spaced blocklist phrase.
-/// 5. ASCII-space collapse — consecutive ASCII spaces → single space, so
-///    `"open\u{A0}\u{A0}run"` (two NBSP) → `"open run"` after steps 4-5.
-/// 6. Invisible strip — zero-width joiners, BiDi overrides removed.
+/// 5. Invisible strip — zero-width joiners, BiDi overrides removed.
+///    **Ordering note**: invisibles are stripped *before* the ASCII-space
+///    collapse so that `"\t\u{200b}\t"` (tab-ZWSP-tab) is correctly reduced
+///    to one space: tabs fold to spaces (step 4), ZWSP is removed (step 5),
+///    the two adjacent spaces are collapsed to one (step 6). The reverse
+///    order would fail idempotency — first pass leaves `"  "`, second
+///    pass then collapses to `" "`.
+/// 6. ASCII-space collapse — consecutive ASCII spaces → single space, so
+///    `"open\u{A0}\u{A0}run"` (two NBSP) → `"open run"` after steps 4–6,
+///    and any double-spaces created by invisible removal are also closed.
 /// 7. Combining-mark strip — diacritical overlays (`y̷o̷u̷r̷`) removed *before*
 ///    confusable folding so Cyrillic base letters are cleanly foldable.
 /// 8. Confusable fold — homoglyphs (Cyrillic, Greek) mapped to Latin skeleton.
 /// 9. Spread-character collapse — `b a i l` / `b.a.i.l` rejoined before leet.
-/// 10. Leet fold — `v1rus` → `virus` (only in mixed-letter tokens).
+/// 10. Leet fold — `v1rus` → `virus`; `$upport` → `support` (only in
+///     mixed-letter tokens so prices like `$100` are preserved).
 /// 11. Lowercase — final ASCII normalisation.
 ///
 /// Not applied to the phone-number scan (which needs the original digits).
@@ -1201,8 +1224,8 @@ pub fn normalize_for_match(s: &str) -> String {
     let s = expand_ligatures(&s);
     let s = fold_halfwidth_katakana(&s);
     let s = fold_unicode_spaces(&s);
+    let s = strip_invisibles(&s); // ← before collapse so ZWSP-separated spaces merge
     let s = collapse_ascii_spaces(&s);
-    let s = strip_invisibles(&s);
     let s = strip_combining_marks(&s);
     let folded = fold_confusables(&s);
     let despread = collapse_spread_characters(&folded);
@@ -4238,6 +4261,54 @@ mod tests {
             fold_leet_in_words("call 1-800-555-0100"),
             "call 1-800-555-0100"
         );
+    }
+
+    #[test]
+    fn leet_symbol_dollar_folds_inside_word() {
+        // "$upport" → "support": $ treated as token char, folded to s.
+        assert_eq!(fold_leet_in_words("$upport"), "support");
+        // "micro$oft" → "microsoft": $ inside an alphanumeric word.
+        assert_eq!(fold_leet_in_words("micro$oft"), "microsoft");
+        // "window$" → "windows": $ at end of word.
+        assert_eq!(fold_leet_in_words("window$"), "windows");
+        // "$canning" → "scanning": $ at start.
+        assert_eq!(fold_leet_in_words("$canning"), "scanning");
+    }
+
+    #[test]
+    fn leet_symbol_at_folds_inside_word() {
+        // "@lert" → "alert"
+        assert_eq!(fold_leet_in_words("@lert"), "alert");
+        // "@ccount" → "account"
+        assert_eq!(fold_leet_in_words("@ccount"), "account");
+    }
+
+    #[test]
+    fn leet_symbol_dollar_price_preserved() {
+        // "$100" — no ASCII letter in the token → NOT folded.
+        assert_eq!(fold_leet_in_words("$100"), "$100");
+        // "$19.99" — $ and 19 are one token (no letter), .99 is another.
+        assert_eq!(fold_leet_in_words("$19.99"), "$19.99");
+        // Standalone $ in "pay $ 100" — $ is its own token, no letter.
+        assert_eq!(fold_leet_in_words("pay $ 100"), "pay $ 100");
+        // Phone number digits survive.
+        assert_eq!(
+            fold_leet_in_words("call 1-800-555-0100"),
+            "call 1-800-555-0100"
+        );
+    }
+
+    #[test]
+    fn normalize_for_match_folds_dollar_at_symbol_leet() {
+        // End-to-end: "micro$oft $upport" normalizes to "microsoft support".
+        assert_eq!(
+            normalize_for_match("micro$oft $upport"),
+            "microsoft support"
+        );
+        // "@lert viru$" → "alert virus".
+        assert_eq!(normalize_for_match("@lert viru$"), "alert virus");
+        // Price is preserved (no letter in $-digit token).
+        assert_eq!(normalize_for_match("pay $100 fee"), "pay $100 fee");
     }
 
     #[test]

@@ -5482,3 +5482,69 @@ fn jp_clickfix_fp_guard_benign_command_prompt_does_not_fire() {
         v.signals
     );
 }
+
+// ── Round 7: symbol-based leet evasion ($→s, @→a) ────────────────────────────
+
+#[test]
+fn dollar_leet_support_scan_fires_fake_scanner_cue() {
+    // "micro$oft $upport" — after normalize_for_match: "microsoft support".
+    // "$canning viru$" — after fold: "scanning virus". Both fire fake_scanner_cue.
+    let rules = Ruleset::default();
+    let v = classify(
+        &alert_window("$canning your $ystem for viru$ $upport"),
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "fake_scanner_cue"),
+        "dollar-leet '$canning viru$ $upport' must fire fake_scanner_cue; signals = {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= SUSPICIOUS_THRESHOLD,
+        "score {} < SUSPICIOUS_THRESHOLD",
+        v.score
+    );
+}
+
+#[test]
+fn dollar_leet_fp_guard_price_does_not_fire() {
+    // "$29.99 subscription discount today" — no scam pattern even after
+    // normalize (price "$29" has no ASCII letter → $ not folded).
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "limited offer $29.99 subscription today".into(),
+            url: None,
+            coverage_percent: 30,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        },
+        &rules,
+    );
+    let content_signals: Vec<&str> = v
+        .signals
+        .iter()
+        .map(String::as_str)
+        .filter(|s| {
+            !matches!(
+                *s,
+                "fullscreen"
+                    | "topmost"
+                    | "no_close_button"
+                    | "blocks_input"
+                    | "unsolicited"
+                    | "very_new"
+                    | "input_trap"
+                    | "sudden_fullscreen_takeover"
+                    | "user_initiated"
+            )
+        })
+        .collect();
+    assert!(
+        content_signals.is_empty(),
+        "price title must not fire content signals; got {content_signals:?}"
+    );
+}
