@@ -227,6 +227,34 @@ pub fn fold_char(c: char) -> char {
                     }
                 }
             }
+            // Enclosed/circled digit forms → ASCII '0'–'9'.
+            //
+            // `has_mixed_number_systems` already tracks circled digits ①–⑨
+            // (U+2460–U+2468) as a separate script (system 7) for the raw-string
+            // check.  However `fold_char` never converted them to ASCII digits, so
+            // `contains_phone_number` (byte-level digit scanner) missed a phone
+            // number spelled entirely in circled digits: ①-⑧⓪⓪-⑤⑤⑤-⓪①⓪⓪.
+            //
+            // We also fold:
+            // - U+24EA ⓪ (CIRCLED DIGIT ZERO) — absent from `digit_system` today;
+            //   added to `digit_system` in the companion update below.
+            // - U+2776–U+277E ❶–❾ (DINGBAT NEGATIVE CIRCLED DIGIT ONE–NINE) —
+            //   same evasion class, different visual style.
+            // - U+2070 / U+00B2–U+00B3 / U+00B9 / U+2074–U+2079 (superscript
+            //   digits 0–9) — occasionally used to obscure digits in scam text.
+            //
+            // All folds are 1:1 (char count preserved, no allocation).
+            match u {
+                0x2460..=0x2468 => return char::from_u32(u - 0x2460 + b'1' as u32).unwrap_or(c), // ①–⑨
+                0x24EA => return '0', // ⓪ circled zero
+                0x2776..=0x277E => return char::from_u32(u - 0x2776 + b'1' as u32).unwrap_or(c), // ❶–❾
+                0x2070 => return '0', // ⁰ superscript zero
+                0x00B9 => return '1', // ¹ superscript one
+                0x00B2 => return '2', // ² superscript two
+                0x00B3 => return '3', // ³ superscript three
+                0x2074..=0x2079 => return char::from_u32(u - 0x2074 + b'4' as u32).unwrap_or(c), // ⁴–⁹
+                _ => {}
+            }
             c
         }
     }
@@ -612,7 +640,9 @@ pub fn digit_system(c: char) -> Option<u8> {
         0x09E6..=0x09EF => Some(4), // Bengali
         0x0BE6..=0x0BEF => Some(5), // Tamil
         0x0E50..=0x0E59 => Some(6), // Thai
-        0x2460..=0x2468 => Some(7), // Circled digits ①–⑨ (no 0)
+        0x2460..=0x2468 => Some(7), // Circled digits ①–⑨
+        0x24EA => Some(7),          // ⓪ Circled zero (complement of ①–⑨)
+        0x2776..=0x277E => Some(7), // Dingbat negative circled ❶–❾
         _ => None,
     }
 }
@@ -3974,6 +4004,46 @@ mod tests {
         assert_eq!(fold_confusables("\u{1D7E7}"), "5"); // sans
         assert_eq!(fold_confusables("\u{1D7F1}"), "5"); // sans-bold
         assert_eq!(fold_confusables("\u{1D7FB}"), "5"); // monospace
+    }
+
+    // ── Circled / enclosed / superscript digit folding (Round 10) ────────
+
+    #[test]
+    fn fold_char_maps_circled_digits_to_ascii() {
+        // Enclosed Alphanumeric circled digits ①–⑨ (U+2460–U+2468) → '1'–'9'.
+        assert_eq!(fold_char('\u{2460}'), '1'); // ①
+        assert_eq!(fold_char('\u{2464}'), '5'); // ⑤
+        assert_eq!(fold_char('\u{2468}'), '9'); // ⑨
+                                                // Circled zero ⓪ (U+24EA) → '0'.
+        assert_eq!(fold_char('\u{24EA}'), '0'); // ⓪
+    }
+
+    #[test]
+    fn fold_char_maps_dingbat_circled_digits_to_ascii() {
+        // Dingbat Negative Circled Digit ❶–❾ (U+2776–U+277E) → '1'–'9'.
+        assert_eq!(fold_char('\u{2776}'), '1'); // ❶
+        assert_eq!(fold_char('\u{277A}'), '5'); // ❺
+        assert_eq!(fold_char('\u{277E}'), '9'); // ❾
+    }
+
+    #[test]
+    fn fold_char_maps_superscript_digits_to_ascii() {
+        assert_eq!(fold_char('\u{2070}'), '0'); // ⁰
+        assert_eq!(fold_char('\u{00B9}'), '1'); // ¹
+        assert_eq!(fold_char('\u{00B2}'), '2'); // ²
+        assert_eq!(fold_char('\u{00B3}'), '3'); // ³
+        assert_eq!(fold_char('\u{2074}'), '4'); // ⁴
+        assert_eq!(fold_char('\u{2079}'), '9'); // ⁹
+    }
+
+    #[test]
+    fn digit_system_includes_circled_zero() {
+        // U+24EA (⓪) was absent from digit_system; now it is system 7
+        // (same as circled ①–⑨) for cross-script mixing detection.
+        assert_eq!(digit_system('\u{24EA}'), Some(7));
+        // Dingbat negative circled digits also recognised.
+        assert_eq!(digit_system('\u{2776}'), Some(7));
+        assert_eq!(digit_system('\u{277E}'), Some(7));
     }
 
     #[test]

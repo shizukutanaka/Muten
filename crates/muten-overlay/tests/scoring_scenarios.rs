@@ -5600,6 +5600,41 @@ fn tag_char_split_keyword_still_triggers() {
     );
 }
 
+// ── Round 10: Circled / dingbat / superscript digit folding ──────────────────
+
+/// Attacker uses circled-digit forms (visually identical on screen, different
+/// codepoints) to spell out a tech-support phone number. Before Round 10,
+/// `fold_char` left ①–⑨ and ⓪ as-is; the byte-level `contains_phone_number`
+/// never saw ASCII digits and the phone_number signal silently dropped.
+#[test]
+fn circled_digit_phone_fires_phone_number() {
+    // ①-⑧⓪⓪-⑤⑤⑤-⓪①⓪⓪  →  fold_char  →  1-800-555-0100
+    let title =
+        "\u{2460}-\u{2467}\u{24EA}\u{24EA}-\u{2464}\u{2464}\u{2464}-\u{24EA}\u{2460}\u{24EA}\u{24EA} call now";
+    let w = alert_window(title);
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "phone_number"),
+        "phone_number signal expected for circled-digit phone; signals={:?}",
+        v.signals
+    );
+}
+
+/// Dingbat negative circled digits ❶–❾ used to encode a 7-digit local number.
+#[test]
+fn dingbat_circled_digit_phone_fires_phone_number() {
+    // ❶❽❶-❺❺❺❶  →  1-800-555-0100 not possible with only 1–9; use 7-digit:
+    // ❶❷❸-❹❺❻❼  →  fold  →  1234567 (7 ASCII digits) → phone match
+    let title = "ALERT: \u{2776}\u{2777}\u{2778}-\u{2779}\u{277A}\u{277B}\u{277C}";
+    let w = alert_window(title);
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "phone_number"),
+        "phone_number signal expected for dingbat-circled-digit phone; signals={:?}",
+        v.signals
+    );
+}
+
 /// FP guard: a legitimate price / order reference containing the letter O and
 /// lowercase L must not trigger a false phone-number alarm.
 #[test]
