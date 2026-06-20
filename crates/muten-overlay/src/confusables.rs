@@ -297,28 +297,30 @@ pub fn fold_char(c: char) -> char {
 /// letter/digit, or return `None` if `u` is not one we fold.
 ///
 /// The block lays each *style* out as a contiguous run: 26 uppercase, then 26
-/// lowercase (for letters), or 10 digits. We fold **ten** letter styles:
-/// - The eight originally-covered hole-free styles (bold, italic, bold-italic,
-///   the four sans-serif variants, monospace).
-/// - **Mathematical Bold Script** (U+1D4D0–U+1D503, A–Z then a–z, NO holes):
-///   `𝓐𝓑𝓒…𝓪𝓫𝓬` — the most popular "fancy text" style that attackers use;
-///   this style had no holes so was always safe to cover via contiguous range.
-/// - **Mathematical Bold Fraktur** (U+1D56C–U+1D59F, A–Z then a–z, NO holes):
-///   `𝕬𝕭𝕮…𝖆𝖇𝖈` — gothic/blackletter style, same no-hole property.
+/// lowercase (for letters), or 10 digits. We fold **sixteen** letter styles:
+/// - Ten full 52-char styles (bold, italic, bold-italic, bold-script,
+///   bold-fraktur, and the four sans-serif variants + monospace): `LETTER_BASES`.
+/// - Six 26-char half-ranges for the three hole-bearing styles — Script,
+///   Fraktur, Double-struck — where uppercase and lowercase occupy *separate*
+///   26-char runs separated by inter-style gaps: `HALF_RANGES`.
 ///
-/// The regular Script, Fraktur, and Double-struck styles are still omitted from
-/// the range table (they have codepoint holes), but individual hole-filling
-/// characters in those styles are mapped explicitly in `fold_char`'s
-/// Letterlike Symbols section (rounds 11–12). Each fold is 1:1 (char count
-/// preserved).
+/// **"Hole" handling**: Script, Fraktur, and Double-struck have codepoint
+/// holes where a few letters live in the Letterlike Symbols block (U+2100–
+/// U+214F) rather than in the contiguous math run.  The hole positions in
+/// `HALF_RANGES` are left UNASSIGNED by the Unicode Consortium, so they can
+/// never appear in valid UTF-8 text.  Our formula `'A'/'a' + (u − base)`
+/// produces the correct ASCII letter for every *assigned* codepoint in the
+/// range; the hole-filling Letterlike characters are mapped explicitly in
+/// `fold_char`'s Letterlike Symbols section (rounds 11–12). Each fold is
+/// 1:1 (char count preserved).
 fn fold_math_alnum(u: u32) -> Option<char> {
-    // Contiguous alphabetic styles: each is 52 codepoints (A–Z then a–z).
+    // Full 52-codepoint styles (A–Z then a–z, no holes).
     const LETTER_BASES: &[u32] = &[
         0x1D400, // bold
         0x1D434, // italic
         0x1D468, // bold italic
-        0x1D4D0, // bold script    ← NEW (no holes; popular fancy-text style)
-        0x1D56C, // bold fraktur   ← NEW (no holes; gothic style)
+        0x1D4D0, // bold script    (round 12; no holes)
+        0x1D56C, // bold fraktur   (round 12; no holes)
         0x1D5A0, // sans-serif
         0x1D5D4, // sans-serif bold
         0x1D608, // sans-serif italic
@@ -333,6 +335,22 @@ fn fold_math_alnum(u: u32) -> Option<char> {
             } else {
                 char::from_u32(off - 26 + b'a' as u32)
             };
+        }
+    }
+    // 26-codepoint half-ranges for hole-bearing styles.
+    // Layout: (base_codepoint, b'A' for uppercase OR b'a' for lowercase).
+    // Hole positions within each range are UNASSIGNED (never in valid text).
+    const HALF_RANGES: &[(u32, u8)] = &[
+        (0x1D49C, b'A'), // Script Capital A–Z (holes B,E,F,H,I,L,M,R unassigned)
+        (0x1D4B6, b'a'), // Script Small   a–z (holes e,g,o unassigned)
+        (0x1D504, b'A'), // Fraktur Capital A–Z (holes C,H,I,R,Z unassigned)
+        (0x1D51E, b'a'), // Fraktur Small   a–z (no holes)
+        (0x1D538, b'A'), // Double-struck Capital A–Z (holes C,H,N,P,Q,R,Z unassigned)
+        (0x1D552, b'a'), // Double-struck Small   a–z (no holes)
+    ];
+    for &(base, ascii) in HALF_RANGES {
+        if (base..base + 26).contains(&u) {
+            return char::from_u32(u - base + ascii as u32);
         }
     }
     // Contiguous digit styles: each is 10 codepoints (0–9).
@@ -4157,6 +4175,66 @@ mod tests {
             fold_confusables(bold_script_paypal).to_ascii_lowercase(),
             "paypal"
         );
+    }
+
+    // ── Script / Fraktur / Double-struck half-range folding (Round 13) ──────
+
+    #[test]
+    fn fold_math_alnum_covers_script_capital_assigned_positions() {
+        // U+1D49C = 𝒜 MATHEMATICAL SCRIPT CAPITAL A → 'A'
+        assert_eq!(fold_math_alnum(0x1D49C), Some('A'));
+        // C is at U+1D49E (U+1D49D = B is unassigned; B lives at U+212C)
+        assert_eq!(fold_math_alnum(0x1D49E), Some('C'));
+        // S = 19th letter (offset 18): U+1D49C + 18 = U+1D4AE
+        assert_eq!(fold_math_alnum(0x1D4AE), Some('S'));
+    }
+
+    #[test]
+    fn fold_math_alnum_covers_script_small_assigned_positions() {
+        // U+1D4B6 = 𝒶 MATHEMATICAL SCRIPT SMALL A → 'a'
+        assert_eq!(fold_math_alnum(0x1D4B6), Some('a'));
+        // d = 4th letter (offset 3): U+1D4B6 + 3 = U+1D4B9
+        assert_eq!(fold_math_alnum(0x1D4B9), Some('d'));
+        // f = 6th letter (offset 5): U+1D4B6 + 5 = U+1D4BB
+        assert_eq!(fold_math_alnum(0x1D4BB), Some('f')); // 𝒻
+                                                         // z = 26th letter (offset 25): U+1D4B6 + 25 = U+1D4CF
+        assert_eq!(fold_math_alnum(0x1D4CF), Some('z'));
+    }
+
+    #[test]
+    fn fold_math_alnum_covers_fraktur_and_double_struck() {
+        // Fraktur Capital A (U+1D504) → 'A'
+        assert_eq!(fold_math_alnum(0x1D504), Some('A'));
+        // Fraktur Small a (U+1D51E) → 'a'
+        assert_eq!(fold_math_alnum(0x1D51E), Some('a'));
+        // Double-struck Capital A (U+1D538) → 'A'
+        assert_eq!(fold_math_alnum(0x1D538), Some('A'));
+        // Double-struck Small a (U+1D552) → 'a'
+        assert_eq!(fold_math_alnum(0x1D552), Some('a'));
+        // Double-struck Small z (U+1D56B) → 'z'
+        assert_eq!(fold_math_alnum(0x1D56B), Some('z'));
+    }
+
+    #[test]
+    fn fold_confusables_normalizes_fraktur_brand() {
+        // Fraktur Small base = U+1D51E (a).  Offsets: p=15, a=0, y=24, l=11.
+        // p = U+1D51E + 15 = U+1D52D  (𝔭)
+        // a = U+1D51E           (𝔞)
+        // y = U+1D51E + 24 = U+1D536 (𝔶)
+        // l = U+1D51E + 11 = U+1D529 (𝔩)
+        let fraktur_paypal = "\u{1D52D}\u{1D51E}\u{1D536}\u{1D52D}\u{1D51E}\u{1D529}";
+        assert_eq!(
+            fold_confusables(fraktur_paypal).to_ascii_lowercase(),
+            "paypal"
+        );
+    }
+
+    #[test]
+    fn fold_confusables_normalizes_double_struck_word() {
+        // 𝕪𝕠𝕦𝕣 = Double-struck small "your":
+        // y=U+1D56A, o=U+1D560, u=U+1D566, r=U+1D563
+        let ds_your = "\u{1D56A}\u{1D560}\u{1D566}\u{1D563}";
+        assert_eq!(fold_confusables(ds_your).to_ascii_lowercase(), "your");
     }
 
     #[test]
