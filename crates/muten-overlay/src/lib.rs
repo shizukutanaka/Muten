@@ -1378,9 +1378,13 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // 0→o, 1→i which would corrupt the digit run; digits never have leet codes.
     let alert_shaped =
         w.coverage_percent >= FULLSCREEN_COVERAGE || w.blocks_input || !w.has_close_button;
-    let phone_scan_text = confusables::strip_invisibles(&confusables::strip_combining_marks(
-        &confusables::fold_confusables(title),
-    ));
+    // fold_letter_digits_for_phone added in round 9: Cyrillic/Greek О folds to
+    // 'o' via fold_confusables; without this extra step the byte-level digit
+    // scanner in contains_phone_number would miss "1-8О0-555-О1ОО".
+    let phone_scan_text =
+        confusables::fold_letter_digits_for_phone(&confusables::strip_invisibles(
+            &confusables::strip_combining_marks(&confusables::fold_confusables(title)),
+        ));
     if alert_shaped && contains_phone_number(&phone_scan_text) {
         score += rules.weight_of("phone_number", W_PHONE_NUMBER);
         signals.push("phone_number".into());

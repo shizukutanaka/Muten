@@ -5548,3 +5548,79 @@ fn dollar_leet_fp_guard_price_does_not_fire() {
         "price title must not fire content signals; got {content_signals:?}"
     );
 }
+
+// ── Round 9: Unicode Tag Character + confusable-digit phone evasion ──────────
+
+/// Attacker substitutes Cyrillic О (U+041E, looks like zero) for the digit 0
+/// in a tech-support phone number: `1-8О0-555-О1ОО`. After `fold_confusables`
+/// the Cyrillic О maps to `'o'` (Latin), not `'0'`; without
+/// `fold_letter_digits_for_phone` the byte-level scanner misses it.
+#[test]
+fn cyrillic_zero_phone_evasion_fires_phone_number() {
+    // Cyrillic О at positions: 1-8[О]0-555-[О]1[ОО]  (4 substitutions)
+    let title = "Your PC is infected. Call 1-8\u{041E}0-555-\u{041E}1\u{041E}\u{041E} now";
+    let w = alert_window(title);
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "phone_number"),
+        "phone_number signal expected for Cyrillic-zero phone; got {:?}",
+        v.signals
+    );
+}
+
+/// Greek ο (U+03BF) — also folds to Latin 'o' via confusables.
+#[test]
+fn greek_omicron_phone_evasion_fires_phone_number() {
+    let title = "WARNING: Call 1-8\u{03BF}\u{03BF}-555-\u{03BF}1\u{03BF}\u{03BF} for support";
+    let w = alert_window(title);
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        v.signals.iter().any(|s| s == "phone_number"),
+        "phone_number signal expected for Greek-omicron phone; got {:?}",
+        v.signals
+    );
+}
+
+/// Unicode Tag Character (U+E0041 = TAG LATIN CAPITAL LETTER A) inserted
+/// between real letters splits "infected" for naive substring matchers, but is
+/// invisible to the human reader. After `strip_invisibles` removes it the word
+/// reunites and blocklist matching succeeds.
+#[test]
+fn tag_char_split_keyword_still_triggers() {
+    // TAG CAPITAL A (U+E0041) inserted between 'f' and 'e' in "infected".
+    let raw = "inf\u{E0041}ected";
+    assert!(
+        !raw.contains("infected"),
+        "pre-condition: raw string must NOT contain the plain keyword"
+    );
+    let normalized = muten_overlay::confusables::normalize_for_match(raw);
+    assert!(
+        normalized.contains("infected"),
+        "after normalize_for_match tag char is stripped and keyword is restored; got {normalized:?}"
+    );
+}
+
+/// FP guard: a legitimate price / order reference containing the letter O and
+/// lowercase L must not trigger a false phone-number alarm.
+#[test]
+fn letter_o_and_l_in_order_ref_does_not_fire_phone() {
+    // "Order #OL-1234567" — after letter-digit fold: "Order #01-1234567" = 7
+    // digits, which WOULD match. Guarded by alert_shaped check (no alert shape
+    // here) and the `prev_is_alnum` boundary guard in contains_phone_number.
+    let w = OverlayWindow {
+        title: "Order #OL-1234567 confirmed".into(),
+        coverage_percent: 10, // not fullscreen
+        topmost: false,
+        has_close_button: true,
+        blocks_input: false,
+        origin: Origin::UserInitiated,
+        age_ms: 5_000,
+        url: None,
+    };
+    let v = classify(&w, &Ruleset::default());
+    assert!(
+        !v.signals.iter().any(|s| s == "phone_number"),
+        "order reference must not fire phone_number; got {:?}",
+        v.signals
+    );
+}

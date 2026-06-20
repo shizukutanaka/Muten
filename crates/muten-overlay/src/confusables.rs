@@ -361,23 +361,28 @@ pub fn normalize_host_for_match(s: &str) -> String {
     fold_host_confusables(&s).to_ascii_lowercase()
 }
 
-/// True if `c` is a zero-width, formatting, or BiDi-control character.
-///
-/// These are invisible to a human but split a word for a naive
-/// substring matcher: `"in\u{200B}fected"` renders as "infected" yet
-/// `str::contains("infected")` fails. Attackers also use BiDi
-/// overrides (U+202A..U+202E, U+2066..U+2069) to reorder displayed
-/// text. We strip them before matching. (IMPROVEMENT_ROADMAP C8-5/C8-9.)
+/// True if `c` is a zero-width, formatting, BiDi-control, or Unicode Tag
+/// character — invisible to a human reader but able to split a word for a
+/// naive substring matcher: `"in\u{200B}fected"` renders as "infected" yet
+/// `str::contains("infected")` fails. Attackers also use BiDi overrides
+/// (U+202A..U+202E, U+2066..U+2069) to reorder displayed text, and Unicode
+/// Tag Characters (U+E0000..U+E007F) as a completely separate invisible
+/// alphabet not in our earlier ranges. We strip them all before matching.
+/// (IMPROVEMENT_ROADMAP C8-5/C8-9.)
 fn is_invisible(c: char) -> bool {
     matches!(c,
         '\u{200B}' | '\u{200C}' | '\u{200D}' | // ZWSP / ZWNJ / ZWJ
         '\u{2060}' |                            // word joiner
         '\u{FEFF}' |                            // ZWNBSP / BOM
         '\u{00AD}' |                            // soft hyphen
+        '\u{034F}' |                            // combining grapheme joiner
+        '\u{115F}' | '\u{1160}' |              // Hangul choseong/jungseong filler
         '\u{180E}' |                            // Mongolian vowel separator
         '\u{200E}' | '\u{200F}' |               // LRM / RLM
         '\u{202A}'..='\u{202E}' |               // LRE/RLE/PDF/LRO/RLO
-        '\u{2066}'..='\u{2069}'                 // LRI/RLI/FSI/PDI
+        '\u{2028}' | '\u{2029}' |               // Line Separator / Paragraph Separator
+        '\u{2066}'..='\u{2069}' |              // LRI/RLI/FSI/PDI
+        '\u{E0000}'..='\u{E007F}'              // Unicode Tag Characters (invisible alphabet)
     )
 }
 
@@ -386,6 +391,33 @@ fn is_invisible(c: char) -> bool {
 #[must_use]
 pub fn strip_invisibles(s: &str) -> String {
     s.chars().filter(|&c| !is_invisible(c)).collect()
+}
+
+/// Map letter-confusables-of-digits back to the digit they impersonate, for
+/// the phone-number scanning path **only**.
+///
+/// `fold_confusables` maps visually similar Unicode chars to their UTS#39
+/// skeleton — so Cyrillic О (U+041E) → `'o'`, Greek ο (U+03BF) → `'o'`.
+/// `contains_phone_number` is byte-level and only recognises ASCII digits, so
+/// without this step `1-8О0-555-О1ОО` escapes detection. We map just the two
+/// safest pairs (FP risk is negligible: the phone regex still requires a
+/// contiguous 7–15-digit run):
+///
+/// - `'o'`/`'O'` → `'0'` (Cyrillic/Greek О, fullwidth O, etc.)
+/// - `'l'` → `'1'` (lowercase L — `1` substitute; capital `I` omitted,
+///   too common in legitimate ALL-CAPS words)
+///
+/// **Do NOT use in `normalize_for_match`** — leet folding goes the other
+/// direction there (`0→o`, `1→i`) and this would produce a destructive cycle.
+#[must_use]
+pub fn fold_letter_digits_for_phone(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            'o' | 'O' => '0',
+            'l' => '1',
+            _ => c,
+        })
+        .collect()
 }
 
 /// Remove Unicode combining diacritical marks from `s`. Never lengthens the
@@ -4070,6 +4102,56 @@ mod tests {
         assert_eq!(strip_invisibles("a\u{200C}b\u{FEFF}c\u{00AD}d"), "abcd");
         // BiDi controls are stripped too.
         assert_eq!(strip_invisibles("ab\u{202E}cd"), "abcd");
+    }
+
+    #[test]
+    fn strip_invisibles_strips_tag_characters() {
+        // An attacker inserts Unicode Tag Characters (U+E0000–U+E007F) between
+        // real letters as invisible separators.  The raw string no longer
+        // contains the plain substring "infected", defeating naive `contains`,
+        // but strip_invisibles removes them and the word is reunited.
+        //
+        // U+E0041 = TAG LATIN CAPITAL LETTER A — pure invisible separator here.
+        assert_eq!(strip_invisibles("inf\u{E0041}ected"), "infected");
+        // Multiple tag chars collapsed — inserted *after* 'f', before 'e'.
+        assert_eq!(strip_invisibles("inf\u{E0066}\u{E0041}ected"), "infected");
+        // Full range boundary: U+E0000 (TAG NULL) and U+E007F (CANCEL TAG).
+        assert_eq!(strip_invisibles("vi\u{E0000}rus"), "virus");
+        assert_eq!(strip_invisibles("vi\u{E007F}rus"), "virus");
+        // Plain ASCII is untouched.
+        assert_eq!(strip_invisibles("normal text"), "normal text");
+    }
+
+    #[test]
+    fn strip_invisibles_strips_combining_grapheme_joiner_and_hangul_fillers() {
+        // U+034F (COMBINING GRAPHEME JOINER) — invisible joining char.
+        assert_eq!(strip_invisibles("vi\u{034F}rus"), "virus");
+        // U+115F / U+1160 — Hangul fillers used as blank padding.
+        assert_eq!(strip_invisibles("a\u{115F}b\u{1160}c"), "abc");
+        // U+2028 / U+2029 — Line/Paragraph Separator.
+        assert_eq!(strip_invisibles("a\u{2028}b\u{2029}c"), "abc");
+    }
+
+    // ── fold_letter_digits_for_phone ──────────────────────────────────────
+
+    #[test]
+    fn fold_letter_digits_maps_o_and_l() {
+        // 'o'/'O' → '0', 'l' → '1'; other chars unchanged.
+        assert_eq!(
+            fold_letter_digits_for_phone("1-8oo-555-o1oo"),
+            "1-800-555-0100"
+        );
+        assert_eq!(
+            fold_letter_digits_for_phone("l-8OO-555-O1OO"),
+            "1-800-555-0100"
+        );
+        assert_eq!(fold_letter_digits_for_phone("abc123"), "abc123"); // no o or l
+    }
+
+    #[test]
+    fn fold_letter_digits_leaves_capital_i_alone() {
+        // Capital I is too common in legitimate ALLCAPS text; deliberately not mapped.
+        assert_eq!(fold_letter_digits_for_phone("INFECTED"), "INFECTED");
     }
 
     #[test]
