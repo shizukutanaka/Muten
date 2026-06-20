@@ -5258,3 +5258,96 @@ fn triple_ideographic_space_clickfix_paste_command_fires() {
         v.signals
     );
 }
+
+// ── Round 5: non-ASCII decimal digit script evasion ───────────────────────────
+
+#[test]
+fn arabic_indic_countdown_evasion_fires_urgency_countdown() {
+    // Scam title with Arabic-Indic digits for the countdown: ٥:٠٠ = 5:00.
+    // After normalize_for_match, fold_char maps ٥→5 and ٠→0, so
+    // has_urgency_countdown detects the M:SS pattern.
+    let title = "your session expires in \u{0665}:\u{0660}\u{0660} call support immediately";
+    let rules = Ruleset::default();
+    let v = classify(&alert_window(title), &rules);
+    assert!(
+        v.signals.iter().any(|s| s == "urgency_countdown"),
+        "Arabic-Indic 5:00 countdown evasion must fire urgency_countdown; signals = {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= SUSPICIOUS_THRESHOLD,
+        "score {} < SUSPICIOUS_THRESHOLD {}",
+        v.score,
+        SUSPICIOUS_THRESHOLD
+    );
+}
+
+#[test]
+fn persian_ext_arabic_countdown_evasion_fires_urgency_countdown() {
+    // Extended Arabic-Indic (Persian/Urdu) digits: ۲:۵۹ = 2:59.
+    let title = "alert virus infected \u{06F2}:\u{06F5}\u{06F9} call support";
+    let rules = Ruleset::default();
+    let v = classify(&alert_window(title), &rules);
+    assert!(
+        v.signals.iter().any(|s| s == "urgency_countdown"),
+        "Persian ext-Arabic-Indic 2:59 countdown must fire urgency_countdown; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn devanagari_countdown_evasion_fires_urgency_countdown() {
+    // Devanagari digits: ५:०० = 5:00. Used by scam pages targeting Hindi speakers.
+    let title = "critical threat detected \u{096B}:\u{0966}\u{0966}";
+    let rules = Ruleset::default();
+    let v = classify(&alert_window(title), &rules);
+    assert!(
+        v.signals.iter().any(|s| s == "urgency_countdown"),
+        "Devanagari 5:00 countdown must fire urgency_countdown; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn script_digit_countdown_fp_guard_no_urgency_keyword_does_not_fire() {
+    // Thai digits showing a cooking timer — no urgency keyword → no fire.
+    // ๕:๐๐ = 5:00 in Thai numerals, but the title is non-scam.
+    let title = "timer \u{0E55}:\u{0E50}\u{0E50} remaining";
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: title.into(),
+            url: None,
+            coverage_percent: 30,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        },
+        &rules,
+    );
+    let content_signals: Vec<&str> = v
+        .signals
+        .iter()
+        .map(String::as_str)
+        .filter(|s| {
+            !matches!(
+                *s,
+                "fullscreen"
+                    | "topmost"
+                    | "no_close_button"
+                    | "blocks_input"
+                    | "unsolicited"
+                    | "very_new"
+                    | "input_trap"
+                    | "sudden_fullscreen_takeover"
+                    | "user_initiated"
+            )
+        })
+        .collect();
+    assert!(
+        content_signals.is_empty(),
+        "Thai timer without urgency keyword must not fire content signals; got {content_signals:?}"
+    );
+}

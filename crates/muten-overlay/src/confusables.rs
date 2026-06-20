@@ -205,6 +205,28 @@ pub fn fold_char(c: char) -> char {
                     }
                 }
             }
+            // Non-ASCII decimal digit scripts → ASCII '0'–'9'.
+            // Each block is 10 contiguous codepoints (digit 0 at base, digit 9
+            // at base+9). Mirrors the blocks tracked by `digit_system` so that
+            // `has_urgency_countdown` (which uses `is_ascii_digit()`) detects
+            // countdowns written in localised numerals after `normalize_for_match`.
+            // `has_mixed_number_systems` runs on the raw string before this fold,
+            // so cross-script digit mixing is still caught independently.
+            const SCRIPT_DIGIT_BASES: [u32; 6] = [
+                0x0660, // Arabic-Indic          ٠١٢٣٤٥٦٧٨٩
+                0x06F0, // Ext. Arabic-Indic      ۰۱۲۳۴۵۶۷۸۹  (Persian/Urdu)
+                0x0966, // Devanagari             ०१२३४५६७८९
+                0x09E6, // Bengali                ০১২৩৪৫৬৭৮৯
+                0x0BE6, // Tamil                  ௦௧௨௩௪௫௬௭௮௯
+                0x0E50, // Thai                   ๐๑๒๓๔๕๖๗๘๙
+            ];
+            for base in SCRIPT_DIGIT_BASES {
+                if u >= base && u < base + 10 {
+                    if let Some(ascii) = char::from_u32(u - base + b'0' as u32) {
+                        return ascii;
+                    }
+                }
+            }
             c
         }
     }
@@ -3530,6 +3552,43 @@ mod tests {
     }
 
     #[test]
+    fn folds_script_digits_to_ascii() {
+        // Arabic-Indic ٠١٢٣٤٥٦٧٨٩ → 0123456789
+        assert_eq!(fold_char('\u{0660}'), '0');
+        assert_eq!(fold_char('\u{0665}'), '5');
+        assert_eq!(fold_char('\u{0669}'), '9');
+        // Extended Arabic-Indic (Persian/Urdu) ۰–۹
+        assert_eq!(fold_char('\u{06F0}'), '0');
+        assert_eq!(fold_char('\u{06F5}'), '5');
+        assert_eq!(fold_char('\u{06F9}'), '9');
+        // Devanagari ०–९
+        assert_eq!(fold_char('\u{0966}'), '0');
+        assert_eq!(fold_char('\u{096B}'), '5');
+        assert_eq!(fold_char('\u{096F}'), '9');
+        // Bengali ০–৯
+        assert_eq!(fold_char('\u{09E6}'), '0');
+        assert_eq!(fold_char('\u{09EB}'), '5');
+        assert_eq!(fold_char('\u{09EF}'), '9');
+        // Tamil ௦–௯
+        assert_eq!(fold_char('\u{0BE6}'), '0');
+        assert_eq!(fold_char('\u{0BEB}'), '5');
+        assert_eq!(fold_char('\u{0BEF}'), '9');
+        // Thai ๐–๙
+        assert_eq!(fold_char('\u{0E50}'), '0');
+        assert_eq!(fold_char('\u{0E55}'), '5');
+        assert_eq!(fold_char('\u{0E59}'), '9');
+        // Fold via fold_confusables on a mixed string.
+        assert_eq!(
+            fold_confusables("\u{0661}\u{0662}\u{0663}"), // ١٢٣
+            "123"
+        );
+        assert_eq!(
+            fold_confusables("\u{06F4}\u{06F5}\u{06F6}"), // ۴۵۶
+            "456"
+        );
+    }
+
+    #[test]
     fn folds_diacritics() {
         assert_eq!(fold_confusables("ínféctéd"), "infected");
     }
@@ -4600,6 +4659,33 @@ mod tests {
         // "3xp1r3s" → "expires" after normalize_for_match.
         let norm = normalize_for_match("3xp1r3s in 4:59 call 1-800");
         assert!(has_urgency_countdown(&norm));
+    }
+
+    #[test]
+    fn urgency_countdown_defeats_arabic_indic_digits_via_normalize() {
+        // Arabic-Indic "٥:٠٠" (5:00) — `fold_char` maps ٥→5, ٠→0.
+        let norm = normalize_for_match("your session expires in \u{0665}:\u{0660}\u{0660}");
+        assert!(has_urgency_countdown(&norm), "Arabic-Indic 5:00: {norm:?}");
+        // Extended Arabic-Indic (Persian) "۲:۵۹" (2:59) — alert + countdown.
+        let norm2 =
+            normalize_for_match("alert virus infected \u{06F2}:\u{06F5}\u{06F9} call support");
+        assert!(
+            has_urgency_countdown(&norm2),
+            "Persian ext-Arabic-Indic 2:59: {norm2:?}"
+        );
+        // Devanagari digits "५:०० " (5:00) — critical + countdown.
+        let norm3 = normalize_for_match("critical threat \u{096B}:\u{0966}\u{0966}");
+        assert!(has_urgency_countdown(&norm3), "Devanagari 5:00: {norm3:?}");
+    }
+
+    #[test]
+    fn urgency_countdown_no_fp_on_localised_digits_without_urgency() {
+        // Thai digits with no scam urgency keyword — must not fire.
+        let norm = normalize_for_match("timer \u{0E55}:\u{0E50}\u{0E50}");
+        assert!(
+            !has_urgency_countdown(&norm),
+            "Thai 5:00 without urgency keyword must not fire"
+        );
     }
 
     // ── has_forced_retention ──────────────────────────────────────────
