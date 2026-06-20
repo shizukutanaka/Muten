@@ -1099,6 +1099,17 @@ const REMOTE_ACCESS_TOOLS: &[&str] = &[
     "ammyy",
     "supremo",
     "aeroadmin",
+    // Added: high-prevalence tools in 2025–2026 scam campaigns.
+    // NetSupport Manager/RAT is the #1 RAT deployed by ClickFix/GlitchFix
+    // campaigns (Huntress Jan 2026, MS Security Blog 2025, FBI IC3 2025).
+    "netsupport",
+    // Zoho Assist is the dominant tool in tech-support-scam helpdesk impersonation
+    // (IC3 2025, Malwarebytes threat report 2025).
+    "zoho",
+    // Splashtop is used in enterprise-targeted tech-support scams.
+    "splashtop",
+    // GoToMyPC (legacy Citrix tool) still appears in older tech-support scam scripts.
+    "gotomypc",
 ];
 
 /// True if the (already-normalized) title mentions a known remote-access

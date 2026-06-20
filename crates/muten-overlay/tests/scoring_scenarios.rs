@@ -5351,3 +5351,134 @@ fn script_digit_countdown_fp_guard_no_urgency_keyword_does_not_fire() {
         "Thai timer without urgency keyword must not fire content signals; got {content_signals:?}"
     );
 }
+
+// ── Round 6: new RAT tool names + Japanese ClickFix patterns ─────────────────
+
+#[test]
+fn netsupport_rat_fires_remote_access_lure_with_phone_number() {
+    // NetSupport is the #1 RAT deployed by ClickFix/GlitchFix (Huntress Jan 2026,
+    // MS Security Blog 2025). It was missing from REMOTE_ACCESS_TOOLS.
+    let rules = Ruleset::parse("title: your computer is infected\nphone: 18005550100");
+    let v = classify(
+        &OverlayWindow {
+            title: "your computer is infected — install netsupport now 1-800-555-0100".into(),
+            url: None,
+            coverage_percent: 98,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 500,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "remote_access_lure"),
+        "netsupport must fire remote_access_lure when fake-alert evidence present; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn zoho_fires_remote_access_lure_with_phone_number() {
+    // Zoho Assist is the dominant tool in helpdesk-impersonation tech-support
+    // scams (IC3 2025, Malwarebytes 2025).
+    let rules = Ruleset::parse("phone: 18005550199");
+    let v = classify(
+        &OverlayWindow {
+            title: "microsoft support — connect via zoho assist call 1-800-555-0199".into(),
+            url: None,
+            coverage_percent: 97,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 400,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "remote_access_lure"),
+        "zoho must fire remote_access_lure; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_clickfix_command_paste_fires() {
+    // Japanese ClickFix: "コマンドを貼り付けてください" (please paste the command).
+    // Previously zero Japanese patterns in has_clickfix_instruction.
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "ブラウザのエラーを修正するためにコマンドを貼り付けてください".into(),
+            url: None,
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 300,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "clickfix_instruction"),
+        "JP 'コマンドを貼り付けて' must fire clickfix_instruction; signals = {:?}",
+        v.signals
+    );
+    assert!(
+        v.score >= SUSPICIOUS_THRESHOLD,
+        "score {} < SUSPICIOUS_THRESHOLD",
+        v.score
+    );
+}
+
+#[test]
+fn jp_glitchfix_font_missing_fires() {
+    // Japanese GlitchFix: "フォントが見つかりません" (font not found).
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "フォントが見つかりません — インストールしてから続行してください".into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "clickfix_instruction"),
+        "JP 'フォントが見つかりません' must fire clickfix_instruction; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn jp_clickfix_fp_guard_benign_command_prompt_does_not_fire() {
+    // "コマンドプロンプトを開く" (open command prompt) — contains コマンド but
+    // NOT the "コマンドを" pattern that indicates a paste/run instruction.
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: "コマンドプロンプトを開く".into(),
+            url: None,
+            coverage_percent: 30,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+        },
+        &rules,
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "clickfix_instruction"),
+        "コマンドプロンプトを開く must NOT fire clickfix_instruction; signals = {:?}",
+        v.signals
+    );
+}

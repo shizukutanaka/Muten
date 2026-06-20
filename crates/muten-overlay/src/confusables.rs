@@ -1293,7 +1293,33 @@ pub fn has_clickfix_instruction(s: &str) -> bool {
                 || s.contains("press")))
         || s.contains("system font");
 
-    shortcut || run_cmd || captcha_frame || glitchfix
+    // Japanese-language ClickFix / ClearFake / GlitchFix variants.
+    //
+    // ClearFake and ClickFix campaigns increasingly target Japanese users with
+    // localised lures. `normalize_for_match` preserves CJK (only ASCII is
+    // lowercased), so these substring checks work on the normalized title.
+    //
+    // Run-dialog / command-execution framing:
+    //   "コマンドを[貼り付け|実行|入力]" — paste/run/enter the command
+    // CAPTCHA framing:
+    //   "ロボットではない" — "not a robot" (direct JP translation of the EN check)
+    //   "人間か確認" — confirm [you are] human
+    // GlitchFix / browser-error framing:
+    //   "ブラウザが停止" — browser stopped (GlitchFix JP variant)
+    //   "ブラウザが動作を停止" — browser stopped working
+    //   "フォントが[見つかりません|必要|インストール]" — font missing/required (JP GlitchFix)
+    let jp_clickfix = s.contains("コマンドを")   // run/paste/type [the command] — any verb follows
+        || s.contains("ロボットではない")         // not a robot (CAPTCHA framing)
+        || (s.contains("人間") && s.contains("確認")) // confirm [you are] human
+        || s.contains("ブラウザが停止")           // browser stopped (GlitchFix JP)
+        || s.contains("ブラウザが動作を停止")     // browser stopped working
+        || (s.contains("フォントが")
+            && (s.contains("見つかりません")
+                || s.contains("必要")
+                || s.contains("インストール"))) // font missing/required (subject form)
+        || (s.contains("フォントを") && s.contains("インストール")); // install font (object form)
+
+    shortcut || run_cmd || captcha_frame || glitchfix || jp_clickfix
 }
 
 /// Detect a countdown/timer pattern (`M:SS` or `MM:SS`) combined with an
@@ -4608,6 +4634,47 @@ mod tests {
         assert!(!has_clickfix_instruction("open browser settings"));
         assert!(!has_clickfix_instruction("change font size"));
         assert!(!has_clickfix_instruction("check for browser update"));
+    }
+
+    #[test]
+    fn jp_clickfix_command_framing_fires() {
+        // "コマンドを" prefix catches paste/run/enter phrasings without
+        // enumerating every Japanese verb form.
+        assert!(has_clickfix_instruction("コマンドを貼り付けてください"));
+        assert!(has_clickfix_instruction("コマンドを実行してください"));
+        assert!(has_clickfix_instruction("コマンドを入力してください"));
+    }
+
+    #[test]
+    fn jp_clickfix_captcha_framing_fires() {
+        assert!(has_clickfix_instruction(
+            "ロボットではないことを確認してください"
+        ));
+        assert!(has_clickfix_instruction("あなたが人間か確認するために"));
+    }
+
+    #[test]
+    fn jp_glitchfix_browser_stopped_fires() {
+        assert!(has_clickfix_instruction("ブラウザが停止しました"));
+        assert!(has_clickfix_instruction("ブラウザが動作を停止しました"));
+    }
+
+    #[test]
+    fn jp_glitchfix_font_missing_fires() {
+        assert!(has_clickfix_instruction("フォントが見つかりません"));
+        assert!(has_clickfix_instruction("フォントが必要です"));
+        assert!(has_clickfix_instruction(
+            "フォントをインストールしてください"
+        ));
+    }
+
+    #[test]
+    fn jp_clickfix_fp_guard_does_not_fire_on_benign_jp_text() {
+        // Generic Japanese text without any ClickFix pattern must not fire.
+        assert!(!has_clickfix_instruction("コマンドプロンプトを開く")); // "open command prompt" — no を直後動詞
+        assert!(!has_clickfix_instruction("ブラウザの設定を変更する")); // "change browser settings"
+        assert!(!has_clickfix_instruction("フォントのサイズを変更する")); // "change font size"
+        assert!(!has_clickfix_instruction("人間工学に基づいた設計")); // "ergonomic design" (人間 ≠ ClickFix alone)
     }
 
     // ── has_urgency_countdown ─────────────────────────────────────
