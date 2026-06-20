@@ -122,6 +122,29 @@ pub fn fold_char(c: char) -> char {
         // ── a couple of symbol look-alikes ──
         '\u{0131}' => 'i', // dotless i
         '0' => '0',        // (kept; digits handled elsewhere)
+        // ── Dash / hyphen variants ───────────────────────────────────────────
+        // These are visually identical to ASCII hyphen-minus (U+002D) but are
+        // different codepoints — so "v–i–r–u–s" (en dash) bypasses the
+        // `collapse_spread_characters` separator set, which only recognises
+        // '-'. Folding at step 7 (before the collapse at step 8) lets the
+        // rejoiner see the ASCII separator it expects.  Covers the full
+        // Unicode "Dash Punctuation" run used in typography plus MINUS SIGN.
+        '\u{2010}' // ‐ HYPHEN
+        | '\u{2011}' // ‑ NON-BREAKING HYPHEN
+        | '\u{2012}' // ‒ FIGURE DASH
+        | '\u{2013}' // – EN DASH
+        | '\u{2014}' // — EM DASH
+        | '\u{2015}' // ― HORIZONTAL BAR
+        | '\u{2212}' // − MINUS SIGN
+        => '-',
+        // ── Katakana Middle Dot ──────────────────────────────────────────────
+        // U+30FB ・ KATAKANA MIDDLE DOT is a legitimate word-separator in
+        // Japanese text (e.g. ペイパル・ログイン) but also used to spread-encode
+        // ASCII keywords: "v・i・r・u・s".  Folding to U+00B7 · (MIDDLE DOT,
+        // already in the collapse separator set) lets the rejoiner handle it.
+        // The halfwidth form U+FF65 ･ reaches here as U+30FB after
+        // fold_halfwidth_katakana (step 3 of normalize_for_match).
+        '\u{30FB}' => '\u{00B7}', // ・ → ·
         _ => {
             let u = c as u32;
             // Full-width ASCII block U+FF01..U+FF5E → U+0021..U+007E.
@@ -8962,6 +8985,62 @@ mod spread_char_tests {
         // Benign spaced text must not be conjured into a scam match.
         let raw = "w e l c o m e   t o   t h e   s h o w";
         assert!(!has_family_emergency_scam(&normalize_for_match(raw)));
+    }
+
+    // ── Dash-variant + katakana-dot spread separators ────────────────────────
+
+    #[test]
+    fn fold_char_maps_dash_variants_to_hyphen() {
+        assert_eq!(fold_char('\u{2010}'), '-'); // ‐ HYPHEN
+        assert_eq!(fold_char('\u{2011}'), '-'); // ‑ NON-BREAKING HYPHEN
+        assert_eq!(fold_char('\u{2012}'), '-'); // ‒ FIGURE DASH
+        assert_eq!(fold_char('\u{2013}'), '-'); // – EN DASH
+        assert_eq!(fold_char('\u{2014}'), '-'); // — EM DASH
+        assert_eq!(fold_char('\u{2015}'), '-'); // ― HORIZONTAL BAR
+        assert_eq!(fold_char('\u{2212}'), '-'); // − MINUS SIGN
+    }
+
+    #[test]
+    fn fold_char_maps_katakana_middle_dot_to_ascii_middle_dot() {
+        assert_eq!(fold_char('\u{30FB}'), '\u{00B7}'); // ・ → ·
+    }
+
+    #[test]
+    fn normalize_collapses_en_dash_spread() {
+        // "v–i–r–u–s" (EN DASH U+2013) must rejoin to "virus".
+        let evaded = "v\u{2013}i\u{2013}r\u{2013}u\u{2013}s";
+        assert_eq!(normalize_for_match(evaded), "virus");
+    }
+
+    #[test]
+    fn normalize_collapses_em_dash_spread() {
+        // "v—i—r—u—s" (EM DASH U+2014) must rejoin.
+        let evaded = "v\u{2014}i\u{2014}r\u{2014}u\u{2014}s";
+        assert_eq!(normalize_for_match(evaded), "virus");
+    }
+
+    #[test]
+    fn normalize_collapses_minus_sign_spread() {
+        // "v−i−r−u−s" (MINUS SIGN U+2212) must rejoin.
+        let evaded = "v\u{2212}i\u{2212}r\u{2212}u\u{2212}s";
+        assert_eq!(normalize_for_match(evaded), "virus");
+    }
+
+    #[test]
+    fn normalize_collapses_katakana_dot_spread() {
+        // "v・i・r・u・s" (KATAKANA MIDDLE DOT U+30FB) → "virus".
+        let evaded = "v\u{30FB}i\u{30FB}r\u{30FB}u\u{30FB}s";
+        assert_eq!(normalize_for_match(evaded), "virus");
+    }
+
+    #[test]
+    fn normalize_collapses_halfwidth_katakana_dot_spread() {
+        // "v･i･r･u･s" (HALFWIDTH KATAKANA MIDDLE DOT U+FF65):
+        // fold_halfwidth_katakana (step 3) maps U+FF65 → U+30FB,
+        // then fold_char (step 7) maps U+30FB → U+00B7 (middle dot),
+        // then collapse_spread_characters rejoins.
+        let evaded = "v\u{FF65}i\u{FF65}r\u{FF65}u\u{FF65}s";
+        assert_eq!(normalize_for_match(evaded), "virus");
     }
 
     // ── sanitize_for_display ──────────────────────────────────────────────────

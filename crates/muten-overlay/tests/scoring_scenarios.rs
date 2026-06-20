@@ -4979,6 +4979,99 @@ fn zero_width_phone_evasion_fires_phone_number() {
     );
 }
 
+// ── Dash-variant spread-character evasion ────────────────────────────────────
+//
+// Unicode dash variants (U+2010 HYPHEN, U+2013 EN DASH, U+2014 EM DASH, and
+// U+2212 MINUS SIGN) look identical to ASCII `-` but were not in the
+// `collapse_spread_characters` separator set.  An attacker could write
+// "v–i–r–u–s f–o–u–n–d" (en dash) to defeat the rejoiner.  After the fix,
+// `fold_char` maps all dash variants to `-` at step 7, so the rejoiner at
+// step 8 sees the ASCII separator it expects.
+
+#[test]
+fn en_dash_spread_evasion_fires_fake_scanner_cue() {
+    // "virus found" with EN DASH (U+2013) between each letter.
+    let title = concat!(
+        "v\u{2013}i\u{2013}r\u{2013}u\u{2013}s ",
+        "f\u{2013}o\u{2013}u\u{2013}n\u{2013}d"
+    );
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: title.into(),
+            url: None,
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 50,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "fake_scanner_cue"),
+        "en-dash spread of 'virus found' must fire fake_scanner_cue; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn katakana_dot_spread_evasion_fires_fake_scanner_cue() {
+    // "virus found" with KATAKANA MIDDLE DOT (U+30FB) between each letter.
+    let title = concat!(
+        "v\u{30FB}i\u{30FB}r\u{30FB}u\u{30FB}s ",
+        "f\u{30FB}o\u{30FB}u\u{30FB}n\u{30FB}d"
+    );
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: title.into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 80,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "fake_scanner_cue"),
+        "katakana-dot spread of 'virus found' must fire fake_scanner_cue; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn dash_spread_fp_guard_no_alert_does_not_fire_content() {
+    // With no alert shape, spread-rejoining must not produce a content signal.
+    let title = concat!(
+        "v\u{2013}i\u{2013}r\u{2013}u\u{2013}s ",
+        "f\u{2013}o\u{2013}u\u{2013}n\u{2013}d"
+    );
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: title.into(),
+            url: None,
+            coverage_percent: 30,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 8_000,
+        },
+        &rules,
+    );
+    assert!(
+        !v.signals.iter().any(|s| s == "fake_scanner_cue"),
+        "dash-spread without alert shape must not fire fake_scanner_cue; signals = {:?}",
+        v.signals
+    );
+}
+
 // ── Enclosed Alphanumeric Supplement evasion (U+1F110–U+1F189) ──────────────
 //
 // Attackers can spell scam keywords using squared (🄿🅐🅈🄿🅐🄻) or negative-circled
