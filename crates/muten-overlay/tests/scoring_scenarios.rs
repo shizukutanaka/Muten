@@ -4978,3 +4978,132 @@ fn zero_width_phone_evasion_fires_phone_number() {
         v.signals
     );
 }
+
+// ── Enclosed Alphanumeric Supplement evasion (U+1F110–U+1F189) ──────────────
+//
+// Attackers can spell scam keywords using squared (🄿🅐🅈🄿🅐🄻) or negative-circled
+// (🅟🅐🅨🅟🅐🅛) Latin capital letters from the Enclosed Alphanumeric Supplement
+// block.  Before this fix, `strip_symbols_and_emoji` erased the entire
+// U+1F000–U+1FFFF range, so the folded title became empty — no blocklist match,
+// no compat_chars tell.  After the fix, the four letter ranges are carved out of
+// the emoji strip, `fold_char` maps them to ASCII, and `has_compat_alpha`
+// detects them as an evasion tell.
+
+#[test]
+fn supplement_negative_circled_evasion_fires_compat_chars_and_fake_scanner_cue() {
+    // "virus found" spelled in negative-circled capitals (U+1F150-range):
+    // V=0x1F165 I=0x1F158 R=0x1F161 U=0x1F164 S=0x1F162
+    // F=0x1F155 O=0x1F15E U=0x1F164 N=0x1F15D D=0x1F153
+    let title = "\u{1F165}\u{1F158}\u{1F161}\u{1F164}\u{1F162} \
+                 \u{1F155}\u{1F15E}\u{1F164}\u{1F15D}\u{1F153}";
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: title.into(),
+            url: None,
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 50,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "compat_chars_present"),
+        "negative-circled letter evasion must fire compat_chars_present; signals = {:?}",
+        v.signals
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "fake_scanner_cue"),
+        "negative-circled 'virus found' must fire fake_scanner_cue after folding; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn supplement_squared_evasion_fires_compat_chars_and_fake_scanner_cue() {
+    // "virus found" in squared capitals (U+1F130-range):
+    // V=0x1F145 I=0x1F138 R=0x1F141 U=0x1F144 S=0x1F142
+    // F=0x1F135 O=0x1F13E U=0x1F144 N=0x1F13D D=0x1F133
+    let title = "\u{1F145}\u{1F138}\u{1F141}\u{1F144}\u{1F142} \
+                 \u{1F135}\u{1F13E}\u{1F144}\u{1F13D}\u{1F133}";
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: title.into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 80,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "compat_chars_present"),
+        "squared-letter evasion must fire compat_chars_present; signals = {:?}",
+        v.signals
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "fake_scanner_cue"),
+        "squared 'virus found' must fire fake_scanner_cue after folding; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn supplement_letter_evasion_fp_guard_no_alert_does_not_fire_content_signals() {
+    // With no alert shape, content signals must not fire — compat_chars alone
+    // is low-weight and no content signals should be added without geometry.
+    // V=0x1F145 I=0x1F138 R=0x1F141 U=0x1F144 S=0x1F142
+    // F=0x1F135 O=0x1F13E U=0x1F144 N=0x1F13D D=0x1F133
+    let title = "\u{1F145}\u{1F138}\u{1F141}\u{1F144}\u{1F142} \
+                 \u{1F135}\u{1F13E}\u{1F144}\u{1F13D}\u{1F133}";
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: title.into(),
+            url: None,
+            coverage_percent: 30,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 8_000,
+        },
+        &rules,
+    );
+    let content_signals: Vec<&String> = v
+        .signals
+        .iter()
+        .filter(|s| {
+            !matches!(
+                s.as_str(),
+                "fullscreen"
+                    | "topmost"
+                    | "no_close_button"
+                    | "blocks_input"
+                    | "unsolicited"
+                    | "very_new"
+                    | "input_trap"
+                    | "sudden_fullscreen_takeover"
+                    | "user_initiated"
+                    | "compat_chars_present" // evasion-tell, fires unconditionally
+            )
+        })
+        .collect();
+    assert!(
+        content_signals.is_empty(),
+        "no alert-gated content signals must fire without alert shape; signals = {:?}",
+        v.signals
+    );
+    assert_ne!(
+        v.decision,
+        muten_overlay::Decision::Block,
+        "supplement-letter evasion without alert shape must not Block"
+    );
+}

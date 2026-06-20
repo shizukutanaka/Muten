@@ -163,6 +163,25 @@ pub fn fold_char(c: char) -> char {
             if let Some(ascii) = fold_math_alnum(u) {
                 return ascii;
             }
+            // Enclosed Alphanumeric Supplement — four A–Z letter sets used to
+            // disguise scam keywords: 🄿🅐🅈🄿🅐🄻 (squared), 🅟🅐🅨🅟🅐🅛
+            // (negative-circled), etc. Each range starts at A=base and runs 26
+            // codepoints to Z=base+25; the offset to ASCII 'a' is uniform.
+            // `is_emoji_or_symbol` carves these out of the emoji-strip step so
+            // they reach fold_char rather than being erased silently.
+            const SUPP_BASES: [u32; 4] = [
+                0x1F110, // Parenthesized Capital A–Z
+                0x1F130, // Squared Capital A–Z
+                0x1F150, // Negative Circled Capital A–Z
+                0x1F170, // Negative Squared Capital A–Z
+            ];
+            for base in SUPP_BASES {
+                if u >= base && u < base + 26 {
+                    if let Some(ascii) = char::from_u32(u - base + b'a' as u32) {
+                        return ascii;
+                    }
+                }
+            }
             c
         }
     }
@@ -349,13 +368,30 @@ pub fn strip_combining_marks(s: &str) -> String {
 /// - U+FE00–U+FEFF Variation selectors (turn ⚠ into ⚠️)
 /// - U+1F000–U+1FFFF Emoji / pictograph blocks
 ///
+/// **Carve-outs** (passed through for folding, not stripped):
+/// - U+1F110–U+1F129 Parenthesized Capital A–Z
+/// - U+1F130–U+1F149 Squared Capital A–Z
+/// - U+1F150–U+1F169 Negative Circled Capital A–Z
+/// - U+1F170–U+1F189 Negative Squared Capital A–Z
+///
+/// These are Enclosed Alphanumeric Supplement letter forms used in phishing
+/// to spell scam keywords (🅟🅐🅨🅟🅐🅛 = "paypal"). Stripping them would
+/// erase the evasion evidence before `fold_char` can convert them to ASCII.
+///
 /// NOT stripped: U+3000–U+30FF / U+4E00+ (CJK, Kana) — Japanese titles
 /// must pass through unaltered.
 fn is_emoji_or_symbol(c: char) -> bool {
-    matches!(c,
+    let u = c as u32;
+    (matches!(c,
         '\u{2600}'..='\u{27BF}' | // Misc Symbols + Dingbats
         '\u{FE00}'..='\u{FEFF}' | // Variation selectors
         '\u{1F000}'..='\u{1FFFF}' // Emoji / pictograph blocks
+    )) && !matches!(u,
+        // Enclosed Alphanumeric Supplement letter forms — folded by fold_char.
+        0x1F110..=0x1F129 | // Parenthesized Capital A–Z
+        0x1F130..=0x1F149 | // Squared Capital A–Z
+        0x1F150..=0x1F169 | // Negative Circled Capital A–Z
+        0x1F170..=0x1F189   // Negative Squared Capital A–Z
     )
 }
 
@@ -450,10 +486,12 @@ fn has_math_alpha_run(s: &str) -> bool {
 
 /// True if `s` contains a **compatibility-form alphabetic evasion** — either an
 /// enclosed Latin letter (parenthesized ⒜–⒵ U+249C–U+24B5, or circled Ⓐ–Ⓩ / ⓐ–ⓩ
-/// U+24B6–U+24E9) or a word spelled in Mathematical Alphanumeric "fancy text"
-/// glyphs (see [`has_math_alpha_run`]). Both are used in phishing titles to
-/// evade plain-text blocklist matching — `ⓟⓐⓨⓟⓐⓛ`, `⒫⒜⒴⒫⒜⒧`, and `𝐩𝐚𝐲𝐩𝐚𝐥` are
-/// invisible to `str::contains("paypal")` but look like "paypal" to a human.
+/// U+24B6–U+24E9), a letter from the Enclosed Alphanumeric Supplement (squared
+/// 🄰–🅉 U+1F130–U+1F149, negative-circled 🅰–🆉 U+1F150–U+1F169, etc.), or a
+/// word spelled in Mathematical Alphanumeric "fancy text" glyphs (see
+/// [`has_math_alpha_run`]). All are used in phishing titles to evade plain-text
+/// blocklist matching — `ⓟⓐⓨⓟⓐⓛ`, `🅟🅐🅨🅟🅐🅛`, and `𝐩𝐚𝐲𝐩𝐚𝐥` are invisible to
+/// `str::contains("paypal")` but look like "paypal" to a human.
 /// `normalize_for_match` now folds all of them (via [`fold_char`]) so blocklist
 /// matching catches them; this function detects their *presence* in a raw title
 /// as a high-confidence, low-FP evasion tell. Enclosed letters have essentially
@@ -464,9 +502,19 @@ fn has_math_alpha_run(s: &str) -> bool {
 /// The enclosed-letter range `U+249C..=U+24E9` is contiguous and gap-free:
 /// parenthesized small letters (249C–24B5) abut circled capitals (24B6–24CF)
 /// which abut circled small letters (24D0–24E9), all Latin letters.
+/// The supplement ranges (U+1F110–U+1F189) cover the four capital-only A–Z
+/// variants; each 26-char run is gap-free within itself.
 #[must_use]
 pub fn has_compat_alpha(s: &str) -> bool {
-    s.chars().any(|c| matches!(c as u32, 0x249C..=0x24E9)) || has_math_alpha_run(s)
+    s.chars().any(|c| {
+        let u = c as u32;
+        // Enclosed Alphanumerics block: parenthesized/circled small and capital.
+        matches!(u, 0x249C..=0x24E9)
+        // Enclosed Alphanumeric Supplement letter forms (four capital A–Z sets).
+        || matches!(u,
+            0x1F110..=0x1F129 | 0x1F130..=0x1F149
+            | 0x1F150..=0x1F169 | 0x1F170..=0x1F189)
+    }) || has_math_alpha_run(s)
 }
 
 /// Identify the decimal-digit *numbering system* of `c`, or `None` if
@@ -4134,6 +4182,68 @@ mod tests {
         assert!(has_compat_alpha("ⓟⓐⓨⓟⓐⓛ"));
         assert!(has_compat_alpha("Ⓐ")); // uppercase enclosed
         assert!(has_compat_alpha("normal text ⓩ mixed in"));
+    }
+
+    // ── Enclosed Alphanumeric Supplement (U+1F110–U+1F189) ───────
+
+    #[test]
+    fn fold_char_handles_supplement_parenthesized_capitals() {
+        // U+1F110 = parenthesized A → 'a'; U+1F11F = P → 'p'; U+1F129 = Z → 'z'.
+        assert_eq!(fold_char('\u{1F110}'), 'a'); // 🄰
+        assert_eq!(fold_char('\u{1F11F}'), 'p'); // 🄿
+        assert_eq!(fold_char('\u{1F129}'), 'z'); // 🄩
+    }
+
+    #[test]
+    fn fold_char_handles_supplement_squared_capitals() {
+        // U+1F130 = squared A → 'a'; U+1F13F = P → 'p'; U+1F149 = Z → 'z'.
+        assert_eq!(fold_char('\u{1F130}'), 'a'); // 🄰
+        assert_eq!(fold_char('\u{1F13F}'), 'p'); // 🄿
+        assert_eq!(fold_char('\u{1F149}'), 'z'); // 🅉
+    }
+
+    #[test]
+    fn fold_char_handles_supplement_negative_circled() {
+        // U+1F150 = negative-circled A → 'a'; P = +15 = 0x1F15F → 'p'; Z = +25 = 0x1F169 → 'z'.
+        assert_eq!(fold_char('\u{1F150}'), 'a'); // 🅰
+        assert_eq!(fold_char('\u{1F15F}'), 'p'); // 🅿
+        assert_eq!(fold_char('\u{1F169}'), 'z'); // 🆉
+    }
+
+    #[test]
+    fn fold_char_handles_supplement_negative_squared() {
+        // U+1F170 = negative-squared A → 'a'; P = +15 = 0x1F17F → 'p'; Z = +25 = 0x1F189 → 'z'.
+        assert_eq!(fold_char('\u{1F170}'), 'a'); // 🅰
+        assert_eq!(fold_char('\u{1F17F}'), 'p'); // 🅿
+        assert_eq!(fold_char('\u{1F189}'), 'z'); // 🆉
+    }
+
+    #[test]
+    fn has_compat_alpha_fires_on_supplement_letters() {
+        // Negative-circled "paypal": P=0x1F15F A=0x1F150 Y=0x1F168 P A L=0x1F15B.
+        assert!(has_compat_alpha(
+            "\u{1F15F}\u{1F150}\u{1F168}\u{1F15F}\u{1F150}\u{1F15B}"
+        ));
+        // Squared "paypal": P=0x1F13F A=0x1F130 Y=0x1F148 P A L=0x1F13B.
+        assert!(has_compat_alpha(
+            "\u{1F13F}\u{1F130}\u{1F148}\u{1F13F}\u{1F130}\u{1F13B}"
+        ));
+        // Single parenthesized supplement letter (U+1F110 = 🄰).
+        assert!(has_compat_alpha("\u{1F110}"));
+        // Single negative-squared letter (U+1F170 = 🅰).
+        assert!(has_compat_alpha("\u{1F170}"));
+    }
+
+    #[test]
+    fn normalize_for_match_folds_supplement_letters() {
+        // Negative-circled "paypal" → "paypal".
+        let neg_circ_paypal = "\u{1F15F}\u{1F150}\u{1F168}\u{1F15F}\u{1F150}\u{1F15B}";
+        assert_eq!(normalize_for_match(neg_circ_paypal), "paypal");
+        // Squared "virus found" — V=0x1F145 I=0x1F138 R=0x1F141 U=0x1F144 S=0x1F142
+        //                         F=0x1F135 O=0x1F13E U=0x1F144 N=0x1F13D D=0x1F133.
+        let sq_virus_found = "\u{1F145}\u{1F138}\u{1F141}\u{1F144}\u{1F142} \
+                              \u{1F135}\u{1F13E}\u{1F144}\u{1F13D}\u{1F133}";
+        assert_eq!(normalize_for_match(sq_virus_found), "virus found");
     }
 
     #[test]
