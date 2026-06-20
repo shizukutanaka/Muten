@@ -1187,16 +1187,23 @@ pub fn normalize_for_match(s: &str) -> String {
 #[must_use]
 pub fn has_clickfix_instruction(s: &str) -> bool {
     // Keyboard-shortcut execution instructions — the core ClickFix lure.
-    // Checked with and without spaces around `+` to match both "win+r" and
-    // "windows + r" after normalize_for_match lowercasing.
-    let shortcut = s.contains("win+r")
-        || s.contains("windows+r")
-        || s.contains("windows + r")
-        || s.contains("winkey")
-        || s.contains("ctrl+v")
-        || s.contains("ctrl + v")
-        || s.contains("ctrl+r")
-        || s.contains("alt+r");
+    //
+    // Match the shortcut tokens against a whitespace-stripped copy of the
+    // string so that *any* amount of spacing around the `+` is tolerated:
+    // "win+r", "win + r", "win  +  r", and the spread form "w i n + r" all
+    // collapse to the same compact token. Earlier this list enumerated only a
+    // few spaced variants by hand ("windows + r", "ctrl + v"), so the equally
+    // natural "win + r" / "ctrl + r" / "alt + r" phrasings slipped through.
+    // Stripping all ASCII whitespace is strictly more permissive than the old
+    // contains-chain and cannot lose a previously-matched form.
+    let compact: String = s.chars().filter(|c| !c.is_ascii_whitespace()).collect();
+    let shortcut = compact.contains("win+r")
+        || compact.contains("windows+r")
+        || compact.contains("winkey")
+        || compact.contains("ctrl+v")
+        || compact.contains("ctrl+r")
+        || compact.contains("alt+r")
+        || compact.contains("cmd+r"); // macOS run-equivalent framing
 
     // Run-dialog / command-execution framing phrases.
     let run_cmd = s.contains("open run")
@@ -4383,6 +4390,34 @@ mod tests {
         assert!(has_clickfix_instruction("press win+r to continue"));
         assert!(has_clickfix_instruction("press windows + r then paste"));
         assert!(has_clickfix_instruction("click verify then press ctrl+v"));
+    }
+
+    #[test]
+    fn clickfix_shortcut_is_space_tolerant_around_plus() {
+        // The most natural phrasing puts spaces around the `+`. All of these
+        // must fire on the shortcut alone (no captcha/human framing present).
+        assert!(has_clickfix_instruction(
+            "to proceed press win + r then paste"
+        ));
+        assert!(has_clickfix_instruction(
+            "now press ctrl + r to reload the page"
+        ));
+        assert!(has_clickfix_instruction("hold alt + r to repair"));
+        // Arbitrary inner spacing and the spread form collapse to the token.
+        assert!(has_clickfix_instruction("press win  +  r"));
+        assert!(has_clickfix_instruction("press w i n + r now"));
+        // macOS run-equivalent framing.
+        assert!(has_clickfix_instruction("press cmd + r to verify"));
+    }
+
+    #[test]
+    fn clickfix_shortcut_fires_after_fullwidth_normalize() {
+        // Full-width "Ｗｉｎ＋Ｒ" folds to "win+r" via normalize_for_match.
+        let n = normalize_for_match("続行するには Ｗｉｎ＋Ｒ を押す");
+        assert!(
+            has_clickfix_instruction(&n),
+            "full-width Win+R must fire after normalize; got {n:?}"
+        );
     }
 
     #[test]
