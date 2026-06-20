@@ -82,6 +82,14 @@ pub fn fold_char(c: char) -> char {
         'χ' => 'x',
         'ι' => 'i',
         'κ' => 'k',
+        // Round 14 additions — Greek lowercase confusables whose uppercase
+        // counterparts were already folded but lowercase was missed. An attacker
+        // who sees Τ→t but not τ→t can evade "infected" / "trojan" detection.
+        'η' => 'n', // U+03B7 ETA — looks like 'n' in lowercase
+        'τ' => 't', // U+03C4 TAU — looks like 't' in many fonts
+        'ω' => 'w', // U+03C9 OMEGA — has a distinct 'w' shape
+        'γ' => 'y', // U+03B3 GAMMA — lowercase gamma resembles 'y'
+        'μ' => 'u', // U+03BC MU — Greek mu looks like 'u' with a tail
         'Α' => 'a',
         'Β' => 'b',
         'Ε' => 'e',
@@ -119,6 +127,19 @@ pub fn fold_char(c: char) -> char {
         'ø' | 'Ø' => 'o',
         'ł' | 'Ł' => 'l',
         'đ' | 'Đ' => 'd',
+        // ── Common symbol look-alikes (round 14) ──
+        // µ (U+00B5 MICRO SIGN) is visually indistinguishable from 'u' in most
+        // fonts and appears in phishing titles like "µpdate available",
+        // "viµus detected", or "µicrosoft support". It sits in Latin-1 Supplement
+        // (not the Greek block), so it does NOT trigger mixed-script detection —
+        // the fold is the only defence.
+        //
+        // ƒ (U+0192 LATIN SMALL LETTER F WITH HOOK) resembles a stylised 'f' and
+        // is used to evade keyword filters in phrases like "ƒree scan", "ƒacebook
+        // security", "iηƒected" (combined with Greek eta for 'n'). Also Latin-1
+        // Extended-B, so never triggers mixed-script.
+        '\u{00B5}' => 'u', // µ MICRO SIGN → u
+        '\u{0192}' => 'f', // ƒ LATIN SMALL LETTER F WITH HOOK → f
         // ── Letterlike Symbols (U+2100–U+214F) ─────────────────────────────────
         // fold_math_alnum handles U+1D400–U+1D7FF (ten hole-free letter styles as
         // of round 12, including bold script and bold fraktur).  The regular
@@ -9847,5 +9868,121 @@ mod spread_char_tests {
         let s = "\x1b[?25l";
         let out = sanitize_for_display(s);
         assert!(!out.contains('\x1b'), "got {out:?}");
+    }
+
+    // ── Round 14: Greek lowercase gaps + symbol look-alikes ─────────────────
+    // Adversarial gap: our source maps uppercase Τ→t, Η→h, Ω not present;
+    // but lowercase τ/η/ω/γ/μ and the common symbol µ/ƒ were missing.
+    // An attacker who reads the source can evade "infected", "warning",
+    // "trojan", "update", "free" by substituting these characters.
+
+    #[test]
+    fn fold_char_maps_greek_lowercase_tau_to_t() {
+        assert_eq!(fold_char('τ'), 't'); // U+03C4
+    }
+
+    #[test]
+    fn fold_char_maps_greek_lowercase_eta_to_n() {
+        assert_eq!(fold_char('η'), 'n'); // U+03B7
+    }
+
+    #[test]
+    fn fold_char_maps_greek_lowercase_omega_to_w() {
+        assert_eq!(fold_char('ω'), 'w'); // U+03C9
+    }
+
+    #[test]
+    fn fold_char_maps_greek_lowercase_gamma_to_y() {
+        assert_eq!(fold_char('γ'), 'y'); // U+03B3
+    }
+
+    #[test]
+    fn fold_char_maps_greek_lowercase_mu_to_u() {
+        assert_eq!(fold_char('μ'), 'u'); // U+03BC
+    }
+
+    #[test]
+    fn fold_char_maps_micro_sign_to_u() {
+        // U+00B5 MICRO SIGN — visually identical to 'u' in most fonts.
+        assert_eq!(fold_char('\u{00B5}'), 'u');
+    }
+
+    #[test]
+    fn fold_char_maps_f_with_hook_to_f() {
+        // U+0192 LATIN SMALL LETTER F WITH HOOK — stylised 'f' used in phishing.
+        assert_eq!(fold_char('\u{0192}'), 'f');
+    }
+
+    #[test]
+    fn normalize_defeats_greek_eta_in_infected() {
+        // "iηfected" — Greek eta (U+03B7) substituted for 'n'.
+        // Without Round 14, normalize_for_match leaves 'η' unfolded and the
+        // blocklist phrase "infected" never matches.
+        assert_eq!(normalize_for_match("i\u{03B7}fected"), "infected");
+    }
+
+    #[test]
+    fn normalize_defeats_greek_omega_in_warning() {
+        // "ωarning" — Greek omega (U+03C9) substituted for 'w'.
+        assert_eq!(
+            normalize_for_match("\u{03C9}arning: your computer"),
+            "warning: your computer"
+        );
+    }
+
+    #[test]
+    fn normalize_defeats_greek_tau_in_trojan() {
+        // "τrojan" — Greek tau (U+03C4) substituted for 't'.
+        assert_eq!(normalize_for_match("\u{03C4}rojan"), "trojan");
+    }
+
+    #[test]
+    fn normalize_defeats_micro_sign_in_update() {
+        // "µpdate" — MICRO SIGN (U+00B5) substituted for 'u'.
+        assert_eq!(normalize_for_match("\u{00B5}pdate"), "update");
+    }
+
+    #[test]
+    fn normalize_defeats_f_hook_in_free() {
+        // "ƒree" — LATIN SMALL F WITH HOOK (U+0192) substituted for 'f'.
+        assert_eq!(normalize_for_match("\u{0192}ree scan"), "free scan");
+    }
+
+    #[test]
+    fn normalize_defeats_compound_greek_evasion() {
+        // "iηƒecτed" — eta(n) + f-hook(f) + tau(t) substituted at once.
+        // "infected" = i-n-f-e-c-t-e-d; the 'c' is kept as ASCII.
+        assert_eq!(
+            normalize_for_match("i\u{03B7}\u{0192}ec\u{03C4}ed"),
+            "infected"
+        );
+    }
+
+    #[test]
+    fn mixed_script_still_fires_on_greek_eta_latin_mix() {
+        // "iηfected" mixes Latin (i,f,e,c,t,e,d) with Greek (η) in one token —
+        // has_confusable_mixed_script should catch it on the raw string, even
+        // before normalize_for_match runs (double-detection).
+        assert!(has_confusable_mixed_script("i\u{03B7}fected"));
+    }
+
+    #[test]
+    fn whole_script_confusable_fires_on_greek_mu_omega_eta() {
+        // "μωη" — all Greek, all map to ASCII via the new folds (u, w, n).
+        // has_whole_script_confusable should fire because every letter folds.
+        assert!(has_whole_script_confusable("μωη"));
+    }
+
+    #[test]
+    fn fold_char_new_greek_lowercase_idempotent() {
+        // Folded chars are ASCII — a second fold must be a no-op.
+        for &c in &['τ', 'η', 'ω', 'γ', 'μ'] {
+            let folded = fold_char(c);
+            assert_eq!(
+                fold_char(folded),
+                folded,
+                "fold_char not idempotent for {c}"
+            );
+        }
     }
 }
