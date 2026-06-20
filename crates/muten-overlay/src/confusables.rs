@@ -1121,9 +1121,38 @@ pub fn fold_unicode_spaces(s: &str) -> String {
         .collect()
 }
 
+/// Reduce every run of **consecutive ASCII spaces** to a single space.
+///
+/// [`fold_unicode_spaces`] converts every Unicode space *character* to an
+/// ASCII space (U+0020) but makes no promise about runs: two adjacent NBSP
+/// characters (`"open\u{A0}\u{A0}run"`) become `"open  run"` (two ASCII
+/// spaces), so `str::contains("open run")` fails even though the intent is
+/// clear.  Collapsing consecutive spaces immediately after folding makes
+/// multi-word phrase matching robust to any run length.
+///
+/// Idempotent (a second pass is a no-op) and never lengthens the string.
+/// Pure, never panics.
+#[must_use]
+pub fn collapse_ascii_spaces(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut last_space = false;
+    for c in s.chars() {
+        if c == ' ' {
+            if !last_space {
+                out.push(' ');
+            }
+            last_space = true;
+        } else {
+            out.push(c);
+            last_space = false;
+        }
+    }
+    out
+}
+
 /// The single normalized form used for **blocklist title matching**:
 /// strip emoji/symbols → expand ligatures → fold half-width katakana →
-/// fold Unicode spaces → strip invisibles → strip combining marks →
+/// fold Unicode spaces → collapse ASCII spaces → strip invisibles → strip combining marks →
 /// fold confusables → collapse spread-character obfuscation → fold leetspeak →
 /// lowercase. Idempotent. Pipeline order rationale:
 ///
@@ -1132,13 +1161,15 @@ pub fn fold_unicode_spaces(s: &str) -> String {
 /// 3. Half-width katakana fold — `ｳｲﾙｽ`→`ウイルス`, `ｻﾎﾟｰﾄ`→`サポート`.
 /// 4. Unicode-space fold — NBSP / ideographic / en-em spaces → ASCII space, so
 ///    `"your\u{00A0}computer"` matches the ASCII-spaced blocklist phrase.
-/// 5. Invisible strip — zero-width joiners, BiDi overrides removed.
-/// 6. Combining-mark strip — diacritical overlays (`y̷o̷u̷r̷`) removed *before*
+/// 5. ASCII-space collapse — consecutive ASCII spaces → single space, so
+///    `"open\u{A0}\u{A0}run"` (two NBSP) → `"open run"` after steps 4-5.
+/// 6. Invisible strip — zero-width joiners, BiDi overrides removed.
+/// 7. Combining-mark strip — diacritical overlays (`y̷o̷u̷r̷`) removed *before*
 ///    confusable folding so Cyrillic base letters are cleanly foldable.
-/// 7. Confusable fold — homoglyphs (Cyrillic, Greek) mapped to Latin skeleton.
-/// 8. Spread-character collapse — `b a i l` / `b.a.i.l` rejoined before leet.
-/// 9. Leet fold — `v1rus` → `virus` (only in mixed-letter tokens).
-/// 10. Lowercase — final ASCII normalisation.
+/// 8. Confusable fold — homoglyphs (Cyrillic, Greek) mapped to Latin skeleton.
+/// 9. Spread-character collapse — `b a i l` / `b.a.i.l` rejoined before leet.
+/// 10. Leet fold — `v1rus` → `virus` (only in mixed-letter tokens).
+/// 11. Lowercase — final ASCII normalisation.
 ///
 /// Not applied to the phone-number scan (which needs the original digits).
 #[must_use]
@@ -1148,6 +1179,7 @@ pub fn normalize_for_match(s: &str) -> String {
     let s = expand_ligatures(&s);
     let s = fold_halfwidth_katakana(&s);
     let s = fold_unicode_spaces(&s);
+    let s = collapse_ascii_spaces(&s);
     let s = strip_invisibles(&s);
     let s = strip_combining_marks(&s);
     let folded = fold_confusables(&s);
@@ -3692,6 +3724,50 @@ mod tests {
         assert_eq!(
             normalize_for_match("call\u{3000}support\u{202F}now"),
             "call support now"
+        );
+    }
+
+    // ── collapse_ascii_spaces ────────────────────────────────────────────────
+
+    #[test]
+    fn collapse_ascii_spaces_reduces_run_to_one() {
+        assert_eq!(collapse_ascii_spaces("open  run"), "open run");
+        assert_eq!(collapse_ascii_spaces("a   b   c"), "a b c");
+        assert_eq!(collapse_ascii_spaces("  leading"), " leading");
+        assert_eq!(collapse_ascii_spaces("trailing  "), "trailing ");
+    }
+
+    #[test]
+    fn collapse_ascii_spaces_idempotent() {
+        let once = collapse_ascii_spaces("a  b  c");
+        assert_eq!(once, "a b c");
+        assert_eq!(collapse_ascii_spaces(&once), once);
+    }
+
+    #[test]
+    fn collapse_ascii_spaces_leaves_single_spaces_and_other_text() {
+        assert_eq!(collapse_ascii_spaces("one two three"), "one two three");
+        assert_eq!(collapse_ascii_spaces(""), "");
+        assert_eq!(collapse_ascii_spaces("ウイルス感染"), "ウイルス感染");
+    }
+
+    #[test]
+    fn normalize_collapses_consecutive_nbsp_in_phrase() {
+        // Two NBSP between words must still produce a single ASCII space so
+        // phrase detectors fire. Before step 5 ("collapse_ascii_spaces"), the
+        // fold_unicode_spaces step would leave "open  run" (two spaces) and
+        // str::contains("open run") would return false.
+        assert_eq!(
+            normalize_for_match("open\u{00A0}\u{00A0}run dialog"),
+            "open run dialog"
+        );
+        assert_eq!(
+            normalize_for_match("paste the\u{3000}\u{3000}command"),
+            "paste the command"
+        );
+        assert_eq!(
+            normalize_for_match("type\u{202F}\u{202F}\u{202F}the command"),
+            "type the command"
         );
     }
 

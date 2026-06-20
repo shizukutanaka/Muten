@@ -5200,3 +5200,61 @@ fn supplement_letter_evasion_fp_guard_no_alert_does_not_fire_content_signals() {
         "supplement-letter evasion without alert shape must not Block"
     );
 }
+
+// ── Consecutive-Unicode-space evasion in ClickFix phrase detection ───────────
+//
+// An attacker can replace a single space in a ClickFix instruction phrase with
+// two or more NBSP characters: "open\u{A0}\u{A0}run dialog" looks identical to
+// "open run dialog" to a human but produces "open  run dialog" after
+// fold_unicode_spaces — a double ASCII space that breaks str::contains("open run").
+// The collapse_ascii_spaces step (step 5 of normalize_for_match) closes this gap.
+
+#[test]
+fn double_nbsp_clickfix_open_run_fires() {
+    // "open" + two NBSP + "run dialog" — visually identical to the matched phrase.
+    let title = "open\u{00A0}\u{00A0}run dialog and paste the command";
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: title.into(),
+            url: None,
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 50,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "clickfix_instruction"),
+        "double-NBSP 'open  run dialog' must fire clickfix_instruction; signals = {:?}",
+        v.signals
+    );
+}
+
+#[test]
+fn triple_ideographic_space_clickfix_paste_command_fires() {
+    // "paste the" + three ideographic spaces (U+3000) + "command".
+    let title = "paste the\u{3000}\u{3000}\u{3000}command into run box";
+    let rules = Ruleset::default();
+    let v = classify(
+        &OverlayWindow {
+            title: title.into(),
+            url: None,
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            origin: Origin::Unsolicited,
+            age_ms: 80,
+        },
+        &rules,
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "clickfix_instruction"),
+        "triple-ideographic-space 'paste the   command' must fire clickfix_instruction; signals = {:?}",
+        v.signals
+    );
+}
