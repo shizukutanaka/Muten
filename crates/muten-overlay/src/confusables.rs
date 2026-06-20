@@ -119,6 +119,29 @@ pub fn fold_char(c: char) -> char {
         'ø' | 'Ø' => 'o',
         'ł' | 'Ł' => 'l',
         'đ' | 'Đ' => 'd',
+        // ── Letterlike Symbols (U+2100–U+214F) ─────────────────────────────────
+        // fold_math_alnum handles U+1D400–U+1D7FF (eight hole-free letter styles).
+        // The double-struck / script / fraktur letter styles in U+2100–U+214F have
+        // codepoint holes (e.g. ℎ U+210E lives here, not in the math block), so
+        // fold_math_alnum deliberately excludes them.  We hand-list the subset that
+        // is both visually letter-like and likely to appear in scam text (phishers
+        // reaching for exotic glyphs to dodge exact-match filters).
+        '\u{210A}' => 'g', // ℊ SCRIPT SMALL G
+        '\u{210B}' | '\u{210C}' | '\u{210D}' => 'h', // ℋ ℌ ℍ → h (less common but consistent)
+        '\u{210E}' => 'h', // ℎ PLANCK CONSTANT (looks like h)
+        '\u{2110}' | '\u{2111}' => 'i', // ℐ ℑ SCRIPT/FRAKTUR CAPITAL I → i
+        '\u{2112}' => 'l', // ℒ SCRIPT CAPITAL L → l
+        '\u{2113}' => 'l', // ℓ SCRIPT SMALL L → l  ← "paypaℓ", "goog ℓe"
+        '\u{2115}' => 'n', // ℕ DOUBLE-STRUCK CAPITAL N → n
+        '\u{2119}' => 'p', // ℙ DOUBLE-STRUCK CAPITAL P → p
+        '\u{211A}' => 'q', // ℚ DOUBLE-STRUCK CAPITAL Q → q
+        '\u{211B}' | '\u{211C}' | '\u{211D}' => 'r', // ℛ ℜ ℝ SCRIPT/FRAKTUR/DS R → r
+        '\u{2124}' => 'z', // ℤ DOUBLE-STRUCK CAPITAL Z → z
+        '\u{212F}' => 'e', // ℯ SCRIPT SMALL E → e
+        '\u{2130}' => 'e', // ℰ SCRIPT CAPITAL E → e
+        '\u{2131}' => 'f', // ℱ SCRIPT CAPITAL F → f
+        '\u{2133}' => 'm', // ℳ SCRIPT CAPITAL M → m
+        '\u{2134}' => 'o', // ℴ SCRIPT SMALL O → o  ← "yℴur cℴmputer"
         // ── a couple of symbol look-alikes ──
         '\u{0131}' => 'i', // dotless i
         '0' => '0',        // (kept; digits handled elsewhere)
@@ -389,27 +412,42 @@ pub fn normalize_host_for_match(s: &str) -> String {
     fold_host_confusables(&s).to_ascii_lowercase()
 }
 
-/// True if `c` is a zero-width, formatting, BiDi-control, or Unicode Tag
-/// character — invisible to a human reader but able to split a word for a
-/// naive substring matcher: `"in\u{200B}fected"` renders as "infected" yet
-/// `str::contains("infected")` fails. Attackers also use BiDi overrides
-/// (U+202A..U+202E, U+2066..U+2069) to reorder displayed text, and Unicode
-/// Tag Characters (U+E0000..U+E007F) as a completely separate invisible
-/// alphabet not in our earlier ranges. We strip them all before matching.
+/// True if `c` is a zero-width, formatting, BiDi-control, C0 control, or
+/// Unicode Tag character — invisible to a human reader but able to split a
+/// word for a naive substring matcher: `"in\u{200B}fected"` renders as
+/// "infected" yet `str::contains("infected")` fails. Attackers also use BiDi
+/// overrides (U+202A..U+202E, U+2066..U+2069) to reorder displayed text, and
+/// Unicode Tag Characters (U+E0000..U+E007F) as a completely separate invisible
+/// alphabet not in our earlier ranges.
+///
+/// C0 controls (U+0001–U+0008, U+000E–U+001F) and DEL (U+007F) have no
+/// visual representation in window titles and are stripped rather than
+/// converted to spaces (so "inf\u{0001}ected" rejoins to "infected"). The
+/// whitespace C0 chars — TAB (U+0009), LF–CR (U+000A–U+000D) — are already
+/// folded to ASCII space by `fold_unicode_spaces` and are therefore NOT listed
+/// here (stripping them would discard a word boundary).
+///
+/// C1 controls (U+0080–U+009F) are similarly invisible legacy controls with
+/// no legitimate role in modern window-title strings.
+///
 /// (IMPROVEMENT_ROADMAP C8-5/C8-9.)
 fn is_invisible(c: char) -> bool {
     matches!(c,
-        '\u{200B}' | '\u{200C}' | '\u{200D}' | // ZWSP / ZWNJ / ZWJ
-        '\u{2060}' |                            // word joiner
-        '\u{FEFF}' |                            // ZWNBSP / BOM
+        '\u{0001}'..='\u{0008}' |              // C0 controls (non-whitespace)
+        '\u{000E}'..='\u{001F}' |              // C0 controls (non-whitespace, cont.)
+        '\u{007F}' |                            // DEL
+        '\u{0080}'..='\u{009F}' |              // C1 controls
         '\u{00AD}' |                            // soft hyphen
         '\u{034F}' |                            // combining grapheme joiner
         '\u{115F}' | '\u{1160}' |              // Hangul choseong/jungseong filler
         '\u{180E}' |                            // Mongolian vowel separator
+        '\u{200B}' | '\u{200C}' | '\u{200D}' | // ZWSP / ZWNJ / ZWJ
         '\u{200E}' | '\u{200F}' |               // LRM / RLM
         '\u{202A}'..='\u{202E}' |               // LRE/RLE/PDF/LRO/RLO
         '\u{2028}' | '\u{2029}' |               // Line Separator / Paragraph Separator
+        '\u{2060}' |                            // word joiner
         '\u{2066}'..='\u{2069}' |              // LRI/RLI/FSI/PDI
+        '\u{FEFF}' |                            // ZWNBSP / BOM
         '\u{E0000}'..='\u{E007F}'              // Unicode Tag Characters (invisible alphabet)
     )
 }
@@ -4036,6 +4074,37 @@ mod tests {
         assert_eq!(fold_char('\u{2079}'), '9'); // ⁹
     }
 
+    // ── Letterlike Symbols folding (Round 11) ─────────────────────────────
+
+    #[test]
+    fn fold_char_maps_letterlike_symbols_to_ascii() {
+        // ℓ (U+2113, SCRIPT SMALL L) → 'l' — most common phishing substitution.
+        assert_eq!(fold_char('\u{2113}'), 'l'); // ℓ
+                                                // ℴ (U+2134, SCRIPT SMALL O) → 'o'
+        assert_eq!(fold_char('\u{2134}'), 'o'); // ℴ
+                                                // ℊ (U+210A, SCRIPT SMALL G) → 'g'
+        assert_eq!(fold_char('\u{210A}'), 'g'); // ℊ
+                                                // ℯ (U+212F, SCRIPT SMALL E) → 'e'
+        assert_eq!(fold_char('\u{212F}'), 'e'); // ℯ
+                                                // ℙ (U+2119, DOUBLE-STRUCK CAPITAL P) → 'p'
+        assert_eq!(fold_char('\u{2119}'), 'p'); // ℙ
+                                                // ℕ (U+2115, DOUBLE-STRUCK CAPITAL N) → 'n'
+        assert_eq!(fold_char('\u{2115}'), 'n'); // ℕ
+                                                // ℝ (U+211D, DOUBLE-STRUCK CAPITAL R) → 'r'
+        assert_eq!(fold_char('\u{211D}'), 'r'); // ℝ
+    }
+
+    #[test]
+    fn fold_confusables_normalizes_letterlike_script_l() {
+        // "paypaℓ" with ℓ (U+2113) should fold to "paypal".
+        assert_eq!(fold_confusables("paypa\u{2113}"), "paypal");
+        // "yℴur cℴmputer" with ℴ (U+2134) should fold to "your computer".
+        assert_eq!(
+            fold_confusables("y\u{2134}ur c\u{2134}mputer"),
+            "your computer"
+        );
+    }
+
     #[test]
     fn digit_system_includes_circled_zero() {
         // U+24EA (⓪) was absent from digit_system; now it is system 7
@@ -4200,6 +4269,22 @@ mod tests {
         assert_eq!(strip_invisibles("a\u{115F}b\u{1160}c"), "abc");
         // U+2028 / U+2029 — Line/Paragraph Separator.
         assert_eq!(strip_invisibles("a\u{2028}b\u{2029}c"), "abc");
+    }
+
+    #[test]
+    fn strip_invisibles_strips_c0_controls() {
+        // C0 control characters (non-whitespace) have no legitimate role in
+        // window titles; inserting them between letters is a word-splitting attack.
+        assert_eq!(strip_invisibles("inf\u{0001}ected"), "infected"); // SOH
+        assert_eq!(strip_invisibles("inf\u{0007}ected"), "infected"); // BEL
+        assert_eq!(strip_invisibles("inf\u{001F}ected"), "infected"); // US
+        assert_eq!(strip_invisibles("inf\u{007F}ected"), "infected"); // DEL
+                                                                      // C1 controls (U+0080–U+009F) are similarly stripped.
+        assert_eq!(strip_invisibles("inf\u{0080}ected"), "infected");
+        assert_eq!(strip_invisibles("inf\u{009F}ected"), "infected");
+        // Whitespace C0 chars (TAB/LF/CR) are NOT stripped — they are word
+        // separators handled by fold_unicode_spaces, not invisible joiners.
+        assert!(strip_invisibles("a\tb").contains('\t'));
     }
 
     // ── fold_letter_digits_for_phone ──────────────────────────────────────
