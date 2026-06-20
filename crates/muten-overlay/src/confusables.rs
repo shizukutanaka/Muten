@@ -273,6 +273,70 @@ pub fn fold_char(c: char) -> char {
         // IPA/Phonetic Extensions (fills 'f' and 's' gaps):
         '\u{A730}' => 'f', // ꜰ LATIN LETTER SMALL CAPITAL F
         '\u{A731}' => 's', // ꜱ LATIN LETTER SMALL CAPITAL S
+        // ── Coptic confusables (U+2C80–U+2CFF) (round 19) ───────────────────────
+        // The Coptic script derives from Greek (which in turn shares many shapes
+        // with Latin), so a significant subset of Coptic letters are glyph-identical
+        // or near-identical to Latin letters. An attacker can use them to construct
+        // pixel-perfect scam titles ("ⲩⲟⲩr cⲟⲙpⲩter iⲥ ⲓnfected") that defeat
+        // every ASCII substring detector. The Coptic Unicode block (U+2C80–U+2CFF)
+        // is separate from the older "Greek and Coptic" block (U+0370–U+03FF) and
+        // was completely unguarded before this round. `script_of` is also extended
+        // to classify U+2C80–U+2CFF as `Script::Coptic` so that `has_confusable_
+        // mixed_script` catches Latin+Coptic mixing in raw titles.
+        '\u{2C80}' => 'a', // Ⲁ COPTIC CAPITAL LETTER ALFA → a
+        '\u{2C81}' => 'a', // ⲁ COPTIC SMALL LETTER ALFA → a
+        '\u{2C82}' => 'b', // Ⲃ COPTIC CAPITAL LETTER VIDA → b (B shape)
+        '\u{2C83}' => 'b', // ⲃ COPTIC SMALL LETTER VIDA → b
+        '\u{2C88}' => 'e', // Ⲉ COPTIC CAPITAL LETTER EIE → e (E shape)
+        '\u{2C89}' => 'e', // ⲉ COPTIC SMALL LETTER EIE → e
+        '\u{2C92}' => 'i', // Ⲓ COPTIC CAPITAL LETTER IAUDA → i (I shape)
+        '\u{2C93}' => 'i', // ⲓ COPTIC SMALL LETTER IAUDA → i
+        '\u{2C94}' => 'k', // Ⲕ COPTIC CAPITAL LETTER KAPA → k (K shape)
+        '\u{2C95}' => 'k', // ⲕ COPTIC SMALL LETTER KAPA → k
+        '\u{2C96}' => 'l', // Ⲗ COPTIC CAPITAL LETTER LAULA → l (L shape)
+        '\u{2C97}' => 'l', // ⲗ COPTIC SMALL LETTER LAULA → l
+        '\u{2C98}' => 'm', // Ⲙ COPTIC CAPITAL LETTER MI → m (M shape)
+        '\u{2C99}' => 'm', // ⲙ COPTIC SMALL LETTER MI → m
+        '\u{2C9A}' => 'n', // Ⲛ COPTIC CAPITAL LETTER NI → n (N shape)
+        '\u{2C9B}' => 'n', // ⲛ COPTIC SMALL LETTER NI → n
+        '\u{2C9E}' => 'o', // Ⲟ COPTIC CAPITAL LETTER O → o (O shape)
+        '\u{2C9F}' => 'o', // ⲟ COPTIC SMALL LETTER O → o
+        '\u{2CA2}' => 'p', // Ⲣ COPTIC CAPITAL LETTER RO → p (P/Ρ shape)
+        '\u{2CA3}' => 'r', // ⲣ COPTIC SMALL LETTER RO → r (r shape)
+        '\u{2CA4}' => 's', // Ⲥ COPTIC CAPITAL LETTER SIMA → s (S shape)
+        '\u{2CA5}' => 's', // ⲥ COPTIC SMALL LETTER SIMA → s
+        '\u{2CA6}' => 't', // Ⲧ COPTIC CAPITAL LETTER TAU → t (T shape)
+        '\u{2CA7}' => 't', // ⲧ COPTIC SMALL LETTER TAU → t
+        '\u{2CA8}' => 'y', // Ⲩ COPTIC CAPITAL LETTER UA → y (Υ shape)
+        '\u{2CA9}' => 'y', // ⲩ COPTIC SMALL LETTER UA → y (υ shape)
+        '\u{2CAC}' => 'x', // Ⲭ COPTIC CAPITAL LETTER KHI → x (X shape)
+        '\u{2CAD}' => 'x', // ⲭ COPTIC SMALL LETTER KHI → x
+        '\u{2CB0}' => 'w', // Ⲱ COPTIC CAPITAL LETTER OOU → w (ω-like shape)
+        '\u{2CB1}' => 'w', // ⲱ COPTIC SMALL LETTER OOU → w
+        // ── Superscript/subscript Latin letters (round 19) ───────────────────────
+        // Superscript modifier letters (Unicode category Lm) and subscript Latin
+        // letters are legitimate in phonetic transcription and chemical notation but
+        // essentially never appear in normal window titles. When present they defeat
+        // substring matching: "ⁿew ᵥiruˢ" bypasses "virus" because ⁿ≠n, ˢ≠s.
+        // U+2071 ⁱ (SUPERSCRIPT LATIN SMALL LETTER I) and U+207F ⁿ
+        // (SUPERSCRIPT LATIN SMALL LETTER N) are the only two superscript *letter*
+        // codepoints in that block (the rest of U+2070–U+209F are digits or
+        // subscript letters). The subscript letter range U+2090–U+209C is gap-free.
+        '\u{2071}' => 'i', // ⁱ SUPERSCRIPT LATIN SMALL LETTER I
+        '\u{207F}' => 'n', // ⁿ SUPERSCRIPT LATIN SMALL LETTER N
+        '\u{2090}' => 'a', // ₐ LATIN SUBSCRIPT SMALL LETTER A
+        '\u{2091}' => 'e', // ₑ LATIN SUBSCRIPT SMALL LETTER E
+        '\u{2092}' => 'o', // ₒ LATIN SUBSCRIPT SMALL LETTER O
+        '\u{2093}' => 'x', // ₓ LATIN SUBSCRIPT SMALL LETTER X
+        '\u{2094}' => 'e', // ₔ LATIN SUBSCRIPT SMALL LETTER SCHWA → e
+        '\u{2095}' => 'h', // ₕ LATIN SUBSCRIPT SMALL LETTER H
+        '\u{2096}' => 'k', // ₖ LATIN SUBSCRIPT SMALL LETTER K
+        '\u{2097}' => 'l', // ₗ LATIN SUBSCRIPT SMALL LETTER L
+        '\u{2098}' => 'm', // ₘ LATIN SUBSCRIPT SMALL LETTER M
+        '\u{2099}' => 'n', // ₙ LATIN SUBSCRIPT SMALL LETTER N
+        '\u{209A}' => 'p', // ₚ LATIN SUBSCRIPT SMALL LETTER P
+        '\u{209B}' => 's', // ₛ LATIN SUBSCRIPT SMALL LETTER S
+        '\u{209C}' => 't', // ₜ LATIN SUBSCRIPT SMALL LETTER T
         '\u{0131}' => 'i', // dotless i
         '0' => '0',        // (kept; digits handled elsewhere)
         // ── Dash / hyphen variants ───────────────────────────────────────────
@@ -735,6 +799,10 @@ pub enum Script {
     Cyrillic,
     /// Greek and Coptic block (U+0370–U+03FF).
     Greek,
+    /// Coptic block (U+2C80–U+2CFF) — distinct from the historical Greek-and-
+    /// Coptic block. Coptic letters share many shapes with Greek/Latin, making
+    /// them a real homoglyph-evasion vector.
+    Coptic,
     /// Everything else (CJK, Kana, Hangul, digits, punctuation, …).
     Other,
 }
@@ -752,6 +820,11 @@ pub fn script_of(c: char) -> Script {
         // qa ԛ, we ԝ), so it must be classified Cyrillic for mixed-script /
         // whole-script detection to stay consistent with the fold table.
         0x0400..=0x052F => Script::Cyrillic, // Cyrillic + Cyrillic Supplement
+        // Coptic block (U+2C80–U+2CFF): distinct from the Greek-and-Coptic block
+        // above. `fold_char` maps the most-confusable Coptic letters to their ASCII
+        // skeletons; classifying them here ensures `has_confusable_mixed_script`
+        // also catches Latin+Coptic within-token mixing.
+        0x2C80..=0x2CFF => Script::Coptic,
         _ => Script::Other,
     }
 }
@@ -991,17 +1064,17 @@ pub fn has_whole_script_confusable(s: &str) -> bool {
                     // or it's genuinely Latin — not a whole-script confusable.
                     continue 'token;
                 }
-                Script::Cyrillic | Script::Greek => {
+                Script::Cyrillic | Script::Greek | Script::Coptic => {
                     has_letter = true;
                     if script == Script::Other {
                         script = sc;
                     } else if script != sc {
-                        // Mixed Cyrillic+Greek in one token — unusual; skip.
+                        // Mixed Cyrillic+Greek+Coptic in one token — unusual; skip.
                         continue 'token;
                     }
                     // Key guard: does this letter have an ASCII confusable?
-                    // If not, the word uses non-confusable Cyrillic/Greek and
-                    // is likely legitimate text, not a disguise.
+                    // If not, the word uses non-confusable Cyrillic/Greek/Coptic
+                    // and is likely legitimate text, not a disguise.
                     if !fold_char(c).is_ascii_alphabetic() {
                         continue 'token;
                     }
@@ -1034,7 +1107,7 @@ pub fn has_confusable_mixed_script(s: &str) -> bool {
         for c in token.chars() {
             match script_of(c) {
                 Script::Latin => latin = true,
-                Script::Cyrillic | Script::Greek => confusable = true,
+                Script::Cyrillic | Script::Greek | Script::Coptic => confusable = true,
                 Script::Other => {}
             }
             if latin && confusable {
@@ -10489,6 +10562,159 @@ mod spread_char_tests {
         ] {
             let c = char::from_u32(u).unwrap();
             let folded = fold_char(c);
+            assert_eq!(fold_char(folded), folded, "not idempotent for U+{u:04X}");
+        }
+    }
+
+    // ── Round 19: Coptic confusables + superscript/subscript Latin letters ──
+    // Adversarial gap: the Coptic Unicode block (U+2C80–U+2CFF) contains 107
+    // letters derived from the Greek alphabet, many visually identical to Latin
+    // (Ⲁ=a, Ⲉ=e, Ⲓ=i, Ⲟ=o, Ⲥ=s, ⲧ=t, ⲱ=w …). An attacker who knows
+    // fold_char covers Greek but not Coptic can substitute Coptic letters to
+    // defeat every detection path. Superscript ⁱ/ⁿ and subscript ₐ/ₑ/ₒ…
+    // are similarly invisible to str::contains.
+
+    #[test]
+    fn fold_char_coptic_alfa_to_a() {
+        assert_eq!(fold_char('\u{2C80}'), 'a'); // Ⲁ capital
+        assert_eq!(fold_char('\u{2C81}'), 'a'); // ⲁ small
+    }
+
+    #[test]
+    fn fold_char_coptic_eie_to_e() {
+        assert_eq!(fold_char('\u{2C88}'), 'e'); // Ⲉ capital
+        assert_eq!(fold_char('\u{2C89}'), 'e'); // ⲉ small
+    }
+
+    #[test]
+    fn fold_char_coptic_ni_to_n() {
+        assert_eq!(fold_char('\u{2C9A}'), 'n'); // Ⲛ capital
+        assert_eq!(fold_char('\u{2C9B}'), 'n'); // ⲛ small
+    }
+
+    #[test]
+    fn fold_char_coptic_o_to_o() {
+        assert_eq!(fold_char('\u{2C9E}'), 'o'); // Ⲟ capital
+        assert_eq!(fold_char('\u{2C9F}'), 'o'); // ⲟ small
+    }
+
+    #[test]
+    fn fold_char_coptic_sima_to_s() {
+        assert_eq!(fold_char('\u{2CA4}'), 's'); // Ⲥ capital
+        assert_eq!(fold_char('\u{2CA5}'), 's'); // ⲥ small
+    }
+
+    #[test]
+    fn fold_char_coptic_tau_to_t() {
+        assert_eq!(fold_char('\u{2CA6}'), 't'); // Ⲧ capital
+        assert_eq!(fold_char('\u{2CA7}'), 't'); // ⲧ small
+    }
+
+    #[test]
+    fn fold_char_coptic_oou_to_w() {
+        assert_eq!(fold_char('\u{2CB0}'), 'w'); // Ⲱ capital
+        assert_eq!(fold_char('\u{2CB1}'), 'w'); // ⲱ small
+    }
+
+    #[test]
+    fn fold_char_coptic_khi_to_x() {
+        assert_eq!(fold_char('\u{2CAC}'), 'x'); // Ⲭ capital
+        assert_eq!(fold_char('\u{2CAD}'), 'x'); // ⲭ small
+    }
+
+    #[test]
+    fn normalize_defeats_coptic_evasion() {
+        // "ⲓnfected" — Coptic iauda ⲓ (U+2C93) substituted for 'i'.
+        // Demonstrates that Coptic homoglyphs are folded to their ASCII skeleton.
+        let evaded = "\u{2C93}nf\u{2C89}ct\u{2C89}d"; // ⲓnfⲉctⲉd
+        let normalized = normalize_for_match(evaded);
+        assert!(normalized.contains("infected"), "got: {normalized}");
+        // "ⲥupport" — Coptic sima ⲥ (U+2CA5) for 's'
+        let evaded2 = "\u{2CA5}upport";
+        let normalized2 = normalize_for_match(evaded2);
+        assert!(normalized2.contains("support"), "got: {normalized2}");
+    }
+
+    #[test]
+    fn script_of_coptic_block_returns_coptic() {
+        assert_eq!(script_of('\u{2C80}'), Script::Coptic); // Ⲁ
+        assert_eq!(script_of('\u{2CA5}'), Script::Coptic); // ⲥ
+        assert_eq!(script_of('\u{2CB1}'), Script::Coptic); // ⲱ
+    }
+
+    #[test]
+    fn has_confusable_mixed_script_detects_latin_coptic_mixing() {
+        // "ⲥecurity" — Coptic sima s mixed with Latin letters
+        let mixed = "\u{2CA5}ecurity";
+        assert!(
+            has_confusable_mixed_script(mixed),
+            "should detect Coptic+Latin"
+        );
+    }
+
+    #[test]
+    fn has_confusable_mixed_script_does_not_fire_on_pure_coptic() {
+        // A pure-Coptic word should NOT fire (same discipline as pure-Cyrillic).
+        // All letters fold to ASCII, but there's no Latin mixed in.
+        let pure = "\u{2C80}\u{2C89}\u{2C9B}"; // Ⲁⲉⲛ
+        assert!(!has_confusable_mixed_script(pure));
+    }
+
+    #[test]
+    fn fold_char_superscript_latin_letters() {
+        assert_eq!(fold_char('\u{2071}'), 'i'); // ⁱ SUPERSCRIPT LATIN SMALL LETTER I
+        assert_eq!(fold_char('\u{207F}'), 'n'); // ⁿ SUPERSCRIPT LATIN SMALL LETTER N
+    }
+
+    #[test]
+    fn fold_char_subscript_latin_letters() {
+        assert_eq!(fold_char('\u{2090}'), 'a'); // ₐ subscript a
+        assert_eq!(fold_char('\u{2091}'), 'e'); // ₑ subscript e
+        assert_eq!(fold_char('\u{2092}'), 'o'); // ₒ subscript o
+        assert_eq!(fold_char('\u{2093}'), 'x'); // ₓ subscript x
+        assert_eq!(fold_char('\u{2095}'), 'h'); // ₕ subscript h
+        assert_eq!(fold_char('\u{2099}'), 'n'); // ₙ subscript n
+        assert_eq!(fold_char('\u{209C}'), 't'); // ₜ subscript t
+    }
+
+    #[test]
+    fn normalize_defeats_superscript_evasion() {
+        // "ⁿew vⁱrus" — superscript n and i used to break "virus"
+        let evaded = "\u{207F}ew v\u{2071}rus";
+        let normalized = normalize_for_match(evaded);
+        assert!(normalized.contains("new"), "got: {normalized}");
+        assert!(normalized.contains("virus"), "got: {normalized}");
+    }
+
+    #[test]
+    fn fold_char_round19_coptic_idempotent() {
+        for &u in &[
+            0x2C80u32, 0x2C81, 0x2C82, 0x2C83, 0x2C88, 0x2C89, 0x2C92, 0x2C93, 0x2C94, 0x2C95,
+            0x2C96, 0x2C97, 0x2C98, 0x2C99, 0x2C9A, 0x2C9B, 0x2C9E, 0x2C9F, 0x2CA2, 0x2CA3, 0x2CA4,
+            0x2CA5, 0x2CA6, 0x2CA7, 0x2CA8, 0x2CA9, 0x2CAC, 0x2CAD, 0x2CB0, 0x2CB1,
+        ] {
+            let c = char::from_u32(u).unwrap();
+            let folded = fold_char(c);
+            assert!(
+                folded.is_ascii_alphabetic(),
+                "Coptic U+{u:04X} did not fold to ASCII alpha"
+            );
+            assert_eq!(fold_char(folded), folded, "not idempotent for U+{u:04X}");
+        }
+    }
+
+    #[test]
+    fn fold_char_round19_subscript_idempotent() {
+        for &u in &[
+            0x2071u32, 0x207F, 0x2090, 0x2091, 0x2092, 0x2093, 0x2094, 0x2095, 0x2096, 0x2097,
+            0x2098, 0x2099, 0x209A, 0x209B, 0x209C,
+        ] {
+            let c = char::from_u32(u).unwrap();
+            let folded = fold_char(c);
+            assert!(
+                folded.is_ascii_alphabetic(),
+                "subscript U+{u:04X} did not fold to ASCII alpha"
+            );
             assert_eq!(fold_char(folded), folded, "not idempotent for U+{u:04X}");
         }
     }
