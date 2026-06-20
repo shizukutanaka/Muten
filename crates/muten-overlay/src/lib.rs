@@ -905,10 +905,24 @@ const KNOWN_BRANDS: &[&str] = &[
     "metamask",
     "ethereum",
     "kraken",
-    // ── JP-market brands (docomo / softbank / rakuten) ──────────────
+    // ── JP-market brands ─────────────────────────────────────────────
     "docomo",
     "softbank",
     "rakuten",
+    // LINE: #1 messaging app in Japan; heavily impersonated in phishing
+    // and tech-support scams (IPA / 国民生活センター 2025 advisory).
+    // 4 chars — kept here for homograph detection (e.g. "lіne.me" with
+    // Cyrillic і); typosquat_brand skips brands < 5 chars to prevent
+    // FPs on legitimate distance-1 neighbors ("lime", "wine", "lane").
+    "line",
+    // PayPay: dominant mobile-payment platform in Japan (>60M users, 2025);
+    // impersonated in fake-payment-alert overlays and phishing campaigns.
+    "paypay",
+    // ── Global streaming / social (new scam-impersonation vectors) ───
+    // Spotify subscription-expiry lures (IC3 2025, FTC 2024).
+    "spotify",
+    // TikTok account-suspension and verification scams (FBI IC3 2025).
+    "tiktok",
 ];
 
 /// If any label of `host` is a homograph/typosquat of a [`KNOWN_BRANDS`]
@@ -984,9 +998,22 @@ fn typosquat_brand(host: &str) -> Option<&'static str> {
             continue;
         }
         let skel = confusables::skeleton(label);
+        // If the skeleton exactly matches ANY known brand, brand_impersonation
+        // already handles this label.  Skipping the whole label (not just the
+        // matching brand's inner iteration) also prevents a label whose skeleton
+        // equals brand A from triggering the distance-1 path for brand B when A
+        // and B happen to be within edit distance 1 of each other (e.g. "paypal"
+        // and "paypay" differ by one char, so a "paypal"-skeleton label would
+        // otherwise also fire the typosquat check for "paypay").
+        if KNOWN_BRANDS.iter().any(|&b| b == skel) {
+            continue;
+        }
         for &brand in KNOWN_BRANDS {
-            if skel == brand {
-                // Exact skeleton match: brand_impersonation already covers it.
+            // Skip very short brands in the typosquat path: their Levenshtein-1
+            // neighbourhood overlaps too many legitimate words (e.g. "line" → "lime",
+            // "wine", "lane"). The homograph path (brand_impersonation) still covers
+            // them via the confusable-skeleton exact-match check above.
+            if brand.len() < 5 {
                 continue;
             }
             if levenshtein_distance(skel.as_bytes(), brand.as_bytes()) == 1 {
@@ -5036,6 +5063,124 @@ mod tests {
     }
 
     #[test]
+    fn line_homograph_fires_brand_impersonation() {
+        // "lіne.me" — Cyrillic і (U+0456) inside the label.
+        // skeleton("lіne") = "line" (і→i via fold_char) which equals brand "line"
+        // but the literal label is "lіne" ≠ "line" → brand_impersonation fires.
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "line security notice".into(),
+            coverage_percent: 90,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            age_ms: 0,
+            origin: Origin::Unsolicited,
+            url: Some("https://l\u{0456}ne.me/verify".into()),
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "brand_impersonation"),
+            "brand_impersonation must fire for Cyrillic-і LINE homograph; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn line_literal_does_not_fire_impersonation() {
+        // The real "line.me" domain must never fire — skeleton == literal.
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "line account notice".into(),
+            coverage_percent: 30,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            age_ms: 0,
+            origin: Origin::UserInitiated,
+            url: Some("https://line.me/account".into()),
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "brand_impersonation"),
+            "brand_impersonation must NOT fire for the real line.me; got {:?}",
+            v.signals
+        );
+        assert!(
+            !v.signals.iter().any(|s| s == "typosquat_brand"),
+            "typosquat_brand must NOT fire for the real line.me; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn short_brand_typosquat_fp_guard_lime_does_not_fire() {
+        // "lime.com" is a legitimate website; Levenshtein distance to "line" is 1.
+        // The brand.len() < 5 guard in typosquat_brand must prevent the FP.
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "account notice".into(),
+            coverage_percent: 30,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            age_ms: 0,
+            origin: Origin::UserInitiated,
+            url: Some("https://lime.com/account".into()),
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            !v.signals.iter().any(|s| s == "typosquat_brand"),
+            "typosquat_brand must NOT fire for 'lime.com' (FP guard); got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn paypay_homograph_fires_brand_impersonation() {
+        // "раypay.jp" — Cyrillic р (U+0440) in first position.
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "paypay security alert".into(),
+            coverage_percent: 95,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: false,
+            age_ms: 0,
+            origin: Origin::Unsolicited,
+            url: Some("https://\u{0440}aypay.jp/verify".into()),
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "brand_impersonation"),
+            "brand_impersonation must fire for Cyrillic-р PayPay homograph; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn spotify_typosquat_fires() {
+        // "spotifi.com" — last char y→i, edit distance 1.
+        let rules = Ruleset::from_lines(&[]);
+        let w = OverlayWindow {
+            title: "subscription expired".into(),
+            coverage_percent: 30,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            age_ms: 0,
+            origin: Origin::UserInitiated,
+            url: Some("https://spotifi.com/renew".into()),
+        };
+        let v = classify(&w, &rules);
+        assert!(
+            v.signals.iter().any(|s| s == "typosquat_brand"),
+            "typosquat_brand must fire for 'spotifi' (edit distance 1 from 'spotify'); got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
     fn real_brand_domains_do_not_fire_impersonation() {
         // Sanity check for new brands: literal brand domain must never fire
         // brand_impersonation or typosquat_brand.
@@ -5047,6 +5192,9 @@ mod tests {
             "docomo.ne.jp",
             "softbank.jp",
             "rakuten.co.jp",
+            "paypay.ne.jp",
+            "spotify.com",
+            "tiktok.com",
         ] {
             let rules = Ruleset::from_lines(&[]);
             let w = OverlayWindow {
