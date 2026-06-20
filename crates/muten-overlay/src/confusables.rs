@@ -193,7 +193,33 @@ pub fn fold_char(c: char) -> char {
         '\u{2131}' => 'f', // ℱ SCRIPT CAPITAL F → f
         '\u{2133}' => 'm', // ℳ SCRIPT CAPITAL M → m
         '\u{2134}' => 'o', // ℴ SCRIPT SMALL O → o  ← "yℴur cℴmputer"
-        // ── a couple of symbol look-alikes ──
+        // ── Roman Numeral letter substitutes (U+2160–U+217F) ────────────────────
+        // The Unicode Number Forms block contains Roman numeral codepoints that
+        // look exactly like single Latin letters. An attacker can use them mid-word
+        // to evade substring detection: "infeⅽted" (Ⅽ = U+216D) is indistinguishable
+        // from "infected" to a reader but invisible to str::contains.
+        //
+        // We fold only the *single-letter* Roman numerals (I V X L C D M and their
+        // lowercase equivalents). The compound forms (Ⅱ, Ⅲ, Ⅳ, …, Ⅺ, Ⅻ) represent
+        // two or more letters and have clear legitimate use (chapter numbers, movie
+        // sequels), so they are left unchanged — folding them would change char
+        // counts and create FP risk ("Chapter Ⅷ" → "chapter viii" is fine, but we
+        // should not silently merge roman-numeral-spelled titles with blocklist
+        // phrases that require exact single-char letter substitutes).
+        '\u{2160}' => 'i', // Ⅰ ROMAN NUMERAL ONE → i
+        '\u{2164}' => 'v', // Ⅴ ROMAN NUMERAL FIVE → v
+        '\u{2169}' => 'x', // Ⅹ ROMAN NUMERAL TEN → x
+        '\u{216C}' => 'l', // Ⅼ ROMAN NUMERAL FIFTY → l
+        '\u{216D}' => 'c', // Ⅽ ROMAN NUMERAL ONE HUNDRED → c
+        '\u{216E}' => 'd', // Ⅾ ROMAN NUMERAL FIVE HUNDRED → d
+        '\u{216F}' => 'm', // Ⅿ ROMAN NUMERAL ONE THOUSAND → m
+        '\u{2170}' => 'i', // ⅰ roman numeral one → i
+        '\u{2174}' => 'v', // ⅴ roman numeral five → v
+        '\u{2179}' => 'x', // ⅹ roman numeral ten → x
+        '\u{217C}' => 'l', // ⅼ roman numeral fifty → l
+        '\u{217D}' => 'c', // ⅽ roman numeral one hundred → c
+        '\u{217E}' => 'd', // ⅾ roman numeral five hundred → d
+        '\u{217F}' => 'm', // ⅿ roman numeral one thousand → m
         '\u{0131}' => 'i', // dotless i
         '0' => '0',        // (kept; digits handled elsewhere)
         // ── Dash / hyphen variants ───────────────────────────────────────────
@@ -10097,6 +10123,83 @@ mod spread_char_tests {
     fn fold_char_round15_additions_idempotent() {
         for &u in &[
             0x03F2u32, 0x03F9, 0x03F3, 0x04BB, 0x04BA, 0x04C0, 0x0501, 0x051B, 0x051D,
+        ] {
+            let c = char::from_u32(u).unwrap();
+            let folded = fold_char(c);
+            assert_eq!(fold_char(folded), folded, "not idempotent for U+{u:04X}");
+        }
+    }
+
+    // ── Round 16: Roman numeral letter substitutes ───────────────────────────
+    // Adversarial gap: Number Forms block (U+2160–U+217F) single-letter Roman
+    // numerals are pixel-identical to Latin I/V/X/L/C/D/M but fold_char
+    // was passing them through unchanged. "infeⅽted" / "seⅽurity" / "ⅿicrosoft"
+    // defeat every substring detector while remaining perfectly readable.
+
+    #[test]
+    fn fold_char_maps_uppercase_roman_numeral_letters() {
+        assert_eq!(fold_char('\u{2160}'), 'i'); // Ⅰ ONE
+        assert_eq!(fold_char('\u{2164}'), 'v'); // Ⅴ FIVE
+        assert_eq!(fold_char('\u{2169}'), 'x'); // Ⅹ TEN
+        assert_eq!(fold_char('\u{216C}'), 'l'); // Ⅼ FIFTY
+        assert_eq!(fold_char('\u{216D}'), 'c'); // Ⅽ HUNDRED
+        assert_eq!(fold_char('\u{216E}'), 'd'); // Ⅾ FIVE HUNDRED
+        assert_eq!(fold_char('\u{216F}'), 'm'); // Ⅿ THOUSAND
+    }
+
+    #[test]
+    fn fold_char_maps_lowercase_roman_numeral_letters() {
+        assert_eq!(fold_char('\u{2170}'), 'i'); // ⅰ one
+        assert_eq!(fold_char('\u{2174}'), 'v'); // ⅴ five
+        assert_eq!(fold_char('\u{2179}'), 'x'); // ⅹ ten
+        assert_eq!(fold_char('\u{217C}'), 'l'); // ⅼ fifty
+        assert_eq!(fold_char('\u{217D}'), 'c'); // ⅽ hundred
+        assert_eq!(fold_char('\u{217E}'), 'd'); // ⅾ five hundred
+        assert_eq!(fold_char('\u{217F}'), 'm'); // ⅿ thousand
+    }
+
+    #[test]
+    fn fold_char_leaves_compound_roman_numerals_unchanged() {
+        // Compound Roman numerals (Ⅱ/Ⅲ/Ⅳ/…) must not be silently dropped or
+        // altered — they have legitimate uses and cannot substitute single chars.
+        assert_eq!(fold_char('\u{2161}'), '\u{2161}'); // Ⅱ TWO — unchanged
+        assert_eq!(fold_char('\u{2163}'), '\u{2163}'); // Ⅳ FOUR — unchanged
+        assert_eq!(fold_char('\u{216B}'), '\u{216B}'); // Ⅻ TWELVE — unchanged
+    }
+
+    #[test]
+    fn normalize_defeats_roman_c_in_infected() {
+        // "infeⅽted" — lowercase Roman numeral ⅽ (U+217D) for 'c'.
+        assert_eq!(normalize_for_match("infe\u{217D}ted"), "infected");
+    }
+
+    #[test]
+    fn normalize_defeats_roman_c_in_security() {
+        // "seⅽurity" — uppercase Roman numeral Ⅽ (U+216D) for 'c'.
+        assert_eq!(normalize_for_match("se\u{216D}urity"), "security");
+    }
+
+    #[test]
+    fn normalize_defeats_roman_m_in_microsoft() {
+        // "Ⅿicrosoft" — uppercase Roman numeral Ⅿ (U+216F) for 'M'/'m'.
+        assert_eq!(normalize_for_match("\u{216F}icrosoft"), "microsoft");
+    }
+
+    #[test]
+    fn normalize_defeats_compound_roman_numeral_evasion() {
+        // Multi-char substitution: "ⅽaⅼⅼ now" — ⅽ(c) + ⅼ(l) + ⅼ(l) → "call now"
+        assert_eq!(
+            normalize_for_match("\u{217D}a\u{217C}\u{217C} now"),
+            "call now"
+        );
+    }
+
+    #[test]
+    fn fold_char_roman_numerals_idempotent() {
+        // All folded forms are ASCII — a second fold must be a no-op.
+        for &u in &[
+            0x2160u32, 0x2164, 0x2169, 0x216C, 0x216D, 0x216E, 0x216F, 0x2170, 0x2174, 0x2179,
+            0x217C, 0x217D, 0x217E, 0x217F,
         ] {
             let c = char::from_u32(u).unwrap();
             let folded = fold_char(c);
