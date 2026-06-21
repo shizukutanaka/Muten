@@ -370,6 +370,27 @@ pub fn fold_char(c: char) -> char {
         '\u{02E1}' => 'l', // ˡ MODIFIER LETTER SMALL L
         '\u{02E2}' => 's', // ˢ MODIFIER LETTER SMALL S
         '\u{02E3}' => 'x', // ˣ MODIFIER LETTER SMALL X
+        // ── Round 22: NFKD-authoritative single-letter compatibility folds ───────
+        // These were found by scanning every codepoint whose Unicode NFKD
+        // (compatibility) decomposition is exactly one ASCII letter — i.e. the
+        // Unicode Consortium itself declares them compatibility-equivalent to that
+        // letter — yet which fold_char did not yet cover. Folding them is precisely
+        // what NFKC normalization would do, so each is safe by definition.
+        // (The ordinal indicators ª U+00AA / º U+00BA also decompose to a/o but are
+        // DELIBERATELY skipped: they appear in legitimate Spanish/Portuguese/Italian
+        // ordinals "1ª"/"2º", so folding them risks false positives.)
+        '\u{017F}' => 's', // ſ LATIN SMALL LETTER LONG S → s ("ſhop"→"shop")
+        '\u{1D9C}' => 'c', // ᶜ MODIFIER LETTER SMALL C → c
+        '\u{1DA0}' => 'f', // ᶠ MODIFIER LETTER SMALL F → f
+        '\u{1DBB}' => 'z', // ᶻ MODIFIER LETTER SMALL Z → z
+        '\u{212A}' => 'k', // K KELVIN SIGN → k (compat-identical to ASCII K)
+        '\u{2139}' => 'i', // ℹ INFORMATION SOURCE → i (Letterlike, NFKD=i)
+        '\u{2145}' => 'd', // ⅅ DOUBLE-STRUCK ITALIC CAPITAL D → d
+        '\u{2C7C}' => 'j', // ⱼ LATIN SUBSCRIPT SMALL LETTER J → j (completes R19)
+        '\u{2C7D}' => 'v', // ⱽ MODIFIER LETTER CAPITAL V → v
+        '\u{A7F2}' => 'c', // ꟲ MODIFIER LETTER CAPITAL C → c
+        '\u{A7F3}' => 'f', // ꟳ MODIFIER LETTER CAPITAL F → f
+        '\u{A7F4}' => 'q', // ꟴ MODIFIER LETTER CAPITAL Q → q
         '\u{0131}' => 'i', // dotless i
         '0' => '0',        // (kept; digits handled elsewhere)
         // ── Dash / hyphen variants ───────────────────────────────────────────
@@ -10863,5 +10884,49 @@ mod spread_char_tests {
             );
             assert_eq!(fold_char(folded), folded, "not idempotent for U+{u:04X}");
         }
+    }
+
+    // ── Round 22: NFKD-authoritative single-letter compatibility folds ──
+    // Found by scanning every codepoint whose Unicode NFKD decomposition is
+    // exactly one ASCII letter but which fold_char did not yet cover. Each
+    // (codepoint, expected) pair below is the Unicode-declared compatibility
+    // mapping, so these assertions double as a regression guard.
+
+    #[test]
+    fn fold_char_round22_nfkd_compat_folds() {
+        let cases = [
+            ('\u{017F}', 's'), // ſ long s
+            ('\u{1D9C}', 'c'), // ᶜ
+            ('\u{1DA0}', 'f'), // ᶠ
+            ('\u{1DBB}', 'z'), // ᶻ
+            ('\u{212A}', 'k'), // K Kelvin sign
+            ('\u{2139}', 'i'), // ℹ information source
+            ('\u{2145}', 'd'), // ⅅ
+            ('\u{2C7C}', 'j'), // ⱼ subscript j
+            ('\u{2C7D}', 'v'), // ⱽ
+            ('\u{A7F2}', 'c'), // ꟲ
+            ('\u{A7F3}', 'f'), // ꟳ
+            ('\u{A7F4}', 'q'), // ꟴ
+        ];
+        for (c, expected) in cases {
+            assert_eq!(fold_char(c), expected, "wrong fold for U+{:04X}", c as u32);
+            // Idempotent: the folded ASCII letter folds to itself.
+            assert_eq!(fold_char(expected), expected);
+        }
+    }
+
+    #[test]
+    fn normalize_defeats_long_s_and_kelvin() {
+        // "ſhop" using long s; "Kappa" using Kelvin sign for K.
+        assert_eq!(normalize_for_match("\u{017F}hop"), "shop");
+        assert_eq!(normalize_for_match("\u{212A}appa"), "kappa");
+    }
+
+    #[test]
+    fn fold_char_round22_ordinal_indicators_deliberately_unfolded() {
+        // ª/º are NFKD-equivalent to a/o but are intentionally NOT folded to avoid
+        // false positives on legitimate Spanish/Portuguese ordinals ("1ª", "2º").
+        assert_eq!(fold_char('\u{00AA}'), '\u{00AA}'); // ª unchanged
+        assert_eq!(fold_char('\u{00BA}'), '\u{00BA}'); // º unchanged
     }
 }

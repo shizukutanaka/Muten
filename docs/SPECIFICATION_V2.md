@@ -125,6 +125,7 @@ Selected signal weights (from `lib.rs`):
 | **Subscript Latin letters** | U+2090–U+209C | ₐ→a, ₑ→e, ₒ→o, ₜ→t |
 | **Modifier Latin letters** | U+02B0–U+02E3 | ʰ→h, ʳ→r, ʷ→w, ˢ→s, ˣ→x |
 | **Armenian (strong homoglyphs)** | U+0555/0585, U+0578, U+057D, U+0570, U+0575 | օ→o, ո→n, ս→u, հ→h, յ→j |
+| **NFKD compat folds** | U+017F, U+1D9C/1DA0/1DBB, U+212A, U+2139, U+2145, U+2C7C/2C7D, U+A7F2–A7F4 | ſ→s, K(Kelvin)→k, ⱼ→j, ꟴ→q |
 | Dash variants | U+2010–U+2015, U+2212 | –→-, —→- |
 | Katakana middle dot | U+30FB | ・→· (for spread-word collapse) |
 
@@ -151,7 +152,9 @@ Detection doesn't depend on a single layer. A scam must simultaneously evade:
 - Phone number detection runs on non-leet-folded text so `1-800-555-0100` is untouched
 
 ### S4 — Comprehensive Unicode normalization
-After Round 19: fold_char covers all three confusable-bearing European scripts (Cyrillic, Greek, Coptic), all 16 Mathematical Alphanumeric styles, small-capitals, enclosed/circled letters, fullwidth, superscript/subscript — essentially the full practical homoglyph space for Latin-look-alike evasion.
+After Round 22: fold_char covers all four confusable-bearing scripts (Cyrillic, Greek, Coptic, Armenian), all 16 Mathematical Alphanumeric styles, small-capitals, enclosed/circled letters, fullwidth, superscript/subscript/modifier letters, and every codepoint whose Unicode NFKD decomposition is a single ASCII letter (except deliberately-skipped ordinal indicators) — essentially the full practical homoglyph space for Latin-look-alike evasion.
+
+**Verification methodology**: the NFKD-decomposition scan (Round 22) is a reusable, authoritative gap-finder — any codepoint the Unicode Consortium declares compatibility-equivalent to one ASCII letter is a safe, by-definition-correct fold. Re-running it after each Unicode version update surfaces new compatibility characters automatically.
 
 ### S5 — Offline, pure, dependency-free core
 No network, no disk I/O, no ML model weight files. The entire detection surface is deterministic Rust code that compiles to a single library. Works air-gapped.
@@ -276,3 +279,4 @@ The following signal families are implemented (see `confusables.rs` and `lib.rs`
 | v0.6.0 (R19) | +Coptic block (U+2C80–U+2CFF) folding + Script::Coptic detection; superscript/subscript Latin letters |
 | v0.6.0 (R20) | +Modifier (superscript) Latin letters U+02B0–U+02E3 folding |
 | v0.6.0 (R21) | +Armenian strong homoglyphs (օ/ո/ս/հ/յ) + Script::Armenian |
+| v0.6.0 (R22) | +NFKD-authoritative single-letter compat folds (long-s, Kelvin sign, modifier/subscript letter holes); ª/º deliberately skipped |
