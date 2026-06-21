@@ -837,15 +837,19 @@ pub fn has_bidi_override(s: &str) -> bool {
     s.chars().any(|c| matches!(c, '\u{202D}' | '\u{202E}'))
 }
 
-/// The (confusable-bearing) script of a character. Only the three
-/// scripts that supply Latin look-alikes are named; everything else —
-/// digits, punctuation, **and CJK / Kana / Hangul** — is `Other` and
-/// ignored. That last point is the false-positive guard for the
-/// Japanese market: a legitimate "ウイルス Alert" title contains both
-/// Japanese and Latin, but Japanese is `Other`, so it is *not* flagged
-/// as mixed-script. Only Latin mixed with Cyrillic/Greek inside one
-/// token is the homoglyph-evasion tell.
+/// The (confusable-bearing) script of a character. Only the scripts that
+/// supply Latin look-alikes are named; everything else — digits, punctuation,
+/// **and CJK / Kana / Hangul** — is `Other` and ignored. That last point is the
+/// false-positive guard for the Japanese market: a legitimate "ウイルス Alert"
+/// title contains both Japanese and Latin, but Japanese is `Other`, so it is
+/// *not* flagged as mixed-script. Only Latin mixed with Cyrillic / Greek /
+/// Coptic / Armenian inside one token is the homoglyph-evasion tell.
+///
+/// Marked `#[non_exhaustive]`: new confusable-bearing scripts are added over
+/// time (Coptic and Armenian were added after the initial three), so downstream
+/// matches must include a wildcard arm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Script {
     /// ASCII + Latin-1/Extended-A/B letters.
     Latin,
