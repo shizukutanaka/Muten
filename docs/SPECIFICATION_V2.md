@@ -157,10 +157,13 @@ After Round 22: fold_char covers all four confusable-bearing scripts (Cyrillic, 
 **Verification methodology**: the NFKD-decomposition scan (Round 22) is a reusable, authoritative gap-finder — any codepoint the Unicode Consortium declares compatibility-equivalent to one ASCII letter is a safe, by-definition-correct fold. Re-running it after each Unicode version update surfaces new compatibility characters automatically.
 
 ### S5 — Offline, pure, dependency-free core
-No network, no disk I/O, no ML model weight files. The entire detection surface is deterministic Rust code that compiles to a single library. Works air-gapped.
+The detection core (`classify()` and all of `confusables.rs`) does no network and no disk I/O and carries no ML model weight files — it is deterministic, pure Rust. The only I/O is the CLI reading the local rules file at startup (see S8); classification itself remains air-gapped and side-effect-free.
 
 ### S6 — Test coverage
-1 037 unit tests + 242 integration/scoring tests + 4 property tests = 1 283 total. Every new normalization function has idempotency tests. Property tests fuzz `normalize_for_match`, `has_confusable_mixed_script`, scoring monotonicity.
+1 513 tests total (1 053 lib unit + 242 scoring scenarios + ~218 property/integration). Every new normalization function has idempotency tests; property tests assert never-panic / no-false-positive / score-monotonicity invariants for every detector.
+
+### S8 — Operator-tunable, fully offline configuration
+Both the blocklist (`host:` / `glob:` / title-substring rules) and every signal weight (`weight: <signal> <value>`) are loaded from one offline rules file (`--rules <path>`, pushed via MDM). Weights are clamped (`±MAX_ABS_WEIGHT`), case-insensitive, and fall back to compiled defaults — operators retune sensitivity and add campaign rules without a recompile, all on-device.
 
 ### S7 — MSRV 1.75 + forbid(unsafe_code)
 Stable, auditable, no unsafe. Compiles on 3-year-old toolchains.
@@ -184,15 +187,15 @@ Georgian remains uncovered. Georgian Mkhedruli has fewer reliable Latin homoglyp
 ### W3 — Modifier superscript letters ✅ RESOLVED (Round 20)
 Characters like ʰ (U+02B0), ʲ (U+02B2), ʳ (U+02B3), ʷ (U+02B7), ʸ (U+02B8), ˡ (U+02E1), ˢ (U+02E2), ˣ (U+02E3) — category Lm, surviving `strip_combining_marks` — are now folded by `fold_char` to h/j/r/w/y/l/s/x. The non-clean shapes (ʱ h-with-hook, ˠ gamma, ˤ glottal stop) are intentionally left unfolded.
 
-### W4 — Weight constants are code-embedded (not externally configurable)
-The 77+ `W_*` constants in `lib.rs` require a code change to tune. There is no TOML/JSON config for operators who want to adjust sensitivity thresholds for their deployment context.
+### W4 — Weight configurability ✅ ALREADY SOLVED (ruleset `weight:` lines)
+The `W_*` constants are *defaults*, not the only source of truth. Any signal weight can be overridden at runtime by a `weight: <signal> <value>` line in the ruleset file: `Ruleset::weight_of(signal, default)` is consulted everywhere in `classify()`, overrides are case-insensitive and clamped to `±MAX_ABS_WEIGHT`, and fall back to the default when absent or unparseable. Operators tune sensitivity by editing the offline rules file — no recompile. (This supersedes the env-var idea originally filed as P3.)
 
-**Risk level**: Operational friction, not a detection gap.
+**Risk level**: None — resolved.
 
-### W5 — Blocklist rules are code-embedded
-Blocklist entries in `rules.rs` require a code change to update. No runtime-loaded rule file. This means catching a new scam campaign requires a library update.
+### W5 — Blocklist runtime-loading ✅ ALREADY SOLVED (`--rules <file>`)
+Blocklist rules are *not* code-only. The CLI loads host / title-substring / glob patterns **and** weight overrides from an offline rules file via `--rules <path>` (`Ruleset::parse` over `std::fs::read_to_string`), pushed via MDM and read at startup. A new scam campaign is handled by editing the file, not the library. Only *live hot-reload within a long-running process* is absent — moot for the per-invocation CLI, where each run re-reads the file.
 
-**Risk level**: Operational. Partially mitigated by the behavioral signals that don't depend on blocklist matching.
+**Risk level**: Low — only relevant to a future long-running daemon.
 
 ### W6 — `has_close_button` and `blocks_input` rely on caller truthfulness
 The behavioral signals depend on values the collector provides. If the collector uses heuristics (accessibility API, process inspection) rather than definitive OS queries, false values can flow in. This is documented in `docs/OVERLAY_BLOCKING.md`.
@@ -217,22 +220,16 @@ Folded օ/Օ→o, ո→n, ս→u, հ→h, յ→j; added `Script::Armenian`. Geor
 ### P2 (High) — Modifier superscript letters ✅ DONE (Round 20)
 Folded ʰ→h, ʲ→j, ʳ→r, ʷ→w, ʸ→y, ˡ→l, ˢ→s, ˣ→x in `fold_char`.
 
-### P3 (Medium) — Weight externalization via environment variables
-**What**: Read `W_*` overrides from env vars (`MUTEN_W_PHONE_NUMBER=50`, etc.) at binary startup.
-**Why**: Enables operators to tune sensitivity without a code change or recompile.
-**Effort**: Medium — `lib.rs` startup config, CLI propagation.
-**Constraint**: Must not break the no-network, offline guarantee; env vars are local.
+### P3 — Weight externalization ✅ ALREADY DONE (ruleset `weight:` lines)
+Superseded by the existing `weight: <signal> <value>` ruleset mechanism (see W4), which is cleaner than env vars: same offline file as the blocklist, audited together, clamped, case-insensitive. No further work needed; env-var variant intentionally not pursued (redundant).
 
 ### P4 (Medium) — `cargo-fuzz` integration
 **What**: Add a `fuzz/` directory with fuzz targets for `normalize_for_match`, `classify`, and `fold_char`.
 **Why**: Property tests are random but bounded; libFuzzer coverage-guided fuzzing finds corner cases faster.
 **Effort**: Medium — fuzz harness setup, CI integration.
 
-### P5 (Low) — Blocklist hot-reload from a data file (optional feature flag)
-**What**: Behind a `runtime-rules` feature flag, allow loading additional rules from a TOML file at startup.
-**Why**: Enables rapid response to new scam campaigns without a library version bump.
-**Constraint**: Core detection must remain available without the feature (no new required deps).
-**Effort**: Large — design question: how to represent rules, how to maintain normalization consistency.
+### P5 (Low) — Blocklist *live* hot-reload (startup-load already done)
+Startup file-loading already exists (`--rules <file>`; see W5). The only remaining increment is *live* reload while a long-running process is running (e.g. watching the file for changes). This is irrelevant to the current per-invocation CLI and only becomes useful if a persistent daemon is built; deferred until then.
 
 ### P6 (Low) — `2→z` leet mapping with guard
 **What**: Add `2 → 'z'` to `fold_leet_digit`, guarded by requiring the token to contain an adjacent non-digit letter (so "v2rus" → "vzrus" then to "virus" only if the broader normalization catches it via blocklist).
@@ -261,12 +258,10 @@ The following signal families are implemented (see `confusables.rs` and `lib.rs`
 
 | Suite | Tests | What it covers |
 |-------|-------|----------------|
-| `src/confusables.rs` (inline) | 1 037 | Every fold_char case, normalization pipeline steps, signal functions |
-| `src/lib.rs` (inline) | 242 | Scoring scenarios, explain(), categories |
-| `tests/properties.rs` | 4 | Proptest: normalize never panics; has_confusable_mixed_script never panics; score monotonicity; explain non-empty |
-| Integration | 8 | End-to-end classify() calls via CLI |
-| Other suites | ~50 | Sink, monitor, controller, rules |
-| **Total** | **~1 341** | |
+| lib unit tests (confusables/lib/rules/categories/monitor/sink/controller) | 1 053 | Every fold_char case, normalization pipeline, signal functions, scoring, weight overrides |
+| Scoring scenarios (integration) | 242 | End-to-end classify() across realistic scam/benign windows |
+| Property tests + other integration suites | ~218 | Proptest never-panic / no-FP / monotonicity invariants for every detector; CLI; rules-file loading |
+| **Total** | **1 513** | all green; clippy `-D warnings` clean; `cargo fmt --check` clean |
 
 ---
 
