@@ -746,6 +746,14 @@ pub fn strip_invisibles(s: &str) -> String {
 /// - `'o'`/`'O'` → `'0'` (Cyrillic/Greek О, fullwidth O, etc.)
 /// - `'l'` → `'1'` (lowercase L — `1` substitute; capital `I` omitted,
 ///   too common in legitimate ALL-CAPS words)
+/// - Unicode middle-dot / bullet separators (· • ‧ ∙ ⋅) → `'.'` so a phone
+///   number spread with them (`1·800·555·0100`) is read like the dot-separated
+///   form `contains_phone_number` already accepts. The byte-level phone scanner
+///   only recognises the ASCII separators ` - . ( ) +`; without this an attacker
+///   could break the digit run with a middle-dot that survives every other
+///   normalization step. (Mirrors the R23 expansion of the spread-character
+///   separator set.) Adds no new false positives beyond the existing `.`
+///   separator — the bullet form just becomes equivalent to the dot form.
 ///
 /// **Do NOT use in `normalize_for_match`** — leet folding goes the other
 /// direction there (`0→o`, `1→i`) and this would produce a destructive cycle.
@@ -755,6 +763,7 @@ pub fn fold_letter_digits_for_phone(s: &str) -> String {
         .map(|c| match c {
             'o' | 'O' => '0',
             'l' => '1',
+            '\u{00B7}' | '\u{2022}' | '\u{2027}' | '\u{2219}' | '\u{22C5}' => '.',
             _ => c,
         })
         .collect()
@@ -4788,6 +4797,20 @@ mod tests {
     fn fold_letter_digits_leaves_capital_i_alone() {
         // Capital I is too common in legitimate ALLCAPS text; deliberately not mapped.
         assert_eq!(fold_letter_digits_for_phone("INFECTED"), "INFECTED");
+    }
+
+    #[test]
+    fn fold_letter_digits_maps_unicode_dot_separators() {
+        // Middle-dot / bullet separators between digits → '.' so the byte-level
+        // phone scanner (which only accepts ASCII ` - . ( ) +`) sees a valid run.
+        assert_eq!(
+            fold_letter_digits_for_phone("1\u{00B7}800\u{00B7}555\u{00B7}0100"),
+            "1.800.555.0100"
+        );
+        assert_eq!(
+            fold_letter_digits_for_phone("1\u{2022}800\u{2219}555\u{22C5}0100"),
+            "1.800.555.0100"
+        );
     }
 
     #[test]

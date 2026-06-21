@@ -276,3 +276,6 @@ The following signal families are implemented (see `confusables.rs` and `lib.rs`
 | v0.6.0 (R21) | +Armenian strong homoglyphs (օ/ո/ս/հ/յ) + Script::Armenian |
 | v0.6.0 (R22) | +NFKD-authoritative single-letter compat folds (long-s, Kelvin sign, modifier/subscript letter holes); ª/º deliberately skipped |
 | v0.6.0 (R23) | +expanded spread-character separators (= # ; \ ! and dot-operators ‧ ∙ ⋅); :/+ still excluded |
+| v0.6.0 (R24) | Script `#[non_exhaustive]`; CHANGELOG v0.5/v0.6 documented |
+| v0.6.0 (R25) | spec corrected to credit ruleset weight/blocklist file-loading (W4/W5/P3/P5) |
+| v0.6.0 (R26) | phone scanner: fold middle-dot/bullet separators (· • ‧ ∙ ⋅) → '.' so `1·800·555·0100` is detected |

@@ -2793,6 +2793,50 @@ mod tests {
         );
     }
 
+    /// Middle-dot / bullet separator phone evasion guard. An attacker can spread
+    /// a callable-looking number with U+00B7/U+2022/etc. — separators the
+    /// byte-level scanner does not accept — which survive every other
+    /// normalization step. `fold_letter_digits_for_phone` now maps them to '.'.
+    #[test]
+    fn phone_number_detected_despite_middle_dot_separators() {
+        let dotted = "1\u{00B7}800\u{00B7}555\u{00B7}0100";
+        // Raw input fails (pre-fix behavior, documented for reference).
+        assert!(
+            !contains_phone_number(dotted),
+            "byte-level scan cannot see middle-dot separators — expected"
+        );
+        // After the full phone-scan pipeline including fold_letter_digits_for_phone:
+        let cleaned = confusables::fold_letter_digits_for_phone(&confusables::strip_invisibles(
+            &confusables::strip_combining_marks(&confusables::fold_confusables(dotted)),
+        ));
+        assert!(
+            contains_phone_number(&cleaned),
+            "phone number must be detected after folding dot separators: {cleaned:?}"
+        );
+    }
+
+    /// End-to-end: an alert-shaped window whose title spreads the support number
+    /// with middle dots still fires the phone_number signal.
+    #[test]
+    fn phone_number_fires_end_to_end_with_middle_dots() {
+        let w = OverlayWindow {
+            title: "Virus detected! Call 1\u{00B7}800\u{00B7}555\u{00B7}0100 now".into(),
+            url: None,
+            coverage_percent: 99,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 500,
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "phone_number"),
+            "phone_number must fire on a middle-dot-spread number: {:?}",
+            v.signals
+        );
+    }
+
     #[test]
     fn phone_number_scores_only_when_alert_shaped() {
         // Fullscreen alert with a number → phone_number fires.
