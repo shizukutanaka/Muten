@@ -123,6 +123,7 @@ Selected signal weights (from `lib.rs`):
 | Circled/superscript digits | U+2460–U+2079 | ①→1, ⁴→4 |
 | **Superscript Latin letters** | U+2071, U+207F | ⁱ→i, ⁿ→n |
 | **Subscript Latin letters** | U+2090–U+209C | ₐ→a, ₑ→e, ₒ→o, ₜ→t |
+| **Modifier Latin letters** | U+02B0–U+02E3 | ʰ→h, ʳ→r, ʷ→w, ˢ→s, ˣ→x |
 | Dash variants | U+2010–U+2015, U+2212 | –→-, —→- |
 | Katakana middle dot | U+30FB | ・→· (for spread-word collapse) |
 
@@ -174,10 +175,8 @@ Armenian letters Ա (looks like U+0041 A or digit 2), Ռ (looks like R), Լ (loo
 
 **Risk level**: Low. The attack surface for unmapped Coptic chars is very small.
 
-### W3 — Modifier superscript letters (U+02B0–U+02C0) not folded
-Characters like ʰ (MODIFIER LETTER SMALL H, U+02B0), ʲ (U+02B2), ʷ (U+02B7), ʸ (U+02B8) can visually pass as h/j/w/y superscripts within words. These are not in `fold_char`. They are category Lm (modifier letter) and survive `strip_combining_marks` (which only removes category M).
-
-**Risk level**: Low-Medium. These require attackers to know Unicode modifier letters; they're uncommon in current phishing campaigns.
+### W3 — Modifier superscript letters ✅ RESOLVED (Round 20)
+Characters like ʰ (U+02B0), ʲ (U+02B2), ʳ (U+02B3), ʷ (U+02B7), ʸ (U+02B8), ˡ (U+02E1), ˢ (U+02E2), ˣ (U+02E3) — category Lm, surviving `strip_combining_marks` — are now folded by `fold_char` to h/j/r/w/y/l/s/x. The non-clean shapes (ʱ h-with-hook, ˠ gamma, ˤ glottal stop) are intentionally left unfolded.
 
 ### W4 — Weight constants are code-embedded (not externally configurable)
 The 77+ `W_*` constants in `lib.rs` require a code change to tune. There is no TOML/JSON config for operators who want to adjust sensitivity thresholds for their deployment context.
@@ -211,10 +210,8 @@ The leet alphabet is `0→o, 1→i, 3→e, 4→a, 5→s, 7→t`. The digit `2` i
 **Why**: Completes the "confusable European alphabet" coverage. Low FP risk: Armenian text is easily detected as a whole-script confusable if needed.
 **Effort**: Small — a new `fold_char` section + `Script::Armenian` in `script_of`.
 
-### P2 (High) — Modifier superscript letters in `fold_char`
-**What**: Fold U+02B0–U+02C0 letter-like modifier superscripts (ʰ→h, ʲ→j, ʷ→w, ʸ→y) and U+02E0–U+02E4 (ˠ→g, ˡ→l, etc.).
-**Why**: These survive `strip_combining_marks` (wrong category) and can be used to construct evasion words with visual letter-like shapes.
-**Effort**: Small — explicit `fold_char` match arms, no new structural changes.
+### P2 (High) — Modifier superscript letters ✅ DONE (Round 20)
+Folded ʰ→h, ʲ→j, ʳ→r, ʷ→w, ʸ→y, ˡ→l, ˢ→s, ˣ→x in `fold_char`.
 
 ### P3 (Medium) — Weight externalization via environment variables
 **What**: Read `W_*` overrides from env vars (`MUTEN_W_PHONE_NUMBER=50`, etc.) at binary startup.
@@ -276,3 +273,4 @@ The following signal families are implemented (see `confusables.rs` and `lib.rs`
 | v0.5.0 | Mixed-script detection, leet folding, zero-width stripping, explain(), --json CLI |
 | v0.6.0 (R10–R18) | +Math Alphanumeric styles, control stripping, small-caps, Roman numerals, Greek gaps, Cyrillic supplement, Letterlike Symbols completeness |
 | v0.6.0 (R19) | +Coptic block (U+2C80–U+2CFF) folding + Script::Coptic detection; superscript/subscript Latin letters |
+| v0.6.0 (R20) | +Modifier (superscript) Latin letters U+02B0–U+02E3 folding |

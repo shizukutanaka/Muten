@@ -337,6 +337,23 @@ pub fn fold_char(c: char) -> char {
         '\u{209A}' => 'p', // ₚ LATIN SUBSCRIPT SMALL LETTER P
         '\u{209B}' => 's', // ₛ LATIN SUBSCRIPT SMALL LETTER S
         '\u{209C}' => 't', // ₜ LATIN SUBSCRIPT SMALL LETTER T
+        // ── Modifier (superscript) Latin letters (round 20) ──────────────────────
+        // Spacing modifier letters (U+02B0–U+02E4, Unicode category Lm) render as
+        // small superscript Latin letters. They are legitimate in phonetic
+        // transcription (IPA) but never in honest window titles, and — crucially —
+        // they survive `strip_combining_marks` (which only removes category M, not
+        // Lm). An attacker can build "neʷ ˢupport" or "viʳus" to defeat substring
+        // matching. We fold the clean letter-shaped ones; ʱ (h-with-hook), ˠ
+        // (gamma), and ˤ (glottal stop) are NOT clean Latin shapes and are left
+        // unfolded.
+        '\u{02B0}' => 'h', // ʰ MODIFIER LETTER SMALL H
+        '\u{02B2}' => 'j', // ʲ MODIFIER LETTER SMALL J
+        '\u{02B3}' => 'r', // ʳ MODIFIER LETTER SMALL R
+        '\u{02B7}' => 'w', // ʷ MODIFIER LETTER SMALL W
+        '\u{02B8}' => 'y', // ʸ MODIFIER LETTER SMALL Y
+        '\u{02E1}' => 'l', // ˡ MODIFIER LETTER SMALL L
+        '\u{02E2}' => 's', // ˢ MODIFIER LETTER SMALL S
+        '\u{02E3}' => 'x', // ˣ MODIFIER LETTER SMALL X
         '\u{0131}' => 'i', // dotless i
         '0' => '0',        // (kept; digits handled elsewhere)
         // ── Dash / hyphen variants ───────────────────────────────────────────
@@ -10714,6 +10731,48 @@ mod spread_char_tests {
             assert!(
                 folded.is_ascii_alphabetic(),
                 "subscript U+{u:04X} did not fold to ASCII alpha"
+            );
+            assert_eq!(fold_char(folded), folded, "not idempotent for U+{u:04X}");
+        }
+    }
+
+    // ── Round 20: Modifier (superscript) Latin letters ──
+    // Adversarial gap: spacing modifier letters U+02B0–U+02E4 (category Lm) render
+    // as superscript Latin letters and survive strip_combining_marks (which only
+    // strips category M). "neʷ ˢupport", "viʳus" would defeat substring matching.
+
+    #[test]
+    fn fold_char_modifier_letters() {
+        assert_eq!(fold_char('\u{02B0}'), 'h'); // ʰ
+        assert_eq!(fold_char('\u{02B2}'), 'j'); // ʲ
+        assert_eq!(fold_char('\u{02B3}'), 'r'); // ʳ
+        assert_eq!(fold_char('\u{02B7}'), 'w'); // ʷ
+        assert_eq!(fold_char('\u{02B8}'), 'y'); // ʸ
+        assert_eq!(fold_char('\u{02E1}'), 'l'); // ˡ
+        assert_eq!(fold_char('\u{02E2}'), 's'); // ˢ
+        assert_eq!(fold_char('\u{02E3}'), 'x'); // ˣ
+    }
+
+    #[test]
+    fn normalize_defeats_modifier_letter_evasion() {
+        // "viʳus" — modifier r (U+02B3) for 'r'.
+        assert_eq!(normalize_for_match("vi\u{02B3}us"), "virus");
+        // "neʷ ˢupport" — modifier w and s.
+        let normalized = normalize_for_match("ne\u{02B7} \u{02E2}upport");
+        assert!(normalized.contains("new"), "got: {normalized}");
+        assert!(normalized.contains("support"), "got: {normalized}");
+    }
+
+    #[test]
+    fn fold_char_round20_modifier_idempotent() {
+        for &u in &[
+            0x02B0u32, 0x02B2, 0x02B3, 0x02B7, 0x02B8, 0x02E1, 0x02E2, 0x02E3,
+        ] {
+            let c = char::from_u32(u).unwrap();
+            let folded = fold_char(c);
+            assert!(
+                folded.is_ascii_alphabetic(),
+                "modifier U+{u:04X} did not fold to ASCII alpha"
             );
             assert_eq!(fold_char(folded), folded, "not idempotent for U+{u:04X}");
         }
