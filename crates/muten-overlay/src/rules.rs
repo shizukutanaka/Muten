@@ -624,18 +624,29 @@ impl Ruleset {
     /// authored rule on the first match.
     ///
     /// Matching is digits-only on both sides: the title is confusable-folded
-    /// (so full-width / look-alike digits normalize to ASCII), every non-digit
-    /// is dropped, and each rule's digit string is sought as a substring. A
-    /// curated scam number is high-confidence evidence wherever it appears, so
-    /// — unlike the shape-based `phone_number` heuristic — this does not
-    /// require the window to look like an alert. It remains additive (it does
-    /// not auto-block), consistent with `title:`.
+    /// (so full-width / look-alike digits normalize to ASCII), letter-for-digit
+    /// homoglyphs are folded (`O`→0, `l`→1 via [`fold_letter_digits_for_phone`]),
+    /// every non-digit is dropped — so *any* separator (spaces, dots, middle-dots,
+    /// slashes, …) and any combining/invisible char between digits is transparent —
+    /// and each rule's digit string is sought as a substring. A curated scam number
+    /// is high-confidence evidence wherever it appears, so — unlike the shape-based
+    /// `phone_number` heuristic — this does not require the window to look like an
+    /// alert. It remains additive (it does not auto-block), consistent with `title:`.
+    /// The letter-digit fold keeps this matcher at least as evasion-resistant as the
+    /// heuristic path, which has folded `O`/`l` since round 9.
     #[must_use]
     pub fn match_phone(&self, title: &str) -> Option<String> {
         if self.phone_patterns.is_empty() {
             return None;
         }
-        let folded = crate::confusables::fold_confusables(title);
+        // fold_confusables first (non-ASCII look-alikes → ASCII), THEN
+        // fold_letter_digits_for_phone ('o'/'O'→'0', 'l'→'1'); same order as the
+        // heuristic `contains_phone_number` call site so "1-8OO-555-O1OO" matches a
+        // rule authored as "1-800-555-0100". Non-digits (incl. any separator,
+        // combining mark, or invisible) are dropped by the digit filter below.
+        let folded = crate::confusables::fold_letter_digits_for_phone(
+            &crate::confusables::fold_confusables(title),
+        );
         let digits: String = folded.chars().filter(char::is_ascii_digit).collect();
         if digits.is_empty() {
             return None;
@@ -1010,6 +1021,24 @@ mod tests {
             .is_some());
         // An unrelated number does not match.
         assert!(rs.match_phone("order 12345678 shipped").is_none());
+    }
+
+    #[test]
+    fn phone_rule_matches_letter_for_digit_homoglyphs() {
+        // Round 27: a curated scam number written with letter-O for 0 and
+        // letter-l for 1 must still match — match_phone now folds O→0, l→1
+        // (parity with the contains_phone_number heuristic path).
+        let rs = Ruleset::from_lines(&["phone: 1-800-555-0100"]);
+        assert!(
+            rs.match_phone("call 1-8OO-555-O1OO immediately").is_some(),
+            "letter-O/l substituted known number must match"
+        );
+        // Middle-dot separators are also transparent (dropped as non-digits).
+        assert!(
+            rs.match_phone("1\u{00B7}800\u{00B7}555\u{00B7}0100")
+                .is_some(),
+            "middle-dot-spread known number must match"
+        );
     }
 
     #[test]
