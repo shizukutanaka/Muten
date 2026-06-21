@@ -40,6 +40,22 @@
 #[must_use]
 pub fn fold_char(c: char) -> char {
     match c {
+        // ── Armenian look-alikes (round 21) ────────────────────────────────────
+        // Armenian is a living-language script, so we fold ONLY the handful of
+        // letters whose shapes are strong Latin homoglyphs (UTS#39 confusables):
+        // օ/Օ (oh)→o, ո (vo)→n, ս (seh)→u, հ (ho)→h, յ (yi)→j. The deliberate
+        // narrowness is the false-positive guard: legitimate Armenian words contain
+        // many *non*-folding letters, so `has_whole_script_confusable` (which fires
+        // only when EVERY letter in a token folds to ASCII) will not flag them —
+        // the same discipline that keeps Russian "пора" from firing. `script_of`
+        // classifies the whole Armenian block as `Script::Armenian` so that
+        // Latin+Armenian within-token mixing is caught by mixed-script detection.
+        '\u{0585}' => 'o', // օ ARMENIAN SMALL LETTER OH → o
+        '\u{0555}' => 'o', // Օ ARMENIAN CAPITAL LETTER OH → o
+        '\u{0578}' => 'n', // ո ARMENIAN SMALL LETTER VO → n
+        '\u{057D}' => 'u', // ս ARMENIAN SMALL LETTER SEH → u
+        '\u{0570}' => 'h', // հ ARMENIAN SMALL LETTER HO → h
+        '\u{0575}' => 'j', // յ ARMENIAN SMALL LETTER YI → j
         // ── Cyrillic look-alikes (lower) ──
         'а' => 'a', // U+0430
         'е' => 'e', // U+0435
@@ -820,6 +836,10 @@ pub enum Script {
     /// Coptic block. Coptic letters share many shapes with Greek/Latin, making
     /// them a real homoglyph-evasion vector.
     Coptic,
+    /// Armenian block (U+0530–U+058F). A living-language script; only a few
+    /// letters are strong Latin homoglyphs (see `fold_char`). Classified here so
+    /// Latin+Armenian within-token mixing is caught by mixed-script detection.
+    Armenian,
     /// Everything else (CJK, Kana, Hangul, digits, punctuation, …).
     Other,
 }
@@ -842,6 +862,11 @@ pub fn script_of(c: char) -> Script {
         // skeletons; classifying them here ensures `has_confusable_mixed_script`
         // also catches Latin+Coptic within-token mixing.
         0x2C80..=0x2CFF => Script::Coptic,
+        // Armenian block (U+0530–U+058F): only a few letters fold (see fold_char),
+        // but classifying the whole block lets mixed-script detection catch
+        // Latin+Armenian token mixing. Whole-script detection stays FP-safe via its
+        // foldability guard (legitimate Armenian words contain non-folding letters).
+        0x0530..=0x058F => Script::Armenian,
         _ => Script::Other,
     }
 }
@@ -1081,17 +1106,17 @@ pub fn has_whole_script_confusable(s: &str) -> bool {
                     // or it's genuinely Latin — not a whole-script confusable.
                     continue 'token;
                 }
-                Script::Cyrillic | Script::Greek | Script::Coptic => {
+                Script::Cyrillic | Script::Greek | Script::Coptic | Script::Armenian => {
                     has_letter = true;
                     if script == Script::Other {
                         script = sc;
                     } else if script != sc {
-                        // Mixed Cyrillic+Greek+Coptic in one token — unusual; skip.
+                        // Mixed non-Latin scripts in one token — unusual; skip.
                         continue 'token;
                     }
                     // Key guard: does this letter have an ASCII confusable?
-                    // If not, the word uses non-confusable Cyrillic/Greek/Coptic
-                    // and is likely legitimate text, not a disguise.
+                    // If not, the word uses non-confusable letters from this
+                    // script and is likely legitimate text, not a disguise.
                     if !fold_char(c).is_ascii_alphabetic() {
                         continue 'token;
                     }
@@ -1124,7 +1149,9 @@ pub fn has_confusable_mixed_script(s: &str) -> bool {
         for c in token.chars() {
             match script_of(c) {
                 Script::Latin => latin = true,
-                Script::Cyrillic | Script::Greek | Script::Coptic => confusable = true,
+                Script::Cyrillic | Script::Greek | Script::Coptic | Script::Armenian => {
+                    confusable = true;
+                }
                 Script::Other => {}
             }
             if latin && confusable {
@@ -10773,6 +10800,66 @@ mod spread_char_tests {
             assert!(
                 folded.is_ascii_alphabetic(),
                 "modifier U+{u:04X} did not fold to ASCII alpha"
+            );
+            assert_eq!(fold_char(folded), folded, "not idempotent for U+{u:04X}");
+        }
+    }
+
+    // ── Round 21: Armenian confusables ──
+    // Adversarial gap: Armenian has strong Latin homoglyphs (օ→o, ո→n, ս→u,
+    // հ→h, յ→j). We fold only the strong ones to stay FP-safe on the living
+    // language; whole-script detection's foldability guard protects real words.
+
+    #[test]
+    fn fold_char_armenian_confusables() {
+        assert_eq!(fold_char('\u{0585}'), 'o'); // օ
+        assert_eq!(fold_char('\u{0555}'), 'o'); // Օ
+        assert_eq!(fold_char('\u{0578}'), 'n'); // ո
+        assert_eq!(fold_char('\u{057D}'), 'u'); // ս
+        assert_eq!(fold_char('\u{0570}'), 'h'); // հ
+        assert_eq!(fold_char('\u{0575}'), 'j'); // յ
+    }
+
+    #[test]
+    fn normalize_defeats_armenian_evasion() {
+        // "հоսse" mixing — use Armenian հ(h), ս(u) to spell "house"
+        // (o here is Armenian օ U+0585 to make the demo fully Armenian-substituted)
+        let evaded = "\u{0570}\u{0585}\u{057D}se"; // հօսse → house
+        assert_eq!(normalize_for_match(evaded), "house");
+        // "ոew" using Armenian vo for n
+        assert_eq!(normalize_for_match("\u{0578}ew"), "new");
+    }
+
+    #[test]
+    fn script_of_armenian_block_returns_armenian() {
+        assert_eq!(script_of('\u{0585}'), Script::Armenian); // օ
+        assert_eq!(script_of('\u{0531}'), Script::Armenian); // Ա (capital ayb)
+        assert_eq!(script_of('\u{0586}'), Script::Armenian); // ֆ
+    }
+
+    #[test]
+    fn has_confusable_mixed_script_detects_latin_armenian_mixing() {
+        // " սecurity" — Armenian seh (u-shape) mixed with Latin
+        assert!(has_confusable_mixed_script("\u{057D}ecurity"));
+    }
+
+    #[test]
+    fn has_whole_script_confusable_skips_legitimate_armenian() {
+        // A legitimate Armenian word with non-folding letters must NOT fire,
+        // because not every letter folds to ASCII (same guard as Russian "пора").
+        // "բարև" (hello) — ben/ayb/reh/ev, none in our fold set.
+        let hello = "\u{0562}\u{0561}\u{0580}\u{0587}";
+        assert!(!has_whole_script_confusable(hello));
+    }
+
+    #[test]
+    fn fold_char_round21_armenian_idempotent() {
+        for &u in &[0x0585u32, 0x0555, 0x0578, 0x057D, 0x0570, 0x0575] {
+            let c = char::from_u32(u).unwrap();
+            let folded = fold_char(c);
+            assert!(
+                folded.is_ascii_alphabetic(),
+                "Armenian U+{u:04X} did not fold to ASCII alpha"
             );
             assert_eq!(fold_char(folded), folded, "not idempotent for U+{u:04X}");
         }

@@ -124,6 +124,7 @@ Selected signal weights (from `lib.rs`):
 | **Superscript Latin letters** | U+2071, U+207F | ⁱ→i, ⁿ→n |
 | **Subscript Latin letters** | U+2090–U+209C | ₐ→a, ₑ→e, ₒ→o, ₜ→t |
 | **Modifier Latin letters** | U+02B0–U+02E3 | ʰ→h, ʳ→r, ʷ→w, ˢ→s, ˣ→x |
+| **Armenian (strong homoglyphs)** | U+0555/0585, U+0578, U+057D, U+0570, U+0575 | օ→o, ո→n, ս→u, հ→h, յ→j |
 | Dash variants | U+2010–U+2015, U+2212 | –→-, —→- |
 | Katakana middle dot | U+30FB | ・→· (for spread-word collapse) |
 
@@ -165,10 +166,12 @@ Stable, auditable, no unsafe. Compiles on 3-year-old toolchains.
 
 ## 6. Weaknesses
 
-### W1 — Armenian and Georgian visual lookalikes not covered
-Armenian letters Ա (looks like U+0041 A or digit 2), Ռ (looks like R), Լ (looks like L), and several Georgian letters have Latin-confusable shapes. `fold_char` does not cover these blocks. An attacker aware of this can use Armenian script for 'r', 'l', 'u'-style substitutions.
+### W1 — Armenian ✅ RESOLVED (Round 21); Georgian still open
+Armenian: `fold_char` now folds the strong Latin homoglyphs օ/Օ→o, ո→n, ս→u, հ→h, յ→j, and `script_of` classifies the Armenian block (U+0530–U+058F) as `Script::Armenian` for mixed-script detection. Selection is deliberately narrow (it's a living language); whole-script detection stays FP-safe via its foldability guard.
 
-**Risk level**: Medium. Armenian/Georgian are less commonly available on standard keyboards than Cyrillic/Greek/Coptic, raising the effort bar.
+Georgian remains uncovered. Georgian Mkhedruli has fewer reliable Latin homoglyphs than Armenian (e.g. ჿ, ო), so the priority is lower.
+
+**Risk level**: Low (Georgian only).
 
 ### W2 — Coptic letters without explicit fold entries pass through unchanged
 `fold_char` covers the 30 most-confusable Coptic letters. The remaining ~77 Coptic letters (dialect-P forms, cryptogrammic forms, Bohairic extensions) are not mapped. Most are obscure enough that they wouldn't match any Latin letter visually, but Ⲓ/ⲓ (IAUDA), Ⲥ/ⲥ (SIMA), Ⲧ/ⲧ (TAU) are covered; the gap is in rare dialect forms.
@@ -205,10 +208,8 @@ The leet alphabet is `0→o, 1→i, 3→e, 4→a, 5→s, 7→t`. The digit `2` i
 
 ## 7. Improvement Areas (Prioritized)
 
-### P1 (High) — Armenian confusables in `fold_char`
-**What**: Add Armenian letters visually similar to Latin: Ա→'u' or 'a', Ռ→'r', Լ→'l', Ո→'n', Տ→'s', Բ→'b', Ե→'e', and their lowercase counterparts.
-**Why**: Completes the "confusable European alphabet" coverage. Low FP risk: Armenian text is easily detected as a whole-script confusable if needed.
-**Effort**: Small — a new `fold_char` section + `Script::Armenian` in `script_of`.
+### P1 (High) — Armenian confusables ✅ DONE (Round 21)
+Folded օ/Օ→o, ո→n, ս→u, հ→h, յ→j; added `Script::Armenian`. Georgian deferred (few reliable homoglyphs).
 
 ### P2 (High) — Modifier superscript letters ✅ DONE (Round 20)
 Folded ʰ→h, ʲ→j, ʳ→r, ʷ→w, ʸ→y, ˡ→l, ˢ→s, ˣ→x in `fold_char`.
@@ -274,3 +275,4 @@ The following signal families are implemented (see `confusables.rs` and `lib.rs`
 | v0.6.0 (R10–R18) | +Math Alphanumeric styles, control stripping, small-caps, Roman numerals, Greek gaps, Cyrillic supplement, Letterlike Symbols completeness |
 | v0.6.0 (R19) | +Coptic block (U+2C80–U+2CFF) folding + Script::Coptic detection; superscript/subscript Latin letters |
 | v0.6.0 (R20) | +Modifier (superscript) Latin letters U+02B0–U+02E3 folding |
+| v0.6.0 (R21) | +Armenian strong homoglyphs (օ/ո/ս/հ/յ) + Script::Armenian |
