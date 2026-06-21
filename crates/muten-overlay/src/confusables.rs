@@ -1262,8 +1262,13 @@ pub fn fold_leet_in_words(s: &str) -> String {
 /// separator, it can only ever *add* a detector match on deliberately
 /// obfuscated text — it cannot merge two genuine words into a false trigger.
 ///
-/// `:` and `+` are intentionally **not** separators, so `M:SS` countdown
-/// timers and `Win+R` shortcuts are preserved for their detectors.
+/// The separator set covers ASCII spacing/punctuation an attacker can sprinkle
+/// between letters (`. , - _ / * | ~ = # ; \ !`), the common middle-dot/bullet
+/// glyphs (`· •` plus the Unicode dot-operators ‧ ∙ ⋅), and NBSP. `:` and `+`
+/// are intentionally **excluded**, so `M:SS` countdown timers and `Win+R`
+/// shortcuts are preserved for their detectors. Expanding the separator set is
+/// safe by the run invariant above: collapsing only ever joins *single-char*
+/// tokens, so it cannot merge two genuine multi-character words.
 /// Idempotent: after one pass no spread run remains.
 #[must_use]
 pub fn collapse_spread_characters(s: &str) -> String {
@@ -1271,7 +1276,26 @@ pub fn collapse_spread_characters(s: &str) -> String {
     let is_sep = |c: char| {
         matches!(
             c,
-            ' ' | '\t' | '.' | ',' | '-' | '_' | '/' | '*' | '|' | '~' | '·' | '•' | '\u{00a0}'
+            ' ' | '\t'
+                | '.'
+                | ','
+                | '-'
+                | '_'
+                | '/'
+                | '*'
+                | '|'
+                | '~'
+                | '='
+                | '#'
+                | ';'
+                | '\\'
+                | '!'
+                | '·'
+                | '•'
+                | '\u{00a0}' // NBSP
+                | '\u{2027}' // ‧ HYPHENATION POINT
+                | '\u{2219}' // ∙ BULLET OPERATOR
+                | '\u{22C5}' // ⋅ DOT OPERATOR
         )
     };
     let chars: Vec<char> = s.chars().collect();
@@ -9931,6 +9955,51 @@ mod spread_char_tests {
     #[test]
     fn collapse_preserves_countdown_and_shortcut_separators() {
         // ':' and '+' are not separators, so M:SS timers and Win+R survive.
+        assert_eq!(collapse_spread_characters("5:00"), "5:00");
+        assert_eq!(collapse_spread_characters("win+r"), "win+r");
+    }
+
+    // ── Round 23: expanded spread-character separator set ──
+    // An attacker who saw the old separator list would switch to a separator we
+    // didn't recognise. We now also collapse =, #, ;, \, !, and the Unicode
+    // dot-operators ‧ ∙ ⋅, while still preserving the deliberately-excluded
+    // ':' and '+' for the countdown / shortcut detectors.
+
+    #[test]
+    fn collapse_rejoins_new_ascii_separators() {
+        assert_eq!(collapse_spread_characters("v=i=r=u=s"), "virus");
+        assert_eq!(collapse_spread_characters("v#i#r#u#s"), "virus");
+        assert_eq!(collapse_spread_characters("v;i;r;u;s"), "virus");
+        assert_eq!(collapse_spread_characters("v\\i\\r\\u\\s"), "virus");
+        assert_eq!(collapse_spread_characters("v!i!r!u!s"), "virus");
+    }
+
+    #[test]
+    fn collapse_rejoins_unicode_dot_operators() {
+        assert_eq!(
+            collapse_spread_characters("v\u{2027}i\u{2027}r\u{2027}u\u{2027}s"),
+            "virus"
+        );
+        assert_eq!(
+            collapse_spread_characters("v\u{2219}i\u{2219}r\u{2219}u\u{2219}s"),
+            "virus"
+        );
+        assert_eq!(
+            collapse_spread_characters("v\u{22C5}i\u{22C5}r\u{22C5}u\u{22C5}s"),
+            "virus"
+        );
+    }
+
+    #[test]
+    fn collapse_new_separators_still_preserve_short_runs() {
+        // Below the MIN_RUN=4 threshold, nothing collapses (no FP).
+        assert_eq!(collapse_spread_characters("C# D#"), "C# D#");
+        assert_eq!(collapse_spread_characters("a=b=c"), "a=b=c");
+    }
+
+    #[test]
+    fn collapse_still_preserves_colon_and_plus_with_new_set() {
+        // Regression: expanding the set must not touch ':' / '+'.
         assert_eq!(collapse_spread_characters("5:00"), "5:00");
         assert_eq!(collapse_spread_characters("win+r"), "win+r");
     }

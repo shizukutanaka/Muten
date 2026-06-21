@@ -97,7 +97,7 @@ Selected signal weights (from `lib.rs`):
 7. `strip_combining_marks` — accent/diacritic combining characters (category M)
 8. `fold_confusables` — call `fold_char` on every character
 9. `collapse_ascii_spaces` — normalise repeated spaces
-10. `collapse_spread_characters` — "v·i·r·u·s" → "virus" (spread-word evasion)
+10. `collapse_spread_characters` — "v·i·r·u·s" → "virus" (spread-word evasion); separators include `. , - _ / * | ~ = # ; \ !`, `· •`, the dot-operators ‧ ∙ ⋅, and NBSP — `:`/`+` excluded by design (M:SS, Win+R)
 11. `fold_leet_in_words` → to_ascii_lowercase — leet substitution then lowercase
 
 ### `fold_char` coverage (as of Round 19)
@@ -280,3 +280,4 @@ The following signal families are implemented (see `confusables.rs` and `lib.rs`
 | v0.6.0 (R20) | +Modifier (superscript) Latin letters U+02B0–U+02E3 folding |
 | v0.6.0 (R21) | +Armenian strong homoglyphs (օ/ո/ս/հ/յ) + Script::Armenian |
 | v0.6.0 (R22) | +NFKD-authoritative single-letter compat folds (long-s, Kelvin sign, modifier/subscript letter holes); ª/º deliberately skipped |
+| v0.6.0 (R23) | +expanded spread-character separators (= # ; \ ! and dot-operators ‧ ∙ ⋅); :/+ still excluded |
