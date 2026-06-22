@@ -331,6 +331,7 @@ impl Verdict {
             "pig_butchering_lure",
             "recovery_scam",
             "subscription_lure",
+            "task_app_scam",
         ]) {
             out.push(
                 "Do not pay or send money — especially via gift cards, wire transfer, \
@@ -587,6 +588,9 @@ fn signal_phrase(signal: &str) -> &str {
             "claims a relative (grandson/son/daughter/family member) is in a sudden crisis — arrested, hospitalized, kidnapped — and urgently, secretly needs money (bail/ransom/wire/gift cards); the 'grandparent' / AI-voice-clone imposter scam"
         }
         "remote_access_lure" => "pushes a remote-access tool alongside a fake alert",
+        "task_app_scam" => {
+            "claims the user earned money by completing tasks but demands a fee or deposit to withdraw earnings"
+        }
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
         other => other,
@@ -723,6 +727,7 @@ const W_OTP_INTERCEPTION_SCAM: i32 = 30; // OTP/2FA code cue + share/read/give-t
 const W_FAMILY_EMERGENCY_SCAM: i32 = 30; // relative + crisis + money/secrecy demand (FTC 2024 family-emergency/imposter; 警察庁 オレオレ詐欺)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_ALARM_DENSITY: i32 = 20; // ≥3 distinct fear-words stacked in one title — novel-scam catcher
+const W_TASK_APP_SCAM: i32 = 30; // task-completion claim + withdrawal-fee gate (IC3 2025 emerging category)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
 /// The weight contribution of a built-in signal.  Returns `None` for
@@ -816,6 +821,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "family_emergency_scam" => Some(W_FAMILY_EMERGENCY_SCAM),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "alarm_density" => Some(W_ALARM_DENSITY),
+        "task_app_scam" => Some(W_TASK_APP_SCAM),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
     }
@@ -898,6 +904,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "family_emergency_scam"
             | "remote_access_lure"
             | "alarm_density"
+            | "task_app_scam"
     )
 }
 
@@ -1023,6 +1030,7 @@ pub fn all_signals() -> Vec<SignalInfo> {
         "otp_interception_scam",
         "family_emergency_scam",
         "remote_access_lure",
+        "task_app_scam",
     ];
     NAMES
         .iter()
@@ -2120,6 +2128,21 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && confusables::has_family_emergency_scam(&normalized_title) {
         score += rules.weight_of("family_emergency_scam", W_FAMILY_EMERGENCY_SCAM);
         signals.push("family_emergency_scam".into());
+    }
+
+    // Task-app withdrawal-gate scam (E50 — IC3 2025 emerging category, FTC
+    // 2024/2025 "online job fraud"). Victims are shown an overlay claiming
+    // they earned money by completing online tasks (rating products, liking
+    // videos) and must pay a fee or make a deposit to withdraw their "balance".
+    // No legitimate task or earning platform charges a withdrawal fee —
+    // the fee is always the extraction mechanism. Distinct from has_job_scam
+    // (advance-fee before starting) and has_pig_butchering_lure (investment
+    // framing): this fires specifically on task_claim + withdrawal_gate.
+    // alert_shaped guard: a legitimate freelance-payment page (closable,
+    // user-initiated) never appears as an unsolicited full-screen overlay.
+    if alert_shaped && confusables::has_task_app_scam(&normalized_title) {
+        score += rules.weight_of("task_app_scam", W_TASK_APP_SCAM);
+        signals.push("task_app_scam".into());
     }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
@@ -9084,6 +9107,59 @@ mod tests {
         assert_eq!(
             category_of("family_emergency_scam"),
             Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E50: task_app_scam ────────────────────────────────────────────
+
+    #[test]
+    fn task_app_scam_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "complete task to earn — withdrawal fee required to unlock your balance".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "task_app_scam"),
+            "task_app_scam must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_TASK_APP_SCAM);
+    }
+
+    #[test]
+    fn task_app_scam_fp_guard_no_alert_shape() {
+        // Same scam title but in a closable, non-fullscreen, user-initiated window.
+        let w = OverlayWindow {
+            title: "complete task to earn — withdrawal fee required".into(),
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "task_app_scam"),
+            "task_app_scam must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn task_app_scam_category_is_sneaking() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("task_app_scam"),
+            Some(DarkPatternCategory::Sneaking)
         );
     }
 }

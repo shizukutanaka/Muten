@@ -3790,6 +3790,72 @@ pub fn has_pig_butchering_lure(s: &str) -> bool {
     romance_cue && invest_platform
 }
 
+/// E50 — Task-app withdrawal-gate scam (IC3 2025: rapidly-growing category
+/// targeting adults under 30; FTC 2024/2025 "online job" fraud subcategory).
+///
+/// Victims are recruited via social media or messaging apps and shown an
+/// overlay claiming they earned money by "completing tasks" (rating products,
+/// liking videos, reviewing apps).  The catch: to withdraw their "earnings",
+/// they must first pay a fee or make a deposit — the fee is the actual scam.
+///
+/// Distinct from `has_job_scam` (advance-fee for *getting* the job) —
+/// `has_task_app_scam` fires after the victim has "worked" and is now told
+/// they must PAY to *access* earnings they were never going to receive.
+/// Distinct from `has_pig_butchering_lure` (investment platform framing) —
+/// task-app scams use work/task framing, not trading/investment framing.
+///
+/// AND-pair: task_claim (describes a "complete tasks to earn" structure)
+/// AND withdrawal_gate (fee or deposit required to unlock "earned" balance).
+/// No legitimate gig, task, or earning platform charges you to withdraw
+/// what you've earned — the fee is always the extraction mechanism.
+pub fn has_task_app_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // task_claim: describes the "earn by completing tasks" structure
+    let task_claim = has("complete task")
+        || has("daily task")
+        || has("online task")
+        || has("task reward")
+        || has("task earning")
+        || has("like and earn")
+        || has("like videos to earn")
+        || has("rate products")
+        || has("rating task")
+        || has("review task")
+        || has("app task")
+        || has("simple task")
+        || has("earn per task")
+        || has("earn per click")
+        || has("タスクを完了")  // complete the task (JP)
+        || has("タスク報酬")   // task reward (JP)
+        || has("クリック報酬") // click reward (JP)
+        || has("タスク収入")   // task income (JP)
+        || has("いいねで稼ぐ") // earn by liking (JP)
+        || has("クリックで稼"); // earn by clicking (JP)
+
+    // withdrawal_gate: fee or deposit required to access "earnings"
+    // No legitimate earning platform requires payment to withdraw.
+    let withdrawal_gate = has("pay to withdraw")
+        || has("withdrawal fee")
+        || has("deposit to withdraw")
+        || has("deposit to unlock")
+        || has("upgrade to withdraw")
+        || has("upgrade your account to withdraw")
+        || has("pending balance")
+        || has("balance pending")
+        || has("earnings locked")
+        || has("activate withdrawal")
+        || has("unlock your earnings")
+        || has("minimum deposit required to withdraw")
+        || has("出金手数料")    // withdrawal fee (JP)
+        || has("出金するには")  // to withdraw earnings (JP)
+        || has("入金して出金")  // deposit then withdraw (JP)
+        || has("残高を引き出")  // withdraw balance (JP)
+        || has("報酬を受け取る"); // receive reward (JP — broader but inside AND)
+
+    task_claim && withdrawal_gate
+}
+
 /// E45 — Pre-approved loan advance-fee scam.
 ///
 /// Fires when the normalized title contains BOTH a *loan-approval cue*
@@ -7719,6 +7785,54 @@ mod tests {
         assert!(has_pig_butchering_lure(
             "i can help you invest — double your money on our exclusive trading platform"
         ));
+    }
+
+    // ── E50: task_app_scam ────────────────────────────────────────
+
+    #[test]
+    fn task_app_scam_fires_on_complete_task_withdrawal_fee() {
+        assert!(has_task_app_scam(
+            "complete task — withdrawal fee required to receive your earnings"
+        ));
+        assert!(has_task_app_scam(
+            "daily task reward — pay to withdraw your pending balance"
+        ));
+    }
+
+    #[test]
+    fn task_app_scam_fires_on_like_earn_variants() {
+        assert!(has_task_app_scam(
+            "like and earn — deposit to unlock your balance"
+        ));
+        assert!(has_task_app_scam(
+            "rate products to earn — upgrade your account to withdraw earnings"
+        ));
+    }
+
+    #[test]
+    fn task_app_scam_fires_on_japanese_variants() {
+        // タスク報酬 (task reward) + 出金手数料 (withdrawal fee)
+        assert!(has_task_app_scam("タスク報酬 — 出金手数料が必要です"));
+        // いいねで稼ぐ (earn by liking) + 出金するには (to withdraw)
+        assert!(has_task_app_scam("いいねで稼ぐ — 出金するには入金が必要"));
+    }
+
+    #[test]
+    fn task_app_scam_does_not_fire_without_withdrawal_gate() {
+        // task claim alone — no fee demand
+        assert!(!has_task_app_scam(
+            "complete your daily task to earn rewards"
+        ));
+        assert!(!has_task_app_scam("rate products and earn money"));
+    }
+
+    #[test]
+    fn task_app_scam_does_not_fire_without_task_claim() {
+        // withdrawal fee alone — no task framing
+        assert!(!has_task_app_scam(
+            "pay withdrawal fee to receive your money"
+        ));
+        assert!(!has_task_app_scam("pending balance — deposit to unlock"));
     }
 
     // ── E45: loan_fee_scam ────────────────────────────────────────
