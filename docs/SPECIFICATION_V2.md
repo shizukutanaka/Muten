@@ -280,3 +280,4 @@ The following signal families are implemented (see `confusables.rs` and `lib.rs`
 | v0.6.0 (R25) | spec corrected to credit ruleset weight/blocklist file-loading (W4/W5/P3/P5) |
 | v0.6.0 (R26) | phone scanner: fold middle-dot/bullet separators (· • ‧ ∙ ⋅) → '.' so `1·800·555·0100` is detected |
 | v0.6.0 (R27) | blocklist `match_phone`: fold O→0 / l→1 so a letter-substituted *known* scam number (`1-8OO-555-O1OO`) matches the curated rule |
+| v0.6.0 (R28) | `match_process`: fold homoglyphs (Cyrillic/Greek/… → ASCII) so a rogue-AV binary named `РСProtector.exe` matches its rule; digits preserved (no win32→winee) |

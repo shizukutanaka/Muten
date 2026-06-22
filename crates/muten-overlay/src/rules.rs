@@ -773,7 +773,19 @@ fn strip_comment(line: &str) -> &str {
 /// Lower-case and remove separators (space, hyphen, underscore) so
 /// product names match regardless of how they're written.
 fn squash(s: &str) -> String {
-    s.to_ascii_lowercase()
+    // Defeat the same evasions as the host pipeline: drop zero-width / BiDi and
+    // combining characters, then fold homoglyphs (Cyrillic / Greek / Coptic /
+    // Armenian / full-width / … → ASCII via `fold_char`) so a rogue-AV process
+    // named with look-alikes ("РСProtector", Cyrillic Р/С) still matches its
+    // curated rule. Then lower-case and remove the separators vendors vary
+    // (space / hyphen / underscore). The digit→letter typosquat folding used for
+    // *hosts* is intentionally NOT applied here: process names legitimately
+    // contain digits (win32, mp3, x264, vlc) and folding them (0→o, 1→l, …) would
+    // corrupt the comparison for no realistic gain.
+    let s = crate::confusables::strip_invisibles(s);
+    let s = crate::confusables::strip_combining_marks(&s);
+    crate::confusables::fold_confusables(&s)
+        .to_ascii_lowercase()
         .chars()
         .filter(|c| !matches!(c, ' ' | '-' | '_'))
         .collect()
@@ -1046,6 +1058,43 @@ mod tests {
         // < 7 digits would be an over-broad rule; it must be dropped.
         let rs = Ruleset::from_lines(&["phone: 12345"]);
         assert_eq!(rs.phone_count(), 0);
+    }
+
+    #[test]
+    fn match_process_is_separator_and_case_insensitive() {
+        let rs = Ruleset::from_lines(&["process: pc protector plus"]);
+        assert_eq!(rs.process_count(), 1);
+        // Vendors write the same name with/without separators and casing.
+        assert!(rs.match_process("PCProtectorPlus.exe").is_some());
+        assert!(rs.match_process("pc-protector-plus").is_some());
+        assert!(rs.match_process("PC_Protector_Plus").is_some());
+        // An unrelated process does not match.
+        assert!(rs.match_process("notepad.exe").is_none());
+    }
+
+    #[test]
+    fn match_process_folds_homoglyph_process_names() {
+        // Round 28: a rogue-AV binary named with Cyrillic look-alikes renders
+        // identically to the ASCII name but must still match the curated rule.
+        let rs = Ruleset::from_lines(&["process: pc protector plus"]);
+        // "РСProtectorPlus" — Cyrillic Р (U+0420) and С (U+0421) for P and C.
+        assert!(
+            rs.match_process("\u{0420}\u{0421}ProtectorPlus.exe")
+                .is_some(),
+            "Cyrillic-homoglyph process name must match the ASCII rule"
+        );
+    }
+
+    #[test]
+    fn match_process_preserves_digits() {
+        // Digits in legit process names must NOT be folded to letters (unlike
+        // the host pipeline), so digit-bearing names are compared faithfully.
+        let rs = Ruleset::from_lines(&["process: win32 helper"]);
+        assert!(rs.match_process("Win32Helper.exe").is_some());
+        // A different digit must not collide (no 3→e / 0→o folding here).
+        let rs2 = Ruleset::from_lines(&["process: scan0matic"]);
+        assert!(rs2.match_process("scan0matic.exe").is_some());
+        assert!(rs2.match_process("scanomatic.exe").is_none());
     }
 
     #[test]
