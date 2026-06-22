@@ -165,6 +165,7 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         "task_app_scam" => Some(Sneaking), // fake-task-earnings framing disguises the withdrawal-fee extraction
         "software_subscription_scam" => Some(InterfaceInterference), // SaaS/AI brand impersonation steers via fake billing authority
         "dark_web_breach_lure" => Some(InterfaceInterference), // impersonates identity-monitoring service to steer victim via false breach alarm
+        "cloud_quota_lure" => Some(InterfaceInterference), // impersonates cloud storage brand via false quota alarm to harvest credentials or push payment
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }

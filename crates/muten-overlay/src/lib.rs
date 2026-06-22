@@ -299,6 +299,7 @@ impl Verdict {
             "streaming_billing_scam",
             "software_subscription_scam",
             "dark_web_breach_lure",
+            "cloud_quota_lure",
             "bank_account_alarm",
         ]) {
             out.push(
@@ -599,6 +600,9 @@ fn signal_phrase(signal: &str) -> &str {
         "dark_web_breach_lure" => {
             "claims the victim's password or personal data was found on the dark web to harvest credentials or sell fake identity-protection services"
         }
+        "cloud_quota_lure" => {
+            "impersonates a cloud storage brand (iCloud, Google Drive, OneDrive, Dropbox) with a fake storage-full alarm to harvest Apple ID / Google / Microsoft credentials or push a fraudulent upgrade payment"
+        }
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
         other => other,
@@ -738,6 +742,7 @@ const W_ALARM_DENSITY: i32 = 20; // ≥3 distinct fear-words stacked in one titl
 const W_TASK_APP_SCAM: i32 = 30; // task-completion claim + withdrawal-fee gate (IC3 2025 emerging category)
 const W_SOFTWARE_SUBSCRIPTION_SCAM: i32 = 25; // named SaaS/AI-brand + billing-failure (APWG Q1 2025 AI-brand phishing)
 const W_DARK_WEB_BREACH_LURE: i32 = 30; // "dark web" + breach/credential vocabulary (APWG Q1 2025 identity-protection scam)
+const W_CLOUD_QUOTA_LURE: i32 = 25; // cloud storage brand + quota-full alarm (Apple ID / Google credential phishing)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
 /// The weight contribution of a built-in signal.  Returns `None` for
@@ -834,6 +839,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "task_app_scam" => Some(W_TASK_APP_SCAM),
         "software_subscription_scam" => Some(W_SOFTWARE_SUBSCRIPTION_SCAM),
         "dark_web_breach_lure" => Some(W_DARK_WEB_BREACH_LURE),
+        "cloud_quota_lure" => Some(W_CLOUD_QUOTA_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
     }
@@ -919,6 +925,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "task_app_scam"
             | "software_subscription_scam"
             | "dark_web_breach_lure"
+            | "cloud_quota_lure"
     )
 }
 
@@ -1047,6 +1054,7 @@ pub fn all_signals() -> Vec<SignalInfo> {
         "task_app_scam",
         "software_subscription_scam",
         "dark_web_breach_lure",
+        "cloud_quota_lure",
     ];
     NAMES
         .iter()
@@ -2186,6 +2194,18 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && confusables::has_dark_web_breach_lure(&normalized_title) {
         score += rules.weight_of("dark_web_breach_lure", W_DARK_WEB_BREACH_LURE);
         signals.push("dark_web_breach_lure".into());
+    }
+
+    // Cloud storage quota phishing lure (E53 — Apple Security Research 2025
+    // iCloud phishing spike; FTC 2025: Apple = top-5 impersonated brand).
+    // Overlays impersonating iCloud / Google Drive / OneDrive / Dropbox claim
+    // the user's storage is full and their files will be deleted, then harvest
+    // Apple ID / Google / Microsoft credentials or push a fake upgrade payment.
+    // Distinct from `cloud_storage_abuse` (overlay *hosted* on blob storage
+    // to evade blocklists) — this fires on the overlay *content*.
+    if alert_shaped && confusables::has_cloud_quota_lure(&normalized_title) {
+        score += rules.weight_of("cloud_quota_lure", W_CLOUD_QUOTA_LURE);
+        signals.push("cloud_quota_lure".into());
     }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
@@ -9307,6 +9327,62 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("dark_web_breach_lure"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E53: cloud_quota_lure ─────────────────────────────────────────────────
+
+    #[test]
+    fn cloud_quota_lure_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title:
+                "icloud storage is full — your photos will be deleted — upgrade your storage now"
+                    .into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "cloud_quota_lure"),
+            "cloud_quota_lure must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_CLOUD_QUOTA_LURE);
+    }
+
+    #[test]
+    fn cloud_quota_lure_fp_guard_no_alert_shape() {
+        let w = OverlayWindow {
+            title:
+                "google drive storage quota exceeded — upgrade your storage plan to keep your files"
+                    .into(),
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "cloud_quota_lure"),
+            "cloud_quota_lure must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn cloud_quota_lure_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("cloud_quota_lure"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }

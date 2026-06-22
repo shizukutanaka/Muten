@@ -3817,6 +3817,75 @@ pub fn has_dark_web_breach_lure(s: &str) -> bool {
     dark_web_marker && breach_action
 }
 
+/// E53 — Cloud-storage quota / "storage full" phishing lure.
+///
+/// Scammers impersonate cloud storage services (Apple iCloud, Google Drive,
+/// Google One, Microsoft OneDrive, Dropbox) with overlays claiming the
+/// victim's storage is full or nearly exhausted, and that photos/files will
+/// be deleted unless they act immediately to "upgrade" their plan.  The CTA
+/// redirects to a phishing page that harvests Apple ID / Google / Microsoft
+/// credentials, or pushes a fake subscription payment.
+///
+/// Distinct from `cloud_storage_abuse` (which fires when the overlay is
+/// *hosted* on a cloud blob URL to evade blocklists) — this fires on the
+/// overlay *content* impersonating a cloud-storage quota alarm.
+///
+/// AND-pair:
+/// - `cloud_brand`: named cloud storage service (iCloud, Google Drive,
+///   OneDrive, Dropbox, etc.)
+/// - `quota_alarm`: storage-full / capacity-exceeded / data-loss urgency
+///   (e.g. "storage is full", "your photos will be deleted", "quota exceeded",
+///   "upgrade your storage plan").
+///
+/// FP risk: legitimate cloud apps show quota warnings but are always
+/// user-initiated and closable → `alert_shaped` guard eliminates them.
+/// Sources: Apple Security Research 2025 iCloud phishing spike; FTC 2025
+/// brand-impersonation report (Apple = top-5 impersonated brand);
+/// APWG Q1 2025 credential-phishing trend report.
+#[must_use]
+pub fn has_cloud_quota_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    let cloud_brand = has("icloud")
+        || has("google drive")
+        || has("google one")
+        || has("google photos storage")
+        || has("google account storage")
+        || has("onedrive")
+        || has("one drive storage")
+        || has("microsoft onedrive")
+        || has("dropbox storage")
+        || has("apple storage")
+        || has("iクラウド")         // iCloud (JP)
+        || has("グーグルドライブ")   // Google Drive (JP)
+        || has("ワンドライブ"); // OneDrive (JP)
+
+    let quota_alarm = has("storage is full")
+        || has("storage almost full")
+        || has("storage limit reached")
+        || has("running out of storage")
+        || has("out of storage")
+        || has("storage capacity")
+        || has("quota exceeded")
+        || has("storage quota")
+        || has("upgrade your storage")
+        || has("upgrade your plan")
+        || has("upgrade now to keep")
+        || has("your photos will be deleted")
+        || has("your files will be lost")
+        || has("your data will be deleted")
+        || has("your data will be lost")
+        || has("photos and videos will be lost")
+        || has("expand your storage")
+        || has("ストレージがいっぱい")  // storage is full (JP)
+        || has("ストレージ容量不足")    // storage capacity shortage (JP)
+        || has("ストレージを拡張")      // expand storage (JP)
+        || has("写真が削除されます")    // photos will be deleted (JP)
+        || has("データが失われます"); // data will be lost (JP)
+
+    cloud_brand && quota_alarm
+}
+
 /// E43 — Fake traffic / parking / toll violation scam.
 ///
 /// AND-pair: traffic or parking violation noun AND a payment-urgency phrase.
@@ -7883,6 +7952,48 @@ mod tests {
         // Breach cue without "dark web"
         assert!(!has_dark_web_breach_lure(
             "your password may be compromised — change it now"
+        ));
+    }
+
+    // ── has_cloud_quota_lure (E53) ───────────────────────────────────────────
+
+    #[test]
+    fn cloud_quota_fires_on_icloud_storage_full() {
+        assert!(has_cloud_quota_lure(
+            "icloud storage is full — your photos will be deleted — upgrade your storage now"
+        ));
+        assert!(has_cloud_quota_lure(
+            "apple storage running out of storage — upgrade your plan to keep your data"
+        ));
+    }
+
+    #[test]
+    fn cloud_quota_fires_on_google_drive_quota() {
+        assert!(has_cloud_quota_lure(
+            "google drive storage quota exceeded — your files will be lost — expand your storage"
+        ));
+        assert!(has_cloud_quota_lure(
+            "google one storage almost full — your data will be deleted — upgrade now to keep your photos"
+        ));
+    }
+
+    #[test]
+    fn cloud_quota_fires_on_onedrive_jp() {
+        assert!(has_cloud_quota_lure(
+            "ワンドライブ — ストレージがいっぱい — 写真が削除されます"
+        ));
+        assert!(has_cloud_quota_lure(
+            "iクラウド ストレージ容量不足 — データが失われます"
+        ));
+    }
+
+    #[test]
+    fn cloud_quota_does_not_fire_half_pair() {
+        // Cloud brand without quota alarm
+        assert!(!has_cloud_quota_lure("icloud — settings and storage"));
+        // Quota alarm without cloud brand
+        assert!(!has_cloud_quota_lure(
+            "storage is full — please free up space to continue"
         ));
     }
 
