@@ -284,6 +284,7 @@ impl Verdict {
             "av_brand_renewal_scam",
             "ip_alarm_lure",
             "fake_scanner_cue",
+            "windows_defender_alert_lure",
         ]) {
             out.push(
                 "Do not call any phone number shown — genuine operating-system or security \
@@ -603,6 +604,9 @@ fn signal_phrase(signal: &str) -> &str {
         "cloud_quota_lure" => {
             "impersonates a cloud storage brand (iCloud, Google Drive, OneDrive, Dropbox) with a fake storage-full alarm to harvest Apple ID / Google / Microsoft credentials or push a fraudulent upgrade payment"
         }
+        "windows_defender_alert_lure" => {
+            "impersonates Windows Defender or Microsoft Security with a fake named-malware alert (trojan, ransomware, rootkit, etc.) to push malware downloads or drive-to-call tech-support fraud"
+        }
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
         other => other,
@@ -743,6 +747,7 @@ const W_TASK_APP_SCAM: i32 = 30; // task-completion claim + withdrawal-fee gate 
 const W_SOFTWARE_SUBSCRIPTION_SCAM: i32 = 25; // named SaaS/AI-brand + billing-failure (APWG Q1 2025 AI-brand phishing)
 const W_DARK_WEB_BREACH_LURE: i32 = 30; // "dark web" + breach/credential vocabulary (APWG Q1 2025 identity-protection scam)
 const W_CLOUD_QUOTA_LURE: i32 = 25; // cloud storage brand + quota-full alarm (Apple ID / Google credential phishing)
+const W_WINDOWS_DEFENDER_ALERT_LURE: i32 = 35; // Windows/Microsoft Defender brand + named malware alert (MSTIC 2025)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
 /// The weight contribution of a built-in signal.  Returns `None` for
@@ -840,6 +845,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "software_subscription_scam" => Some(W_SOFTWARE_SUBSCRIPTION_SCAM),
         "dark_web_breach_lure" => Some(W_DARK_WEB_BREACH_LURE),
         "cloud_quota_lure" => Some(W_CLOUD_QUOTA_LURE),
+        "windows_defender_alert_lure" => Some(W_WINDOWS_DEFENDER_ALERT_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
     }
@@ -926,6 +932,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "software_subscription_scam"
             | "dark_web_breach_lure"
             | "cloud_quota_lure"
+            | "windows_defender_alert_lure"
     )
 }
 
@@ -1055,6 +1062,7 @@ pub fn all_signals() -> Vec<SignalInfo> {
         "software_subscription_scam",
         "dark_web_breach_lure",
         "cloud_quota_lure",
+        "windows_defender_alert_lure",
     ];
     NAMES
         .iter()
@@ -2206,6 +2214,19 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && confusables::has_cloud_quota_lure(&normalized_title) {
         score += rules.weight_of("cloud_quota_lure", W_CLOUD_QUOTA_LURE);
         signals.push("cloud_quota_lure".into());
+    }
+
+    // Fake Windows Defender / Microsoft Security alert overlay (E54 — MSTIC
+    // 2025 fake-Defender overlay surge; SafetyDetectives fake-AV guide 2026).
+    // Scammers impersonate Windows Defender with overlays claiming a specific
+    // named malware (trojan, ransomware, rootkit…) was detected, pushing
+    // malware-removal downloads rather than a phone CTA (so phone_number +
+    // fake_bsod_lure would both miss it). Weight = 35 (higher than most
+    // content signals): the Defender brand + named malware combo is very
+    // specific and essentially never appears in legitimate window titles.
+    if alert_shaped && confusables::has_windows_defender_alert_lure(&normalized_title) {
+        score += rules.weight_of("windows_defender_alert_lure", W_WINDOWS_DEFENDER_ALERT_LURE);
+        signals.push("windows_defender_alert_lure".into());
     }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
@@ -9383,6 +9404,58 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("cloud_quota_lure"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E54: windows_defender_alert_lure ──────────────────────────────────────
+
+    #[test]
+    fn windows_defender_alert_lure_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "windows defender: trojan.ransom.wannacry detected — click here to remove immediately".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "windows_defender_alert_lure"),
+            "windows_defender_alert_lure must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_WINDOWS_DEFENDER_ALERT_LURE);
+    }
+
+    #[test]
+    fn windows_defender_alert_lure_fp_guard_no_alert_shape() {
+        let w = OverlayWindow {
+            title: "windows defender: malware detected — your computer may be at risk".into(),
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "windows_defender_alert_lure"),
+            "windows_defender_alert_lure must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn windows_defender_alert_lure_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("windows_defender_alert_lure"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }

@@ -3886,6 +3886,78 @@ pub fn has_cloud_quota_lure(s: &str) -> bool {
     cloud_brand && quota_alarm
 }
 
+/// E54 — Fake Windows Defender / Microsoft Security alert overlay.
+///
+/// Scammers impersonate Windows Defender or the Microsoft Security Center UI
+/// with overlays claiming a named malware was detected and immediate action is
+/// required.  Unlike `fake_bsod_lure` (which requires BSOD stop-code framing
+/// or an explicit "call Microsoft" instruction) and `fake_scanner_cue` (which
+/// requires scanning-progress or threat-count language), this targets the
+/// instantaneous branded-alert format:
+///   "Windows Defender: Trojan.Ransom.WannaCry detected — click to remove"
+///   "Microsoft Security: rootkit found — your files are at risk"
+/// These overlays push malware via a "remove now" download rather than a
+/// phone CTA, so `phone_number` + `fake_bsod_lure` together would miss them.
+///
+/// AND-pair:
+/// - `defender_brand`: Windows Defender / Microsoft Defender / Windows
+///   Security Center / Microsoft Security brand impersonation markers.
+/// - `named_threat`: specific malware taxonomy name (trojan, ransomware,
+///   rootkit, keylogger, worm, spyware, adware, cryptominer, or "malware")
+///   combined with an alert action (detected, found, blocked, alert, warning).
+///
+/// Sources: Microsoft MSTIC 2025 threat landscape; SafetyDetectives fake-AV
+/// guide 2026; ESET ThreatReport H1 2025 (fake Windows Security overlays).
+#[must_use]
+pub fn has_windows_defender_alert_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    let defender_brand = has("windows defender")
+        || has("microsoft defender")
+        || has("windows security center")
+        || has("microsoft security")
+        || has("ウィンドウズ ディフェンダー") // Windows Defender (JP)
+        || has("マイクロソフト ディフェンダー") // Microsoft Defender (JP)
+        || has("ウインドウズ セキュリティ")    // Windows Security (JP variant)
+        || has("defender antivirus")
+        || has("defender firewall");
+
+    // Named malware taxonomy terms — specific enough to be scareware-only
+    let malware_type = has("trojan")
+        || has("ransomware")
+        || has("rootkit")
+        || has("keylogger")
+        || has("worm")
+        || has("spyware")
+        || has("adware")
+        || has("cryptominer")
+        || has("トロイの木馬")  // trojan (JP)
+        || has("ランサムウェア") // ransomware (JP)
+        || has("スパイウェア")  // spyware (JP)
+        || has("アドウェア"); // adware (JP)
+
+    let alert_action = has("detected")
+        || has("found")
+        || has("blocked")
+        || has("alert")
+        || has("warning")
+        || has("検出")   // detected (JP)
+        || has("警告")   // warning (JP)
+        || has("発見"); // found (JP)
+
+    // The AND-pair: Defender brand + (named threat AND action verb).
+    // Requiring both the threat TYPE and the action verb prevents "windows
+    // defender settings" or "windows defender tutorial" from firing while
+    // preserving "windows defender: trojan detected" → fires.
+    let named_threat_alert = malware_type && alert_action;
+
+    // Generic "malware" must be paired with alert action too (same rule).
+    let malware_alert =
+        has("malware") && (has("detected") || has("found") || has("alert") || has("warning"));
+
+    defender_brand && (named_threat_alert || malware_alert)
+}
+
 /// E43 — Fake traffic / parking / toll violation scam.
 ///
 /// AND-pair: traffic or parking violation noun AND a payment-urgency phrase.
@@ -7994,6 +8066,50 @@ mod tests {
         // Quota alarm without cloud brand
         assert!(!has_cloud_quota_lure(
             "storage is full — please free up space to continue"
+        ));
+    }
+
+    // ── has_windows_defender_alert_lure (E54) ───────────────────────────────
+
+    #[test]
+    fn windows_defender_alert_fires_on_trojan_detected() {
+        assert!(has_windows_defender_alert_lure(
+            "windows defender: trojan.ransom.wannacry detected — click here to remove immediately"
+        ));
+        assert!(has_windows_defender_alert_lure(
+            "microsoft defender alert — rootkit found on your system — take action now"
+        ));
+    }
+
+    #[test]
+    fn windows_defender_alert_fires_on_malware_alert() {
+        assert!(has_windows_defender_alert_lure(
+            "windows security center: malware detected — your computer is at risk"
+        ));
+        assert!(has_windows_defender_alert_lure(
+            "microsoft security warning: malware found — remove now to protect your data"
+        ));
+    }
+
+    #[test]
+    fn windows_defender_alert_fires_jp() {
+        assert!(has_windows_defender_alert_lure(
+            "マイクロソフト ディフェンダー — トロイの木馬を検出 — 今すぐ削除"
+        ));
+        assert!(has_windows_defender_alert_lure(
+            "ウィンドウズ ディフェンダー 警告 — ランサムウェアを発見しました"
+        ));
+    }
+
+    #[test]
+    fn windows_defender_alert_does_not_fire_brand_only() {
+        // Brand without threat
+        assert!(!has_windows_defender_alert_lure(
+            "windows defender settings — manage your protection preferences"
+        ));
+        // Threat without Defender brand
+        assert!(!has_windows_defender_alert_lure(
+            "trojan detected on your computer — call support"
         ));
     }
 
