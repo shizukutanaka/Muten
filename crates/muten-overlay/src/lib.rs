@@ -298,6 +298,7 @@ impl Verdict {
             "social_media_account_alarm",
             "streaming_billing_scam",
             "software_subscription_scam",
+            "dark_web_breach_lure",
             "bank_account_alarm",
         ]) {
             out.push(
@@ -595,6 +596,9 @@ fn signal_phrase(signal: &str) -> &str {
         "software_subscription_scam" => {
             "impersonates a SaaS or AI-assistant brand with a fake payment-failure or account-suspension billing alert"
         }
+        "dark_web_breach_lure" => {
+            "claims the victim's password or personal data was found on the dark web to harvest credentials or sell fake identity-protection services"
+        }
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
         other => other,
@@ -733,6 +737,7 @@ const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fa
 const W_ALARM_DENSITY: i32 = 20; // ≥3 distinct fear-words stacked in one title — novel-scam catcher
 const W_TASK_APP_SCAM: i32 = 30; // task-completion claim + withdrawal-fee gate (IC3 2025 emerging category)
 const W_SOFTWARE_SUBSCRIPTION_SCAM: i32 = 25; // named SaaS/AI-brand + billing-failure (APWG Q1 2025 AI-brand phishing)
+const W_DARK_WEB_BREACH_LURE: i32 = 30; // "dark web" + breach/credential vocabulary (APWG Q1 2025 identity-protection scam)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
 /// The weight contribution of a built-in signal.  Returns `None` for
@@ -828,6 +833,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "alarm_density" => Some(W_ALARM_DENSITY),
         "task_app_scam" => Some(W_TASK_APP_SCAM),
         "software_subscription_scam" => Some(W_SOFTWARE_SUBSCRIPTION_SCAM),
+        "dark_web_breach_lure" => Some(W_DARK_WEB_BREACH_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
     }
@@ -912,6 +918,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "alarm_density"
             | "task_app_scam"
             | "software_subscription_scam"
+            | "dark_web_breach_lure"
     )
 }
 
@@ -1039,6 +1046,7 @@ pub fn all_signals() -> Vec<SignalInfo> {
         "remote_access_lure",
         "task_app_scam",
         "software_subscription_scam",
+        "dark_web_breach_lure",
     ];
     NAMES
         .iter()
@@ -2167,6 +2175,17 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && confusables::has_software_subscription_scam(&normalized_title) {
         score += rules.weight_of("software_subscription_scam", W_SOFTWARE_SUBSCRIPTION_SCAM);
         signals.push("software_subscription_scam".into());
+    }
+
+    // Dark-web data-breach alarm lure (E52 — APWG Q1 2025 identity-protection
+    // scam surge).  Scammers impersonate identity-monitoring services and claim
+    // the victim's credentials were "found on the dark web", then harvest login
+    // details or sell fraudulent protection subscriptions.  The string "dark
+    // web" / "darkweb" is essentially absent from legitimate window titles, so
+    // the AND-pair carries near-zero FP risk before the alert_shaped guard.
+    if alert_shaped && confusables::has_dark_web_breach_lure(&normalized_title) {
+        score += rules.weight_of("dark_web_breach_lure", W_DARK_WEB_BREACH_LURE);
+        signals.push("dark_web_breach_lure".into());
     }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
@@ -9235,6 +9254,59 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("software_subscription_scam"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E52: dark_web_breach_lure ─────────────────────────────────────────────
+
+    #[test]
+    fn dark_web_breach_lure_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "dark web alert: your password was found on the dark web — act now to protect your account".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "dark_web_breach_lure"),
+            "dark_web_breach_lure must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_DARK_WEB_BREACH_LURE);
+    }
+
+    #[test]
+    fn dark_web_breach_lure_fp_guard_no_alert_shape() {
+        let w = OverlayWindow {
+            title: "dark web scan: your personal information may have been found on the dark web"
+                .into(),
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "dark_web_breach_lure"),
+            "dark_web_breach_lure must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn dark_web_breach_lure_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("dark_web_breach_lure"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }

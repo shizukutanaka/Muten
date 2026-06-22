@@ -164,6 +164,7 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         "family_emergency_scam" => Some(InterfaceInterference), // impersonates a relative in crisis to extract urgent secret payment
         "task_app_scam" => Some(Sneaking), // fake-task-earnings framing disguises the withdrawal-fee extraction
         "software_subscription_scam" => Some(InterfaceInterference), // SaaS/AI brand impersonation steers via fake billing authority
+        "dark_web_breach_lure" => Some(InterfaceInterference), // impersonates identity-monitoring service to steer victim via false breach alarm
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }

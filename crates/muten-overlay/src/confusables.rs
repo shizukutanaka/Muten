@@ -3764,6 +3764,59 @@ pub fn has_software_subscription_scam(s: &str) -> bool {
     software_platform && payment_problem
 }
 
+/// E52 — Dark-web data-breach alarm lure (identity-protection scam).
+///
+/// Scammers impersonate identity-monitoring services (LifeLock, Experian,
+/// dark-web scan tools) and display an overlay claiming the victim's password,
+/// email, or personal data was "found on the dark web", then demand they
+/// click through to "verify", pay for "protection", or enter credentials to
+/// "secure" their account.  APWG Q1 2025 reports 40 % YoY growth in identity-
+/// theft-protection impersonation; FBI IC3 2025 flags it as a multi-billion
+/// dollar loss category.
+///
+/// AND-pair:
+/// - `dark_web_marker`: "dark web" | "darkweb" | JP ダークウェブ — the unique
+///   location indicator.  Legitimate window titles almost never contain this
+///   string; false-positive risk is negligible even before the second clause.
+/// - `breach_action`: credential / breach / urgency vocabulary paired with
+///   the dark-web claim (e.g. "your password", "data breach", "act now",
+///   "protect your identity").
+///
+/// The `alert_shaped` guard at the call site eliminates the residual FP
+/// risk from legitimate identity-monitoring applications the user opened.
+#[must_use]
+pub fn has_dark_web_breach_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    let dark_web_marker = has("dark web") || has("darkweb") || has("ダークウェブ");
+
+    let breach_action = has("your password")
+        || has("your credentials")
+        || has("your email")
+        || has("your data")
+        || has("your information")
+        || has("personal information")
+        || has("data breach")
+        || has("identity theft")
+        || has("protect your")
+        || has("secure your")
+        || has("act now")
+        || has("scan now")
+        || has("found your")
+        || has("detected on")
+        || has("information leaked")
+        || has("password leaked")
+        || has("credentials leaked")
+        || has("account exposed")
+        || has("パスワード")    // password (JP)
+        || has("個人情報")      // personal information (JP)
+        || has("情報漏洩")      // information leak (JP)
+        || has("流出しました")  // has leaked (JP)
+        || has("今すぐ保護"); // protect now (JP)
+
+    dark_web_marker && breach_action
+}
+
 /// E43 — Fake traffic / parking / toll violation scam.
 ///
 /// AND-pair: traffic or parking violation noun AND a payment-urgency phrase.
@@ -7786,6 +7839,50 @@ mod tests {
         // Payment problem without brand
         assert!(!has_software_subscription_scam(
             "payment failed — update your payment information"
+        ));
+    }
+
+    // ── has_dark_web_breach_lure (E52) ───────────────────────────────────────
+
+    #[test]
+    fn dark_web_breach_fires_on_password_exposure() {
+        assert!(has_dark_web_breach_lure(
+            "alert: your password was found on the dark web — act now to secure your account"
+        ));
+        assert!(has_dark_web_breach_lure(
+            "dark web scan complete — your personal information was detected on the dark web"
+        ));
+    }
+
+    #[test]
+    fn dark_web_breach_fires_on_data_breach_variant() {
+        assert!(has_dark_web_breach_lure(
+            "dark web alert — data breach detected — your credentials leaked — protect your identity now"
+        ));
+        assert!(has_dark_web_breach_lure(
+            "darkweb monitoring: your email and password found — scan now"
+        ));
+    }
+
+    #[test]
+    fn dark_web_breach_fires_jp() {
+        assert!(has_dark_web_breach_lure(
+            "ダークウェブ警告 — あなたのパスワードが流出しました — 今すぐ保護"
+        ));
+        assert!(has_dark_web_breach_lure(
+            "ダークウェブスキャン完了 — 個人情報が検出されました"
+        ));
+    }
+
+    #[test]
+    fn dark_web_breach_does_not_fire_half_pair() {
+        // "dark web" without breach action
+        assert!(!has_dark_web_breach_lure(
+            "dark web documentary — episode 3 — available now"
+        ));
+        // Breach cue without "dark web"
+        assert!(!has_dark_web_breach_lure(
+            "your password may be compromised — change it now"
         ));
     }
 
