@@ -11025,4 +11025,38 @@ mod spread_char_tests {
         assert_eq!(fold_char('\u{00AA}'), '\u{00AA}'); // ª unchanged
         assert_eq!(fold_char('\u{00BA}'), '\u{00BA}'); // º unchanged
     }
+
+    // ── Round 29: exhaustive global invariants ──
+    // The whole normalization pipeline assumes fold_char is a 1:1 idempotent
+    // skeleton map. The property tests sample random strings; these sweep the
+    // ENTIRE Unicode scalar space so no single codepoint — present or future —
+    // can violate the invariants the pipeline depends on.
+
+    #[test]
+    fn fold_char_is_idempotent_over_all_scalar_values() {
+        // Every fold target must itself be a fixed point: folding twice equals
+        // folding once for all 1.1M scalar values. A regression where some
+        // confusable folds to a char that *also* folds (breaking idempotence)
+        // would be caught here even if no targeted unit test covered it.
+        for u in 0u32..=0x10FFFF {
+            if let Some(c) = char::from_u32(u) {
+                let once = fold_char(c);
+                let twice = fold_char(once);
+                assert_eq!(
+                    once, twice,
+                    "fold_char not idempotent at U+{u:04X}: {c:?} -> {once:?} -> {twice:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fold_char_ascii_letters_and_digits_are_fixed_points() {
+        // fold_char must never alter a plain ASCII letter or digit (case folding
+        // and leet folding happen in *later*, separate pipeline steps). If a new
+        // confusable arm ever shadowed an ASCII char, matching would corrupt.
+        for c in ('a'..='z').chain('A'..='Z').chain('0'..='9') {
+            assert_eq!(fold_char(c), c, "fold_char altered ASCII {c:?}");
+        }
+    }
 }
