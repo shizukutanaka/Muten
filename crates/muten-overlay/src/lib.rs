@@ -235,6 +235,161 @@ impl Verdict {
         out.push('.');
         out
     }
+
+    /// Deterministic, user-facing **remediation guidance** for this verdict —
+    /// the actionable complement to [`Verdict::explain`]. Where `explain`
+    /// answers *why* a window was flagged, this answers *what the person facing
+    /// it should do*, in priority order: escape an input-trap first, then the
+    /// specific "never do X" warnings implied by the scam family that fired,
+    /// then a general report step.
+    ///
+    /// Each line is well-established public anti-scam guidance (FTC, CISA,
+    /// Microsoft / Apple support advisories): genuine OS errors never show a
+    /// phone number; no agency takes payment in gift cards / wire / crypto;
+    /// real 2FA flows never ask you to read a code aloud; etc. The result is
+    /// deduplicated (each guidance family appears at most once) and ordered, so
+    /// it reads as a short checklist for an end-user notification or an IT note.
+    ///
+    /// Returns an empty vector for an `Allow` verdict (no action needed). Pure
+    /// and side-effect-free; wording is stable for tests and downstream UIs.
+    #[must_use]
+    pub fn recommended_action(&self) -> Vec<&'static str> {
+        if self.decision == Decision::Allow {
+            return Vec::new();
+        }
+        let fired = |names: &[&str]| names.iter().any(|n| self.signals.iter().any(|s| s == n));
+        let mut out: Vec<&'static str> = Vec::new();
+
+        // 1. Escape an input-trap / screen takeover FIRST — the most urgent step
+        //    is regaining control of the machine.
+        if fired(&[
+            "blocks_input",
+            "no_close_button",
+            "input_trap",
+            "sudden_fullscreen_takeover",
+            "forced_retention_cue",
+        ]) {
+            out.push(
+                "Do not follow this window's instructions. Regain control with Task Manager \
+                 (Ctrl+Shift+Esc) and end the browser or app — or reboot the machine.",
+            );
+        }
+        // 2. Never call a number shown in an alert.
+        if fired(&[
+            "phone_number",
+            "blocklist_phone",
+            "fake_bsod_lure",
+            "tech_support_invoice_scam",
+            "windows_activation_scam",
+            "av_brand_renewal_scam",
+            "ip_alarm_lure",
+        ]) {
+            out.push(
+                "Do not call any phone number shown — genuine operating-system or security \
+                 alerts never display a support number to call.",
+            );
+        }
+        // 3. Never share credentials or one-time/2FA codes.
+        if fired(&[
+            "credential_harvest_cue",
+            "otp_interception_scam",
+            "social_media_account_alarm",
+            "streaming_billing_scam",
+            "bank_account_alarm",
+        ]) {
+            out.push(
+                "Do not enter or share any password, PIN, or one-time/2FA code — real services \
+                 never ask you to read a code aloud or re-enter credentials from a pop-up.",
+            );
+        }
+        // 4. Never pay via untraceable methods.
+        if fired(&[
+            "gift_card_demand",
+            "crypto_drain_lure",
+            "crypto_giveaway_scam",
+            "advance_fee_lure",
+            "package_fee_lure",
+            "charity_scam_lure",
+            "loan_fee_scam",
+            "rental_scam_lure",
+            "pet_sale_scam",
+            "timeshare_travel_scam",
+            "job_scam",
+            "government_grant_scam",
+            "debt_relief_scam",
+            "student_loan_scam",
+            "veterans_benefit_scam",
+            "survey_reward_scam",
+            "secret_shopper_scam",
+            "mlm_pyramid_recruitment",
+            "prize_lure",
+            "sextortion_lure",
+            "refund_scam_cue",
+            "family_emergency_scam",
+            "pig_butchering_lure",
+            "recovery_scam",
+        ]) {
+            out.push(
+                "Do not pay or send money — especially via gift cards, wire transfer, \
+                 cryptocurrency, or money order. No legitimate company, charity, or agency \
+                 demands payment this way.",
+            );
+        }
+        // 5. Never install software / share your screen / grant remote control.
+        if fired(&[
+            "screen_share_lure",
+            "remote_access_lure",
+            "download_trap_lure",
+        ]) {
+            out.push(
+                "Do not install any software, plugin, or remote-access tool, and do not share \
+                 your screen or grant remote control.",
+            );
+        }
+        // 6. Never scan a QR code from an alert (quishing).
+        if fired(&["qr_code_lure"]) {
+            out.push("Do not scan the QR code shown.");
+        }
+        // 7. Authority / utility / court impersonation reassurance.
+        if fired(&[
+            "authority_lure",
+            "tax_authority_scam",
+            "national_id_alarm",
+            "immigration_visa_scam",
+            "traffic_fine_scam",
+            "utility_cutoff_threat",
+            "fake_copyright_scam",
+            "healthcare_scam",
+            "false_registration_billing",
+        ]) {
+            out.push(
+                "Government agencies, courts, and utilities do not lock your screen or demand \
+                 immediate payment through a pop-up — treat this as an impersonation attempt.",
+            );
+        }
+        // 8. Look-alike domain / disguised text impersonating a brand.
+        if fired(&[
+            "mixed_script",
+            "whole_script_confusable",
+            "compat_chars_present",
+            "bidi_override",
+            "brand_impersonation",
+            "typosquat_brand",
+            "combosquat_brand",
+            "url_path_lure",
+            "ip_host_url",
+            "data_uri_page",
+            "cloud_storage_abuse",
+        ]) {
+            out.push(
+                "The address or title uses look-alike characters or a fake domain to \
+                 impersonate a trusted brand — do not trust it.",
+            );
+        }
+        // 9. General report step — always last, for any non-Allow verdict.
+        out.push("Do not interact with this window; report it to your IT or security team.");
+        out
+    }
 }
 
 /// Map one signal name to a human clause for [`Verdict::explain`].
@@ -3841,6 +3996,112 @@ mod tests {
             why,
             "Allow (score 0, high confidence): no notable signals fired."
         );
+    }
+
+    // ── recommended_action ───────────────────────────────────────────
+
+    #[test]
+    fn recommended_action_is_empty_for_allow() {
+        let w = OverlayWindow {
+            title: "notepad".into(),
+            has_close_button: true,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert_eq!(v.decision, Decision::Allow);
+        assert!(
+            v.recommended_action().is_empty(),
+            "Allow must yield no action items"
+        );
+    }
+
+    #[test]
+    fn recommended_action_tech_support_overlay_is_prioritized() {
+        // Classic fake-Microsoft tech-support overlay: input-trapped, full-screen,
+        // with a support number. The escape step must come first, the don't-call
+        // step next, and the general report step last.
+        let w = OverlayWindow {
+            title: "Microsoft Alert: call 1-800-555-0100 now".into(),
+            url: None,
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 0,
+        };
+        let actions = classify(&w, &Ruleset::default()).recommended_action();
+        assert!(!actions.is_empty());
+        assert!(
+            actions[0].contains("Task Manager"),
+            "escape step must be first: {actions:?}"
+        );
+        assert!(
+            actions
+                .iter()
+                .any(|a| a.contains("Do not call any phone number")),
+            "must warn against calling the number: {actions:?}"
+        );
+        assert!(
+            actions.last().unwrap().contains("report it to your IT"),
+            "general report step must be last: {actions:?}"
+        );
+    }
+
+    #[test]
+    fn recommended_action_deduplicates_within_a_family() {
+        // Two signals from the same "never pay" family must collapse to ONE line.
+        let v = Verdict {
+            decision: Decision::Block,
+            score: 130,
+            signals: vec!["gift_card_demand".into(), "advance_fee_lure".into()],
+            categories: Vec::new(),
+            mitre_techniques: Vec::new(),
+            matched_rule: None,
+        };
+        let actions = v.recommended_action();
+        let pay_lines = actions
+            .iter()
+            .filter(|a| a.contains("Do not pay or send money"))
+            .count();
+        assert_eq!(pay_lines, 1, "same-family signals must dedupe: {actions:?}");
+    }
+
+    #[test]
+    fn recommended_action_credential_and_qr_families() {
+        let v = Verdict {
+            decision: Decision::Suspicious,
+            score: 60,
+            signals: vec!["credential_harvest_cue".into(), "qr_code_lure".into()],
+            categories: Vec::new(),
+            mitre_techniques: Vec::new(),
+            matched_rule: None,
+        };
+        let actions = v.recommended_action();
+        assert!(actions
+            .iter()
+            .any(|a| a.contains("password, PIN, or one-time")));
+        assert!(actions
+            .iter()
+            .any(|a| a.contains("Do not scan the QR code")));
+        assert!(actions.last().unwrap().contains("report it to your IT"));
+    }
+
+    #[test]
+    fn recommended_action_always_ends_with_report_step_for_non_allow() {
+        // Even a verdict with no recognised content signal (geometry only) gets
+        // the general report step.
+        let v = Verdict {
+            decision: Decision::Suspicious,
+            score: 55,
+            signals: vec!["fullscreen".into(), "topmost".into()],
+            categories: Vec::new(),
+            mitre_techniques: Vec::new(),
+            matched_rule: None,
+        };
+        let actions = v.recommended_action();
+        assert_eq!(actions.len(), 1, "geometry-only → just the report step");
+        assert!(actions[0].contains("report it to your IT"));
     }
 
     // ── B6: signal_weight / confidence / score_breakdown ─────────────

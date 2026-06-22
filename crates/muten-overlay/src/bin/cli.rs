@@ -314,6 +314,15 @@ fn cmd_classify(
                 "score_breakdown".into(),
                 serde_json::Value::Array(breakdown),
             );
+            let actions: Vec<serde_json::Value> = v
+                .recommended_action()
+                .into_iter()
+                .map(|a| serde_json::Value::String(a.to_string()))
+                .collect();
+            obj.insert(
+                "recommended_action".into(),
+                serde_json::Value::Array(actions),
+            );
         }
         println!(
             "{}",
@@ -340,6 +349,13 @@ fn cmd_classify(
             println!("matched:  {rule}");
         }
         println!("why:      {}", v.explain());
+        let actions = v.recommended_action();
+        if !actions.is_empty() {
+            println!("action:");
+            for a in actions {
+                println!("  - {a}");
+            }
+        }
     }
 
     use muten_overlay::Decision::*;
@@ -399,6 +415,15 @@ fn cmd_classify_stream(window: &str, rules: Option<&std::path::Path>) -> Result<
             obj.insert(
                 "score_breakdown".into(),
                 serde_json::Value::Array(breakdown),
+            );
+            let actions: Vec<serde_json::Value> = v
+                .recommended_action()
+                .into_iter()
+                .map(|a| serde_json::Value::String(a.to_string()))
+                .collect();
+            obj.insert(
+                "recommended_action".into(),
+                serde_json::Value::Array(actions),
             );
         }
         println!(
