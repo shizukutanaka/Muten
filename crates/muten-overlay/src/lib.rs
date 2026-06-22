@@ -351,13 +351,13 @@ impl Verdict {
                  remote control.",
             );
         }
-        // 5b. Countdown-timer pressure — separate from input-trap (family 1) because
-        //     urgency_countdown can fire without blocks_input on a closable but scary window.
-        if fired(&["urgency_countdown"]) {
+        // 5b. Countdown-timer / alarm-word pressure — separate from input-trap (family 1)
+        //     because urgency_countdown / alarm_density can fire without blocks_input.
+        if fired(&["urgency_countdown", "alarm_density"]) {
             out.push(
-                "The countdown timer is a pressure tactic — scammers use it to prevent you \
-                 from thinking clearly or consulting anyone. Take time to verify through \
-                 official channels before acting.",
+                "Countdown timers and extreme alarm language are pressure tactics — scammers \
+                 use them to prevent you from thinking clearly or consulting anyone. Take time \
+                 to verify through official channels before acting.",
             );
         }
         // 6. Never scan a QR code from an alert (quishing).
@@ -435,6 +435,9 @@ fn signal_phrase(signal: &str) -> &str {
         "clickfix_instruction" => "instructs the user to run a command or pass a fake CAPTCHA",
         "urgency_countdown" => {
             "displays a countdown timer alongside an urgent warning to coerce rapid action"
+        }
+        "alarm_density" => {
+            "stacks three or more distinct fear-words in the title to manufacture urgency"
         }
         "cloud_storage_abuse" => {
             "is served from cloud blob-storage infrastructure used to host scam overlays"
@@ -719,6 +722,7 @@ const W_CRYPTO_GIVEAWAY_SCAM: i32 = 30; // crypto giveaway/doubling + send-to-re
 const W_OTP_INTERCEPTION_SCAM: i32 = 30; // OTP/2FA code cue + share/read/give-the-code relay demand (FTC 2024 account-takeover)
 const W_FAMILY_EMERGENCY_SCAM: i32 = 30; // relative + crisis + money/secrecy demand (FTC 2024 family-emergency/imposter; 警察庁 オレオレ詐欺)
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
+const W_ALARM_DENSITY: i32 = 20; // ≥3 distinct fear-words stacked in one title — novel-scam catcher
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
 /// The weight contribution of a built-in signal.  Returns `None` for
@@ -811,6 +815,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "otp_interception_scam" => Some(W_OTP_INTERCEPTION_SCAM),
         "family_emergency_scam" => Some(W_FAMILY_EMERGENCY_SCAM),
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
+        "alarm_density" => Some(W_ALARM_DENSITY),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
     }
@@ -892,6 +897,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "otp_interception_scam"
             | "family_emergency_scam"
             | "remote_access_lure"
+            | "alarm_density"
     )
 }
 
@@ -964,6 +970,7 @@ pub fn all_signals() -> Vec<SignalInfo> {
         // ── Content signals (alert_shaped guard) ─────────────────────
         "clickfix_instruction",
         "urgency_countdown",
+        "alarm_density",
         "forced_retention_cue",
         "credential_harvest_cue",
         "fake_scanner_cue",
@@ -1591,6 +1598,20 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && confusables::has_urgency_countdown(&normalized_title) {
         score += rules.weight_of("urgency_countdown", W_URGENCY_COUNTDOWN);
         signals.push("urgency_countdown".into());
+    }
+
+    // Alarm-word density (E7b). Scam overlays that don't match any *specific*
+    // semantic pattern (no phone number, no scan-progress, no known lure phrase)
+    // still pile generic fear-words to coerce action — "EMERGENCY: Critical data
+    // breach — your device is compromised".  Counting ≥ 3 distinct fear-words in
+    // the title catches these novel, unblocklisted scareware variants that evade
+    // the pattern library while remaining false-positive-averse: a genuine OS
+    // dialog rarely needs three different alarm words in its title.
+    // `has_urgency_countdown` already catches the *timer* axis of urgency; this
+    // signal catches the *word-density* axis. Both share the alert_shaped guard.
+    if alert_shaped && confusables::has_alarm_density(&normalized_title) {
+        score += rules.weight_of("alarm_density", W_ALARM_DENSITY);
+        signals.push("alarm_density".into());
     }
 
     // Forced-retention instruction (E13). Scam overlays tell the victim
@@ -5157,6 +5178,89 @@ mod tests {
             v.signals.iter().any(|s| s == "urgency_countdown"),
             "expected urgency_countdown after leet folding; got {:?}",
             v.signals
+        );
+    }
+
+    // ── E7b: alarm_density (≥3 fear-words) ───────────────────────────
+
+    #[test]
+    fn alarm_density_fires_on_alert_shaped_stacked_fear_title() {
+        let w = OverlayWindow {
+            title: "EMERGENCY: critical data breach — your information has been compromised".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 200,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "alarm_density"),
+            "expected alarm_density; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_ALARM_DENSITY);
+    }
+
+    #[test]
+    fn alarm_density_does_not_fire_without_alert_shape() {
+        // Same scary-sounding title but closable, not fullscreen — normal browser tab.
+        let w = OverlayWindow {
+            title: "EMERGENCY: critical breach — compromised data".into(),
+            coverage_percent: 30,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "alarm_density"),
+            "must not fire on non-alert-shaped window; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn alarm_density_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("alarm_density"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    #[test]
+    fn alarm_density_catches_novel_unblocklisted_scam() {
+        // A completely novel phrase that hits NO specific semantic signal
+        // (no phone, no known lure pattern) but stacks 3 fear-words.
+        // With shape (fullscreen, topmost, no-close, blocks-input): shape = 95,
+        // alarm_density adds W_ALARM_DENSITY → score ≥ 95 + 20 = 115 → Block.
+        let w = OverlayWindow {
+            title: "urgent: critical system emergency — act immediately before data is breached"
+                .into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 300,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "alarm_density"),
+            "novel scam with stacked fear-words must fire alarm_density: {:?}",
+            v.signals
+        );
+        assert_eq!(
+            v.decision,
+            Decision::Block,
+            "fully alert-shaped window with alarm_density must Block"
         );
     }
 

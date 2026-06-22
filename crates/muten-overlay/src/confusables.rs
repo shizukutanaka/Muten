@@ -1890,6 +1890,51 @@ pub fn has_urgency_countdown(s: &str) -> bool {
     false
 }
 
+/// Detect concentrated alarm/threat language (≥ 3 distinct fear-words) in a
+/// normalized window title.
+///
+/// Scareware overlays that don't match any *specific* family pattern (no phone
+/// number, no blocklist hit, no scan-progress language) often still saturate
+/// the title with fear-words to coerce action:
+///
+/// > "EMERGENCY: Critical data breach detected — your information has been compromised"
+///
+/// A genuine OS dialog or app notification never stacks this many alarm words in
+/// a window title.  Requiring ≥ 3 *distinct* words prevents false positives from
+/// single-word titles ("Security Alert", "Battery Warning").
+///
+/// The word list is deliberately conservative: "warning" and "alert" are excluded
+/// because they appear in legitimate driver / battery notifications; the words
+/// retained ("compromised", "hacked", "infected", "breach", …) have near-zero
+/// legitimate use density in a *window title*.
+///
+/// `has_urgency_countdown` catches the *timer* aspect of urgency; this signal
+/// catches *word-density* urgency in titles that have no countdown.  Both share
+/// the `alert_shaped` guard in `classify()`.
+///
+/// The caller passes a string already processed through [`normalize_for_match`]
+/// so that homoglyph / leet variants ("inf3cted", "h4cked", "br34ch") are
+/// folded before the count.
+#[must_use]
+pub fn has_alarm_density(s: &str) -> bool {
+    // Near-zero-FP fear-words: chosen because each is almost never present in
+    // a legitimate window title and is a strong scam-language marker.
+    const ALARM_WORDS: &[&str] = &[
+        "compromised",
+        "hacked",
+        "infected",
+        "breach",
+        "violated",
+        "illegal activity",
+        "critical",
+        "emergency",
+        "danger",
+        "urgent",
+        "immediately",
+    ];
+    ALARM_WORDS.iter().filter(|&&w| s.contains(w)).count() >= 3
+}
+
 /// Detect "do not close / turn off / exit / restart" retention instructions in a
 /// normalized window title.
 ///
@@ -5565,6 +5610,55 @@ mod tests {
             !has_urgency_countdown(&norm),
             "Thai 5:00 without urgency keyword must not fire"
         );
+    }
+
+    // ── has_alarm_density ────────────────────────────────────────────
+
+    #[test]
+    fn alarm_density_fires_on_stacked_fear_words() {
+        // ≥ 3 distinct fear-words in one title → fires.
+        let norm = normalize_for_match(
+            "EMERGENCY: critical data breach — your information is compromised",
+        );
+        assert!(
+            has_alarm_density(&norm),
+            "emergency+critical+breach+compromised: {norm:?}"
+        );
+        let norm2 = normalize_for_match("urgent danger: your device is infected immediately");
+        assert!(
+            has_alarm_density(&norm2),
+            "urgent+danger+infected+immediately: {norm2:?}"
+        );
+    }
+
+    #[test]
+    fn alarm_density_fires_via_leet_and_homoglyph_normalization() {
+        // Attacker writes "cr1t1cal" + "3m3rg3ncy" + "br34ch" — all fold via normalize_for_match.
+        let norm = normalize_for_match("cr1t1cal 3m3rg3ncy: your data has been br34ch3d");
+        assert!(
+            has_alarm_density(&norm),
+            "leet evasion must be folded before count: {norm:?}"
+        );
+    }
+
+    #[test]
+    fn alarm_density_does_not_fire_on_one_or_two_words() {
+        // Single alarm word — common in legitimate update / battery alerts.
+        assert!(!has_alarm_density("critical update available"));
+        // Two words — still below threshold.
+        assert!(!has_alarm_density("critical emergency contact"));
+        // "Security Alert" (0 words from our list at all).
+        assert!(!has_alarm_density("security alert"));
+    }
+
+    #[test]
+    fn alarm_density_does_not_fire_on_benign_content() {
+        // Legitimate device notification styles.
+        assert!(!has_alarm_density("battery warning: 20% remaining"));
+        assert!(!has_alarm_density("driver update required"));
+        assert!(!has_alarm_density("your subscription expires soon"));
+        // Japanese text with no alarm words from the list.
+        assert!(!has_alarm_density("コンピュータウイルスの警告"));
     }
 
     // ── has_forced_retention ──────────────────────────────────────────

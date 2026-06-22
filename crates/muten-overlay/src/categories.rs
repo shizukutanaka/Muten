@@ -109,6 +109,7 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         | "combosquat_brand"
         | "remote_access_lure"
         | "urgency_countdown"
+        | "alarm_density"
         | "typosquat_brand"
         | "url_path_lure"
         | "credential_harvest_cue"
