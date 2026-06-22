@@ -3958,6 +3958,71 @@ pub fn has_windows_defender_alert_lure(s: &str) -> bool {
     defender_brand && (named_threat_alert || malware_alert)
 }
 
+/// E55 — Fake tech-support live-chat invite overlay.
+///
+/// Tech-support scam operators are shifting away from phone-number CTAs
+/// (because `phone_number` / `blocklist_phone` catch them) to "live chat
+/// with a specialist" CTAs that lead to a real-time chat session, after
+/// which the agent social-engineers the victim into granting remote access.
+///
+/// These overlays claim to be Microsoft, Apple, Google, or an unnamed
+/// "certified technician" and present a "Click to chat" / "Connect with an
+/// agent" / "Live support available" button.  Neither `phone_number` nor
+/// `remote_access_lure` (which requires a named RAT) fires; the victim is
+/// led to install a remote-access tool only *after* the chat begins.
+///
+/// AND-pair:
+/// - `chat_invite`: live-chat / agent-connect CTA vocabulary.
+/// - `tech_auth`: a tech brand or support-authority framing that establishes
+///   why the chat is being offered (not a generic customer-service pop-up).
+///
+/// The `alert_shaped` guard in `classify()` eliminates legitimate in-app
+/// "chat with us" widgets, which are closable and user-initiated.
+///
+/// Sources: Malwarebytes Threat Intelligence 2025 ("live chat" tech-support
+/// scam pivot); FBI IC3 2025 tech-support fraud advisory; IPA サポート詐欺
+/// advisory 2025 (チャット型サポート詐欺 newly documented sub-type).
+#[must_use]
+pub fn has_tech_support_chat_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    let chat_invite = has("live chat")
+        || has("start chat")
+        || has("chat with support")
+        || has("chat with us")
+        || has("click to chat")
+        || has("instant chat")
+        || has("connect with an agent")
+        || has("connect with a specialist")
+        || has("speak with a specialist")
+        || has("speak with a technician")
+        || has("live agent")
+        || has("live support")
+        || has("support chat")
+        || has("chat session")
+        || has("チャットサポート")     // chat support (JP)
+        || has("チャットで話す")      // speak via chat (JP)
+        || has("ライブチャット")      // live chat (JP)
+        || has("サポートに接続"); // connect to support (JP)
+
+    let tech_auth = has("microsoft")
+        || has("windows")
+        || has("apple")
+        || has("google")
+        || has("technical support")
+        || has("tech support")
+        || has("it support")
+        || has("helpdesk")
+        || has("help desk")
+        || has("certified technician")
+        || has("support specialist")
+        || has("テクニカルサポート") // technical support (JP)
+        || has("itサポート")        // IT support (JP)
+        || has("パソコンサポート"); // PC support (JP)
+
+    chat_invite && tech_auth
+}
+
 /// E43 — Fake traffic / parking / toll violation scam.
 ///
 /// AND-pair: traffic or parking violation noun AND a payment-urgency phrase.
@@ -8110,6 +8175,50 @@ mod tests {
         // Threat without Defender brand
         assert!(!has_windows_defender_alert_lure(
             "trojan detected on your computer — call support"
+        ));
+    }
+
+    // ── has_tech_support_chat_lure (E55) ─────────────────────────────────────
+
+    #[test]
+    fn tech_support_chat_lure_fires_on_microsoft_chat() {
+        assert!(has_tech_support_chat_lure(
+            "microsoft technical support — live chat with a specialist — click to chat now"
+        ));
+        assert!(has_tech_support_chat_lure(
+            "windows helpdesk — connect with an agent — live support available"
+        ));
+    }
+
+    #[test]
+    fn tech_support_chat_lure_fires_on_certified_technician() {
+        assert!(has_tech_support_chat_lure(
+            "certified technician available — live chat — instant chat with support specialist"
+        ));
+        assert!(has_tech_support_chat_lure(
+            "it support — speak with a technician now — start chat to resolve your issue"
+        ));
+    }
+
+    #[test]
+    fn tech_support_chat_lure_fires_jp() {
+        assert!(has_tech_support_chat_lure(
+            "マイクロソフト テクニカルサポート — ライブチャットで専門家に相談"
+        ));
+        assert!(has_tech_support_chat_lure(
+            "パソコンサポート — チャットサポートに接続"
+        ));
+    }
+
+    #[test]
+    fn tech_support_chat_lure_does_not_fire_half_pair() {
+        // Chat invite without tech authority
+        assert!(!has_tech_support_chat_lure(
+            "live chat with our team — ask us anything"
+        ));
+        // Tech authority without chat invite
+        assert!(!has_tech_support_chat_lure(
+            "microsoft windows technical support phone: call now"
         ));
     }
 

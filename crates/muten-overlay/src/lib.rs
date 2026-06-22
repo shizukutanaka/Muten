@@ -285,11 +285,12 @@ impl Verdict {
             "ip_alarm_lure",
             "fake_scanner_cue",
             "windows_defender_alert_lure",
+            "tech_support_chat_lure",
         ]) {
             out.push(
-                "Do not call any phone number shown — genuine operating-system or security \
-                 alerts never display a support number to call, and a fake scan result in a \
-                 pop-up is not a real threat.",
+                "Do not call any phone number shown or click to chat with 'support' — genuine \
+                 operating-system or security alerts never display a support number or live-chat \
+                 button, and a fake scan result or alert in a pop-up is not a real threat.",
             );
         }
         // 3. Never share credentials or one-time/2FA codes.
@@ -607,6 +608,9 @@ fn signal_phrase(signal: &str) -> &str {
         "windows_defender_alert_lure" => {
             "impersonates Windows Defender or Microsoft Security with a fake named-malware alert (trojan, ransomware, rootkit, etc.) to push malware downloads or drive-to-call tech-support fraud"
         }
+        "tech_support_chat_lure" => {
+            "presents a fake tech-brand live-chat invite to social-engineer the victim into granting remote access via a chat session rather than a phone call"
+        }
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
         other => other,
@@ -748,6 +752,7 @@ const W_SOFTWARE_SUBSCRIPTION_SCAM: i32 = 25; // named SaaS/AI-brand + billing-f
 const W_DARK_WEB_BREACH_LURE: i32 = 30; // "dark web" + breach/credential vocabulary (APWG Q1 2025 identity-protection scam)
 const W_CLOUD_QUOTA_LURE: i32 = 25; // cloud storage brand + quota-full alarm (Apple ID / Google credential phishing)
 const W_WINDOWS_DEFENDER_ALERT_LURE: i32 = 35; // Windows/Microsoft Defender brand + named malware alert (MSTIC 2025)
+const W_TECH_SUPPORT_CHAT_LURE: i32 = 30; // live-chat CTA + tech-brand/support framing (Malwarebytes 2025 chat-pivot scam)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
 /// The weight contribution of a built-in signal.  Returns `None` for
@@ -846,6 +851,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "dark_web_breach_lure" => Some(W_DARK_WEB_BREACH_LURE),
         "cloud_quota_lure" => Some(W_CLOUD_QUOTA_LURE),
         "windows_defender_alert_lure" => Some(W_WINDOWS_DEFENDER_ALERT_LURE),
+        "tech_support_chat_lure" => Some(W_TECH_SUPPORT_CHAT_LURE),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
     }
@@ -933,6 +939,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "dark_web_breach_lure"
             | "cloud_quota_lure"
             | "windows_defender_alert_lure"
+            | "tech_support_chat_lure"
     )
 }
 
@@ -1063,6 +1070,7 @@ pub fn all_signals() -> Vec<SignalInfo> {
         "dark_web_breach_lure",
         "cloud_quota_lure",
         "windows_defender_alert_lure",
+        "tech_support_chat_lure",
     ];
     NAMES
         .iter()
@@ -2227,6 +2235,19 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && confusables::has_windows_defender_alert_lure(&normalized_title) {
         score += rules.weight_of("windows_defender_alert_lure", W_WINDOWS_DEFENDER_ALERT_LURE);
         signals.push("windows_defender_alert_lure".into());
+    }
+
+    // Fake tech-support live-chat invite overlay (E55 — Malwarebytes 2025
+    // threat report: scam operators pivot from phone CTAs to live-chat
+    // session CTAs to evade phone_number / blocklist_phone detection).
+    // Scammers use "click to chat with a Microsoft specialist" overlays to
+    // start a real-time session that ends in remote-access installation —
+    // remote_access_lure doesn't fire until the RAT name appears, which
+    // is after the chat session begins.  The AND-pair (chat invite + tech
+    // brand) is tight enough that alert_shaped alone handles FP risk.
+    if alert_shaped && confusables::has_tech_support_chat_lure(&normalized_title) {
+        score += rules.weight_of("tech_support_chat_lure", W_TECH_SUPPORT_CHAT_LURE);
+        signals.push("tech_support_chat_lure".into());
     }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
@@ -9456,6 +9477,59 @@ mod tests {
         use crate::categories::{category_of, DarkPatternCategory};
         assert_eq!(
             category_of("windows_defender_alert_lure"),
+            Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── E55: tech_support_chat_lure ───────────────────────────────────────────
+
+    #[test]
+    fn tech_support_chat_lure_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "microsoft technical support — live chat with a specialist — click to chat now"
+                .into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "tech_support_chat_lure"),
+            "tech_support_chat_lure must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_TECH_SUPPORT_CHAT_LURE);
+    }
+
+    #[test]
+    fn tech_support_chat_lure_fp_guard_no_alert_shape() {
+        let w = OverlayWindow {
+            title: "windows helpdesk — live chat with a specialist available".into(),
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "tech_support_chat_lure"),
+            "tech_support_chat_lure must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn tech_support_chat_lure_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("tech_support_chat_lure"),
             Some(DarkPatternCategory::InterfaceInterference)
         );
     }
