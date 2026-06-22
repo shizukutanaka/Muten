@@ -1898,15 +1898,20 @@ pub fn has_urgency_countdown(s: &str) -> bool {
 /// the title with fear-words to coerce action:
 ///
 /// > "EMERGENCY: Critical data breach detected — your information has been compromised"
+/// > "ウイルス感染が検出されました。緊急対応が必要です — 情報が侵害されました"
 ///
 /// A genuine OS dialog or app notification never stacks this many alarm words in
 /// a window title.  Requiring ≥ 3 *distinct* words prevents false positives from
-/// single-word titles ("Security Alert", "Battery Warning").
+/// single-word titles ("Security Alert", "緊急メンテナンス").
 ///
-/// The word list is deliberately conservative: "warning" and "alert" are excluded
-/// because they appear in legitimate driver / battery notifications; the words
-/// retained ("compromised", "hacked", "infected", "breach", …) have near-zero
-/// legitimate use density in a *window title*.
+/// The EN word list is deliberately conservative: "warning" and "alert" are
+/// excluded because they appear in legitimate driver / battery notifications.
+/// The JP additions cover the same fear-word saturation pattern as observed in
+/// 国民生活センター / 消費者庁 / IPA サポート詐欺 samples: "感染" (infection),
+/// "侵害" (breach), "漏洩" (data leak), "ハッキング" (hacking), "不正アクセス"
+/// (unauthorized access), "緊急" (emergency). CJK passes through
+/// `to_ascii_lowercase` unchanged, so they are always available after
+/// `normalize_for_match`.
 ///
 /// `has_urgency_countdown` catches the *timer* aspect of urgency; this signal
 /// catches *word-density* urgency in titles that have no countdown.  Both share
@@ -1919,7 +1924,10 @@ pub fn has_urgency_countdown(s: &str) -> bool {
 pub fn has_alarm_density(s: &str) -> bool {
     // Near-zero-FP fear-words: chosen because each is almost never present in
     // a legitimate window title and is a strong scam-language marker.
+    // English entries cover homoglyph/leet evasions (normalize_for_match folds
+    // them first).  Japanese entries cover 国民生活センター/IPA サポート詐欺 corpus.
     const ALARM_WORDS: &[&str] = &[
+        // ── English ────────────────────────────────────────────────────────────
         "compromised",
         "hacked",
         "infected",
@@ -1931,6 +1939,13 @@ pub fn has_alarm_density(s: &str) -> bool {
         "danger",
         "urgent",
         "immediately",
+        // ── Japanese (pass-through: CJK unaffected by to_ascii_lowercase) ─────
+        "感染",         // kansen — infection / infected
+        "侵害",         // shingai — breach / violation
+        "漏洩",         // rouei — data leak
+        "ハッキング",   // hakkingu — hacking
+        "不正アクセス", // fusei-akusesu — unauthorized access
+        "緊急",         // kinkyuu — emergency / urgent
     ];
     ALARM_WORDS.iter().filter(|&&w| s.contains(w)).count() >= 3
 }
@@ -5657,8 +5672,36 @@ mod tests {
         assert!(!has_alarm_density("battery warning: 20% remaining"));
         assert!(!has_alarm_density("driver update required"));
         assert!(!has_alarm_density("your subscription expires soon"));
-        // Japanese text with no alarm words from the list.
-        assert!(!has_alarm_density("コンピュータウイルスの警告"));
+        // Single JP alarm word — not enough to fire.
+        assert!(!has_alarm_density("緊急メンテナンスのお知らせ"));
+        // Two JP alarm words — still below threshold.
+        assert!(!has_alarm_density("ウイルス感染を検出 — 緊急対応"));
+    }
+
+    #[test]
+    fn alarm_density_fires_on_japanese_fear_word_saturation() {
+        // Japanese サポート詐欺 pattern: infection + breach + emergency stacked.
+        let s = "ウイルス感染が検出されました 侵害 緊急対応が必要です";
+        assert!(
+            has_alarm_density(s),
+            "感染+侵害+緊急 must fire alarm_density: {s:?}"
+        );
+        // Hacking + unauthorized access + data leak.
+        let s2 = "ハッキング 不正アクセス データ漏洩が発生しました";
+        assert!(
+            has_alarm_density(s2),
+            "ハッキング+不正アクセス+漏洩 must fire alarm_density: {s2:?}"
+        );
+    }
+
+    #[test]
+    fn alarm_density_fires_on_mixed_jp_en_stacking() {
+        // Attacker mixes one EN word and two JP words — all count toward ≥ 3.
+        let s = "critical 感染 緊急 action needed";
+        assert!(
+            has_alarm_density(s),
+            "EN 'critical' + JP 感染+緊急 must reach threshold: {s:?}"
+        );
     }
 
     // ── has_forced_retention ──────────────────────────────────────────
