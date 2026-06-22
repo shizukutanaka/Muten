@@ -3667,6 +3667,103 @@ pub fn has_streaming_billing_scam(s: &str) -> bool {
     streaming_platform && payment_problem
 }
 
+/// E51 — Fake SaaS / AI-assistant subscription billing scam (FTC 2025;
+/// APWG Q1 2025: new phishing category — AI-brand impersonation billing).
+///
+/// Distinct from `has_streaming_billing_scam` (media streaming platforms)
+/// and `has_tech_support_invoice_scam` (generic charge + call-to-cancel
+/// without a named platform): this signal keys on *software-as-a-service
+/// and AI assistant brands* combined with payment-failure / account-hold
+/// framing.  Attackers impersonate Microsoft 365, Adobe, Google Workspace,
+/// ChatGPT, and similar to steal payment credentials or redirect to phishing
+/// pages.  Microsoft 365 alone accounted for 22 % of brand-phishing in Q4
+/// 2024 (Check Point / APWG).
+///
+/// AI-brand inclusion rationale: as AI assistant subscriptions grew in 2024-
+/// 2025, scammers rapidly adapted the streaming-billing script to target them.
+/// FTC received the first AI-brand impersonation billing complaints in Q2 2024;
+/// IC3 2025 preliminary data shows the category as one of the fastest-growing
+/// sub-types of impersonation fraud.
+///
+/// AND-pair:
+/// - software_platform: named SaaS or AI brand (Microsoft 365, Adobe, Google
+///   Workspace, Zoom, ChatGPT, Claude, Gemini, Copilot, etc.)
+/// - payment_problem: same payment-failure/account-hold vocabulary as
+///   `streaming_billing_scam` (reuse — the social-engineering script is
+///   identical, only the brand changes)
+pub fn has_software_subscription_scam(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    // Named SaaS / productivity / AI-assistant brands that scammers impersonate.
+    let software_platform = has("microsoft 365")
+        || has("office 365")
+        || has("microsoft office")
+        || has("outlook subscription")
+        || has("adobe creative")
+        || has("adobe acrobat")
+        || has("adobe subscription")
+        || has("adobe plan")
+        || has("google workspace")
+        || has("google one")
+        || has("google drive storage")
+        || has("zoom subscription")
+        || has("zoom pro")
+        || has("zoom account")
+        || has("dropbox")
+        || has("slack subscription")
+        || has("salesforce")
+        || has("chatgpt")
+        || has("chatgpt plus")
+        || has("openai")
+        || has("openai subscription")
+        || has("claude ai")
+        || has("claude subscription")
+        || has("anthropic")
+        || has("gemini advanced")
+        || has("gemini ai")
+        || has("google ai subscription")
+        || has("copilot pro")
+        || has("microsoft copilot")
+        || has("perplexity")
+        || has("perplexity pro")
+        || has("midjourney subscription")
+        || has("マイクロソフト365")  // Microsoft 365 (JP)
+        || has("アドビ")             // Adobe (JP)
+        || has("チャットgpt")         // ChatGPT (JP transliteration)
+        || has("グーグルワークスペース") // Google Workspace (JP)
+        || has("ズーム")             // Zoom (JP)
+        || has("ドロップボックス"); // Dropbox (JP)
+
+    // Payment-failure / account-suspension framing (same as streaming_billing_scam).
+    let payment_problem = has("payment failed")
+        || has("payment declined")
+        || has("payment method expired")
+        || has("payment method failed")
+        || has("payment method invalid")
+        || has("credit card declined")
+        || has("billing issue")
+        || has("billing problem")
+        || has("failed to process payment")
+        || has("unable to charge")
+        || has("update your payment")
+        || has("verify your payment")
+        || has("payment information required")
+        || has("reactivate your account")
+        || has("account on hold")
+        || has("subscription paused")
+        || has("subscription cancelled due to")
+        || has("license expired")
+        || has("license key invalid")
+        || has("お支払いが失敗")    // payment failed (JP)
+        || has("決済が失敗")        // transaction failed (JP)
+        || has("支払い方法が無効")  // payment method invalid (JP)
+        || has("支払い情報の更新")  // payment info update (JP)
+        || has("ライセンスが失効")  // license expired (JP)
+        || has("アカウントが停止中"); // account is suspended (JP)
+
+    software_platform && payment_problem
+}
+
 /// E43 — Fake traffic / parking / toll violation scam.
 ///
 /// AND-pair: traffic or parking violation noun AND a payment-urgency phrase.
@@ -7631,6 +7728,64 @@ mod tests {
         // Payment problem without platform
         assert!(!has_streaming_billing_scam(
             "お支払いが失敗した場合の対処法について解説します。"
+        ));
+    }
+
+    // ── has_software_subscription_scam (E51) ─────────────────────────────────
+
+    #[test]
+    fn software_subscription_scam_fires_on_microsoft365_billing() {
+        assert!(has_software_subscription_scam(
+            "microsoft 365 — payment failed: update your payment information to avoid losing access"
+        ));
+        assert!(has_software_subscription_scam(
+            "office 365 subscription — credit card declined — verify your payment method"
+        ));
+    }
+
+    #[test]
+    fn software_subscription_scam_fires_on_adobe_billing() {
+        assert!(has_software_subscription_scam(
+            "adobe creative cloud — payment method expired — reactivate your account"
+        ));
+    }
+
+    #[test]
+    fn software_subscription_scam_fires_on_ai_brands() {
+        // ChatGPT / OpenAI billing scam
+        assert!(has_software_subscription_scam(
+            "chatgpt plus — payment declined — update your payment information"
+        ));
+        // Gemini / Google AI
+        assert!(has_software_subscription_scam(
+            "gemini advanced subscription — billing issue — verify your payment"
+        ));
+        // Copilot Pro
+        assert!(has_software_subscription_scam(
+            "copilot pro — payment method failed — account on hold"
+        ));
+    }
+
+    #[test]
+    fn software_subscription_scam_fires_jp() {
+        assert!(has_software_subscription_scam(
+            "マイクロソフト365 — お支払いが失敗しました — 支払い情報の更新が必要です"
+        ));
+        // lowercase gpt matches チャットgpt term (function receives pre-lowercased input)
+        assert!(has_software_subscription_scam(
+            "チャットgpt サブスクリプション — 決済が失敗 — アカウントが停止中です"
+        ));
+    }
+
+    #[test]
+    fn software_subscription_scam_does_not_fire_half_pair() {
+        // Brand without payment problem
+        assert!(!has_software_subscription_scam(
+            "chatgpt plus subscription active"
+        ));
+        // Payment problem without brand
+        assert!(!has_software_subscription_scam(
+            "payment failed — update your payment information"
         ));
     }
 

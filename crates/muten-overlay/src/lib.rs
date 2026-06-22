@@ -297,6 +297,7 @@ impl Verdict {
             "otp_interception_scam",
             "social_media_account_alarm",
             "streaming_billing_scam",
+            "software_subscription_scam",
             "bank_account_alarm",
         ]) {
             out.push(
@@ -591,6 +592,9 @@ fn signal_phrase(signal: &str) -> &str {
         "task_app_scam" => {
             "claims the user earned money by completing tasks but demands a fee or deposit to withdraw earnings"
         }
+        "software_subscription_scam" => {
+            "impersonates a SaaS or AI-assistant brand with a fake payment-failure or account-suspension billing alert"
+        }
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
         other => other,
@@ -728,6 +732,7 @@ const W_FAMILY_EMERGENCY_SCAM: i32 = 30; // relative + crisis + money/secrecy de
 const W_REMOTE_ACCESS_LURE: i32 = 20; // remote-access tool named alongside a fake alert (context-amplified)
 const W_ALARM_DENSITY: i32 = 20; // ≥3 distinct fear-words stacked in one title — novel-scam catcher
 const W_TASK_APP_SCAM: i32 = 30; // task-completion claim + withdrawal-fee gate (IC3 2025 emerging category)
+const W_SOFTWARE_SUBSCRIPTION_SCAM: i32 = 25; // named SaaS/AI-brand + billing-failure (APWG Q1 2025 AI-brand phishing)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
 /// The weight contribution of a built-in signal.  Returns `None` for
@@ -822,6 +827,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "remote_access_lure" => Some(W_REMOTE_ACCESS_LURE),
         "alarm_density" => Some(W_ALARM_DENSITY),
         "task_app_scam" => Some(W_TASK_APP_SCAM),
+        "software_subscription_scam" => Some(W_SOFTWARE_SUBSCRIPTION_SCAM),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
     }
@@ -905,6 +911,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "remote_access_lure"
             | "alarm_density"
             | "task_app_scam"
+            | "software_subscription_scam"
     )
 }
 
@@ -1031,6 +1038,7 @@ pub fn all_signals() -> Vec<SignalInfo> {
         "family_emergency_scam",
         "remote_access_lure",
         "task_app_scam",
+        "software_subscription_scam",
     ];
     NAMES
         .iter()
@@ -2143,6 +2151,22 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && confusables::has_task_app_scam(&normalized_title) {
         score += rules.weight_of("task_app_scam", W_TASK_APP_SCAM);
         signals.push("task_app_scam".into());
+    }
+
+    // SaaS / AI-assistant subscription billing scam (E51 — APWG Q1 2025:
+    // Microsoft 365 = 22 % of brand-phishing; AI-brand billing complaints
+    // FTC 2024/2025). Phishing overlays impersonate software-as-a-service
+    // and AI-assistant brands (Microsoft 365, Adobe, ChatGPT, Gemini,
+    // Copilot…) with fake payment-failure or account-suspension notices to
+    // steal payment credentials.  Distinct from has_streaming_billing_scam
+    // (media streaming brands) and has_tech_support_invoice_scam (generic
+    // charge + call-to-cancel): this fires on named SaaS/AI brands.
+    // alert_shaped guard: legitimate billing notification emails from these
+    // services open in a closable browser tab, never as an unsolicited
+    // full-screen overlay.
+    if alert_shaped && confusables::has_software_subscription_scam(&normalized_title) {
+        score += rules.weight_of("software_subscription_scam", W_SOFTWARE_SUBSCRIPTION_SCAM);
+        signals.push("software_subscription_scam".into());
     }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
@@ -9160,6 +9184,58 @@ mod tests {
         assert_eq!(
             category_of("task_app_scam"),
             Some(DarkPatternCategory::Sneaking)
+        );
+    }
+
+    // ── E51: software_subscription_scam ──────────────────────────────────
+
+    #[test]
+    fn software_subscription_scam_fires_on_alert_shaped_window() {
+        let w = OverlayWindow {
+            title: "microsoft 365 — payment failed, update your payment method to reactivate your account".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.signals.iter().any(|s| s == "software_subscription_scam"),
+            "software_subscription_scam must fire on alert-shaped window; got {:?}",
+            v.signals
+        );
+        assert!(v.score >= W_SOFTWARE_SUBSCRIPTION_SCAM);
+    }
+
+    #[test]
+    fn software_subscription_scam_fp_guard_no_alert_shape() {
+        let w = OverlayWindow {
+            title: "chatgpt plus — payment failed update your payment method".into(),
+            coverage_percent: 20,
+            topmost: false,
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::UserInitiated,
+            age_ms: 5_000,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.signals.iter().any(|s| s == "software_subscription_scam"),
+            "software_subscription_scam must not fire without alert shape; got {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn software_subscription_scam_category_is_interface_interference() {
+        use crate::categories::{category_of, DarkPatternCategory};
+        assert_eq!(
+            category_of("software_subscription_scam"),
+            Some(DarkPatternCategory::InterfaceInterference)
         );
     }
 }
