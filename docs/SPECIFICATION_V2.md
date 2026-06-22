@@ -282,3 +282,4 @@ The following signal families are implemented (see `confusables.rs` and `lib.rs`
 | v0.6.0 (R27) | blocklist `match_phone`: fold O→0 / l→1 so a letter-substituted *known* scam number (`1-8OO-555-O1OO`) matches the curated rule |
 | v0.6.0 (R28) | `match_process`: fold homoglyphs (Cyrillic/Greek/… → ASCII) so a rogue-AV binary named `РСProtector.exe` matches its rule; digits preserved (no win32→winee) |
 | v0.6.0 (R29) | exhaustive invariant tests: `fold_char` proven idempotent over all 1.1M Unicode scalar values; ASCII letters/digits proven fixed points |
+| v0.6.0 (R30) | composed-evasion integration suite: stacked homoglyph+leet+math+zero-width+combining+spread titles still recover, fire blocklist_title, and Block; benign control proves no phantom matches |
