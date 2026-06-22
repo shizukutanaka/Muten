@@ -274,7 +274,7 @@ impl Verdict {
                  (Ctrl+Shift+Esc) and end the browser or app — or reboot the machine.",
             );
         }
-        // 2. Never call a number shown in an alert.
+        // 2. Never call a number shown in an alert — and "fake scan found threats" is the same trick.
         if fired(&[
             "phone_number",
             "blocklist_phone",
@@ -283,10 +283,12 @@ impl Verdict {
             "windows_activation_scam",
             "av_brand_renewal_scam",
             "ip_alarm_lure",
+            "fake_scanner_cue",
         ]) {
             out.push(
                 "Do not call any phone number shown — genuine operating-system or security \
-                 alerts never display a support number to call.",
+                 alerts never display a support number to call, and a fake scan result in a \
+                 pop-up is not a real threat.",
             );
         }
         // 3. Never share credentials or one-time/2FA codes.
@@ -328,6 +330,7 @@ impl Verdict {
             "family_emergency_scam",
             "pig_butchering_lure",
             "recovery_scam",
+            "subscription_lure",
         ]) {
             out.push(
                 "Do not pay or send money — especially via gift cards, wire transfer, \
@@ -335,15 +338,26 @@ impl Verdict {
                  demands payment this way.",
             );
         }
-        // 5. Never install software / share your screen / grant remote control.
+        // 5. Never install software / run commands / share your screen / grant remote control.
         if fired(&[
             "screen_share_lure",
             "remote_access_lure",
             "download_trap_lure",
+            "clickfix_instruction",
         ]) {
             out.push(
-                "Do not install any software, plugin, or remote-access tool, and do not share \
-                 your screen or grant remote control.",
+                "Do not install any software, plugin, or remote-access tool, do not paste \
+                 commands into a terminal or Run dialog, and do not share your screen or grant \
+                 remote control.",
+            );
+        }
+        // 5b. Countdown-timer pressure — separate from input-trap (family 1) because
+        //     urgency_countdown can fire without blocks_input on a closable but scary window.
+        if fired(&["urgency_countdown"]) {
+            out.push(
+                "The countdown timer is a pressure tactic — scammers use it to prevent you \
+                 from thinking clearly or consulting anyone. Take time to verify through \
+                 official channels before acting.",
             );
         }
         // 6. Never scan a QR code from an alert (quishing).
@@ -373,6 +387,8 @@ impl Verdict {
             "whole_script_confusable",
             "compat_chars_present",
             "bidi_override",
+            "mixed_number_systems",
+            "excessive_combining_marks",
             "brand_impersonation",
             "typosquat_brand",
             "combosquat_brand",
@@ -4102,6 +4118,108 @@ mod tests {
         let actions = v.recommended_action();
         assert_eq!(actions.len(), 1, "geometry-only → just the report step");
         assert!(actions[0].contains("report it to your IT"));
+    }
+
+    #[test]
+    fn recommended_action_clickfix_goes_to_command_family() {
+        // clickfix_instruction = "press Win+R and paste…" → must warn about running
+        // commands, not just about installing software.
+        let v = Verdict {
+            decision: Decision::Suspicious,
+            score: 60,
+            signals: vec!["clickfix_instruction".into()],
+            categories: Vec::new(),
+            mitre_techniques: Vec::new(),
+            matched_rule: None,
+        };
+        let actions = v.recommended_action();
+        assert!(
+            actions.iter().any(|a| a.contains("paste")),
+            "ClickFix warning must mention pasting commands: {actions:?}"
+        );
+        assert!(
+            actions.last().unwrap().contains("report it to your IT"),
+            "must still end with report step"
+        );
+    }
+
+    #[test]
+    fn recommended_action_urgency_countdown_warns_about_pressure() {
+        let v = Verdict {
+            decision: Decision::Suspicious,
+            score: 50,
+            signals: vec!["urgency_countdown".into()],
+            categories: Vec::new(),
+            mitre_techniques: Vec::new(),
+            matched_rule: None,
+        };
+        let actions = v.recommended_action();
+        assert!(
+            actions
+                .iter()
+                .any(|a| a.contains("pressure tactic") || a.contains("countdown")),
+            "countdown warning must mention pressure tactic: {actions:?}"
+        );
+    }
+
+    #[test]
+    fn recommended_action_fake_scanner_cue_joins_phone_family() {
+        // fake_scanner_cue → "call us to fix the threats found" is the tech-support
+        // scam script — the same guidance as a phone number (don't call).
+        let v = Verdict {
+            decision: Decision::Suspicious,
+            score: 50,
+            signals: vec!["fake_scanner_cue".into()],
+            categories: Vec::new(),
+            mitre_techniques: Vec::new(),
+            matched_rule: None,
+        };
+        let actions = v.recommended_action();
+        assert!(
+            actions.iter().any(|a| a.contains("support number to call")
+                || a.contains("pop-up is not a real threat")),
+            "fake_scanner_cue must warn against calling: {actions:?}"
+        );
+    }
+
+    #[test]
+    fn recommended_action_subscription_lure_joins_payment_family() {
+        let v = Verdict {
+            decision: Decision::Suspicious,
+            score: 50,
+            signals: vec!["subscription_lure".into()],
+            categories: Vec::new(),
+            mitre_techniques: Vec::new(),
+            matched_rule: None,
+        };
+        let actions = v.recommended_action();
+        assert!(
+            actions
+                .iter()
+                .any(|a| a.contains("Do not pay") || a.contains("gift cards")),
+            "subscription_lure must warn against payment: {actions:?}"
+        );
+    }
+
+    #[test]
+    fn recommended_action_evasion_signals_join_brand_family() {
+        // mixed_number_systems + excessive_combining_marks both indicate disguised
+        // text → should trigger the "look-alike characters" warning (family 8).
+        for sig in ["mixed_number_systems", "excessive_combining_marks"] {
+            let v = Verdict {
+                decision: Decision::Suspicious,
+                score: 50,
+                signals: vec![sig.into()],
+                categories: Vec::new(),
+                mitre_techniques: Vec::new(),
+                matched_rule: None,
+            };
+            let actions = v.recommended_action();
+            assert!(
+                actions.iter().any(|a| a.contains("look-alike characters")),
+                "evasion signal '{sig}' must trigger brand-family warning: {actions:?}"
+            );
+        }
     }
 
     // ── B6: signal_weight / confidence / score_breakdown ─────────────
