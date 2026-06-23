@@ -323,6 +323,15 @@ fn cmd_classify(
                 "recommended_action".into(),
                 serde_json::Value::Array(actions),
             );
+            let principles: Vec<serde_json::Value> = v
+                .persuasion_principles()
+                .into_iter()
+                .map(|p| serde_json::Value::String(p.as_str().to_string()))
+                .collect();
+            obj.insert(
+                "persuasion_principles".into(),
+                serde_json::Value::Array(principles),
+            );
         }
         println!(
             "{}",
@@ -344,6 +353,11 @@ fn cmd_classify(
         }
         if !v.mitre_techniques.is_empty() {
             println!("mitre:    {}", v.mitre_techniques.join(", "));
+        }
+        let principles = v.persuasion_principles();
+        if !principles.is_empty() {
+            let names: Vec<&str> = principles.iter().map(|p| p.as_str()).collect();
+            println!("persuasion: {}", names.join(", "));
         }
         if let Some(rule) = &v.matched_rule {
             println!("matched:  {rule}");
@@ -424,6 +438,15 @@ fn cmd_classify_stream(window: &str, rules: Option<&std::path::Path>) -> Result<
             obj.insert(
                 "recommended_action".into(),
                 serde_json::Value::Array(actions),
+            );
+            let principles: Vec<serde_json::Value> = v
+                .persuasion_principles()
+                .into_iter()
+                .map(|p| serde_json::Value::String(p.as_str().to_string()))
+                .collect();
+            obj.insert(
+                "persuasion_principles".into(),
+                serde_json::Value::Array(principles),
             );
         }
         println!(

@@ -36,6 +36,7 @@ pub mod controller;
 pub mod merkle;
 pub mod mitre;
 pub mod monitor;
+pub mod persuasion;
 pub mod rules;
 pub mod scareware;
 pub mod sink;
@@ -46,6 +47,7 @@ pub use controller::{
     WindowId,
 };
 pub use monitor::{AuditEvent, AuditSink, MemorySink, Monitor, RunConfig};
+pub use persuasion::{principles_of, principles_of_signals, PersuasionPrinciple};
 pub use rules::Ruleset;
 pub use scareware::{assess, RepeatTracker, ScarewareDecision, ScarewareVerdict};
 pub use sink::{
@@ -204,6 +206,20 @@ impl Verdict {
             .iter()
             .map(|s| (s.clone(), signal_weight(s).unwrap_or(0)))
             .collect()
+    }
+
+    /// The Cialdini persuasion principle(s) this verdict's signals exploit,
+    /// deduplicated and sorted (see the [`crate::persuasion`] module).
+    ///
+    /// A third classification lens, orthogonal to [`Verdict::categories`]
+    /// (UI-manipulation mechanic) and [`Verdict::mitre_techniques`] (attacker
+    /// technique): it answers *why the human complies* — Authority, Scarcity,
+    /// Social Proof, Reciprocity, Liking, Commitment, or Intimidation — the
+    /// vocabulary of security-awareness training. Empty when only geometry /
+    /// homoglyph-mechanic signals fired. Pure and side-effect-free.
+    #[must_use]
+    pub fn persuasion_principles(&self) -> Vec<PersuasionPrinciple> {
+        principles_of_signals(&self.signals)
     }
 
     /// A deterministic, plain-language explanation of the verdict.
@@ -4574,6 +4590,51 @@ mod tests {
         assert_eq!(fullscreen.1, 30, "breakdown reports the default weight");
         let sum: i32 = bd.iter().map(|(_, w)| *w).sum();
         assert_ne!(sum, v.score, "sum differs from score under an override");
+    }
+
+    #[test]
+    fn persuasion_principles_surface_authority_and_intimidation() {
+        use crate::persuasion::PersuasionPrinciple::{Authority, Intimidation};
+        // A fake Windows Defender malware overlay wears Microsoft's name
+        // (Authority) and threatens infection (Intimidation).
+        let w = OverlayWindow {
+            title: "windows defender: trojan.ransom detected — remove now".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        let ps = v.persuasion_principles();
+        assert!(
+            ps.contains(&Authority) && ps.contains(&Intimidation),
+            "expected Authority+Intimidation; got {ps:?} from {:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn persuasion_principles_empty_for_geometry_only_verdict() {
+        // A plain fullscreen/topmost window with no content tell pulls no
+        // psychological lever — geometry coerces mechanically, not via
+        // persuasion, so this lens stays empty even when a verdict fires.
+        let w = OverlayWindow {
+            title: "plain window".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: true,
+            origin: Origin::Unsolicited,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.persuasion_principles().is_empty(),
+            "geometry-only verdict should expose no persuasion principle; got {:?}",
+            v.persuasion_principles()
+        );
     }
 
     #[test]
