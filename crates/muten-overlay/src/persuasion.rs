@@ -205,10 +205,7 @@ pub fn principles_of(signal: &str) -> &'static [PersuasionPrinciple] {
         // supplies the cash-out channel, surfaced by the extraction lens).
         // They are listed explicitly so a future signal is a conscious choice,
         // not an accidental omission (guarded by the cross-lens coverage test).
-        "gift_card_demand"
-        | "download_trap_lure"
-        | "remote_access_lure"
-        | "screen_share_lure"
+        "gift_card_demand" | "download_trap_lure" | "remote_access_lure" | "screen_share_lure"
         | "qr_code_lure" => &[],
 
         // Descriptive / geometry / homoglyph-mechanic signals: no persuasion

@@ -343,7 +343,10 @@ mod tests {
 
     #[test]
     fn job_seeker_signals() {
-        assert_eq!(victim_profile_of("job_scam"), Some(VictimProfile::JobSeeker));
+        assert_eq!(
+            victim_profile_of("job_scam"),
+            Some(VictimProfile::JobSeeker)
+        );
         assert_eq!(
             victim_profile_of("task_app_scam"),
             Some(VictimProfile::JobSeeker)
@@ -458,7 +461,11 @@ mod tests {
     #[test]
     fn collector_multiple_profiles_sorted() {
         // CryptoInvestor + ElderAdult + General — sorted by declaration order.
-        let signals: &[&str] = &["pig_butchering_lure", "family_emergency_scam", "bank_account_alarm"];
+        let signals: &[&str] = &[
+            "pig_butchering_lure",
+            "family_emergency_scam",
+            "bank_account_alarm",
+        ];
         let ps = victim_profiles_of_signals(signals);
         assert_eq!(
             ps,
@@ -511,7 +518,11 @@ mod tests {
     #[test]
     fn targeted_attack_false_for_general_only() {
         // Only General-targeting signals → not targeted.
-        let signals: &[&str] = &["bank_account_alarm", "brand_impersonation", "sextortion_lure"];
+        let signals: &[&str] = &[
+            "bank_account_alarm",
+            "brand_impersonation",
+            "sextortion_lure",
+        ];
         assert!(!is_targeted_attack(signals));
     }
 

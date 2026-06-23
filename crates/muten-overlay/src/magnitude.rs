@@ -271,19 +271,16 @@ mod tests {
     #[test]
     fn micro_signals() {
         assert_eq!(magnitude_of("package_fee_lure"), Some(LossMagnitude::Micro));
-        assert_eq!(magnitude_of("traffic_fine_scam"), Some(LossMagnitude::Micro));
+        assert_eq!(
+            magnitude_of("traffic_fine_scam"),
+            Some(LossMagnitude::Micro)
+        );
     }
 
     #[test]
     fn small_signals() {
-        assert_eq!(
-            magnitude_of("gift_card_demand"),
-            Some(LossMagnitude::Small)
-        );
-        assert_eq!(
-            magnitude_of("sextortion_lure"),
-            Some(LossMagnitude::Small)
-        );
+        assert_eq!(magnitude_of("gift_card_demand"), Some(LossMagnitude::Small));
+        assert_eq!(magnitude_of("sextortion_lure"), Some(LossMagnitude::Small));
         assert_eq!(
             magnitude_of("subscription_lure"),
             Some(LossMagnitude::Small)
@@ -292,18 +289,12 @@ mod tests {
             magnitude_of("av_brand_renewal_scam"),
             Some(LossMagnitude::Small)
         );
-        assert_eq!(
-            magnitude_of("healthcare_scam"),
-            Some(LossMagnitude::Small)
-        );
+        assert_eq!(magnitude_of("healthcare_scam"), Some(LossMagnitude::Small));
         assert_eq!(
             magnitude_of("student_loan_scam"),
             Some(LossMagnitude::Small)
         );
-        assert_eq!(
-            magnitude_of("fake_bsod_lure"),
-            Some(LossMagnitude::Small)
-        );
+        assert_eq!(magnitude_of("fake_bsod_lure"), Some(LossMagnitude::Small));
     }
 
     #[test]
@@ -343,10 +334,7 @@ mod tests {
             magnitude_of("bank_account_alarm"),
             Some(LossMagnitude::Medium)
         );
-        assert_eq!(
-            magnitude_of("task_app_scam"),
-            Some(LossMagnitude::Medium)
-        );
+        assert_eq!(magnitude_of("task_app_scam"), Some(LossMagnitude::Medium));
         assert_eq!(
             magnitude_of("rental_scam_lure"),
             Some(LossMagnitude::Medium)
@@ -359,10 +347,7 @@ mod tests {
 
     #[test]
     fn large_signals() {
-        assert_eq!(
-            magnitude_of("recovery_scam"),
-            Some(LossMagnitude::Large)
-        );
+        assert_eq!(magnitude_of("recovery_scam"), Some(LossMagnitude::Large));
         assert_eq!(
             magnitude_of("crypto_giveaway_scam"),
             Some(LossMagnitude::Large)
@@ -442,10 +427,7 @@ mod tests {
         // Micro + Catastrophic → sorted [Micro, Catastrophic].
         let signals: &[&str] = &["pig_butchering_lure", "package_fee_lure"];
         let ms = magnitudes_of_signals(signals);
-        assert_eq!(
-            ms,
-            vec![LossMagnitude::Micro, LossMagnitude::Catastrophic]
-        );
+        assert_eq!(ms, vec![LossMagnitude::Micro, LossMagnitude::Catastrophic]);
     }
 
     #[test]
@@ -467,17 +449,18 @@ mod tests {
             "crypto_drain_lure".to_string(),
         ];
         let ms = magnitudes_of_signals(&signals);
-        assert_eq!(
-            ms,
-            vec![LossMagnitude::Medium, LossMagnitude::Catastrophic]
-        );
+        assert_eq!(ms, vec![LossMagnitude::Medium, LossMagnitude::Catastrophic]);
     }
 
     // ── highest_magnitude ─────────────────────────────────────────────────────
 
     #[test]
     fn highest_picks_catastrophic_over_all() {
-        let signals: &[&str] = &["gift_card_demand", "advance_fee_lure", "pig_butchering_lure"];
+        let signals: &[&str] = &[
+            "gift_card_demand",
+            "advance_fee_lure",
+            "pig_butchering_lure",
+        ];
         assert_eq!(
             highest_magnitude(signals),
             Some(LossMagnitude::Catastrophic)
@@ -486,11 +469,12 @@ mod tests {
 
     #[test]
     fn highest_picks_medium_over_small_and_micro() {
-        let signals: &[&str] = &["package_fee_lure", "subscription_lure", "tax_authority_scam"];
-        assert_eq!(
-            highest_magnitude(signals),
-            Some(LossMagnitude::Medium)
-        );
+        let signals: &[&str] = &[
+            "package_fee_lure",
+            "subscription_lure",
+            "tax_authority_scam",
+        ];
+        assert_eq!(highest_magnitude(signals), Some(LossMagnitude::Medium));
     }
 
     #[test]

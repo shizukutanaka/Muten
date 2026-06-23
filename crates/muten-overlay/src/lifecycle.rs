@@ -246,10 +246,7 @@ pub fn stages_of_signals<S: AsRef<str>>(signals: &[S]) -> Vec<ScamStage> {
 /// ordered earliest-first, this is simply the maximum.
 #[must_use]
 pub fn highest_stage<S: AsRef<str>>(signals: &[S]) -> Option<ScamStage> {
-    signals
-        .iter()
-        .filter_map(|s| stage_of(s.as_ref()))
-        .max()
+    signals.iter().filter_map(|s| stage_of(s.as_ref())).max()
 }
 
 #[cfg(test)]
@@ -280,8 +277,14 @@ mod tests {
         assert_eq!(stage_of("crypto_drain_lure"), Some(ScamStage::Extract));
         assert_eq!(stage_of("advance_fee_lure"), Some(ScamStage::Extract));
         assert_eq!(stage_of("family_emergency_scam"), Some(ScamStage::Extract));
-        assert_eq!(stage_of("false_registration_billing"), Some(ScamStage::Extract));
-        assert_eq!(stage_of("tech_support_invoice_scam"), Some(ScamStage::Extract));
+        assert_eq!(
+            stage_of("false_registration_billing"),
+            Some(ScamStage::Extract)
+        );
+        assert_eq!(
+            stage_of("tech_support_invoice_scam"),
+            Some(ScamStage::Extract)
+        );
     }
 
     #[test]
@@ -305,8 +308,14 @@ mod tests {
         assert_eq!(stage_of("dark_web_breach_lure"), Some(ScamStage::Lure));
         assert_eq!(stage_of("bank_account_alarm"), Some(ScamStage::Lure));
         assert_eq!(stage_of("cloud_quota_lure"), Some(ScamStage::Lure));
-        assert_eq!(stage_of("windows_defender_alert_lure"), Some(ScamStage::Lure));
-        assert_eq!(stage_of("software_subscription_scam"), Some(ScamStage::Lure));
+        assert_eq!(
+            stage_of("windows_defender_alert_lure"),
+            Some(ScamStage::Lure)
+        );
+        assert_eq!(
+            stage_of("software_subscription_scam"),
+            Some(ScamStage::Lure)
+        );
         assert_eq!(stage_of("tech_support_chat_lure"), Some(ScamStage::Lure));
     }
 
@@ -380,10 +389,10 @@ mod tests {
     #[test]
     fn collector_all_stages_present() {
         let signals: &[&str] = &[
-            "gift_card_demand",    // Extract
-            "urgency_countdown",   // Pressure
-            "phone_number",        // TrustBuild
-            "fake_bsod_lure",      // Lure
+            "gift_card_demand",  // Extract
+            "urgency_countdown", // Pressure
+            "phone_number",      // TrustBuild
+            "fake_bsod_lure",    // Lure
         ];
         let ss = stages_of_signals(signals);
         assert_eq!(
