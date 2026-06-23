@@ -35,6 +35,7 @@ pub mod confusables;
 pub mod controller;
 pub mod extraction;
 pub mod lifecycle;
+pub mod magnitude;
 pub mod merkle;
 pub mod mitre;
 pub mod monitor;
@@ -54,6 +55,7 @@ pub use extraction::{
     Recoverability,
 };
 pub use lifecycle::{highest_stage, stage_of, stages_of_signals, ScamStage};
+pub use magnitude::{highest_magnitude, magnitude_of, magnitudes_of_signals, LossMagnitude};
 pub use targeting::{
     is_targeted_attack, victim_profile_of, victim_profiles_of_signals, VictimProfile,
 };
@@ -321,6 +323,36 @@ impl Verdict {
     #[must_use]
     pub fn is_targeted_attack(&self) -> bool {
         is_targeted_attack(&self.signals)
+    }
+
+    /// The expected per-victim loss magnitude bands present in this
+    /// verdict's signals, sorted smallest-to-largest and deduplicated
+    /// (see the [`crate::magnitude`] module).
+    ///
+    /// A seventh, *quantitative* lens: it answers *how large a financial
+    /// loss is this scam family associated with?*, enabling risk-based
+    /// triage and management reporting. Based on FTC Consumer Sentinel 2024
+    /// and FBI IC3 2024 median/average per-victim loss statistics.
+    ///
+    /// Empty when only geometry, evasion, or delivery signals fired. Use
+    /// [`Verdict::highest_magnitude`] as the triage gate. Pure and
+    /// side-effect-free.
+    #[must_use]
+    pub fn loss_magnitudes(&self) -> Vec<LossMagnitude> {
+        magnitudes_of_signals(&self.signals)
+    }
+
+    /// The highest (worst-case) [`LossMagnitude`] across this verdict's
+    /// signals, or `None` when no signal carries a determinate magnitude.
+    ///
+    /// The financial-exposure triage primitive: `Catastrophic` (> $200K)
+    /// warrants senior escalation; `Large` ($20K–$200K) requires management
+    /// notification; `Medium` ($2K–$20K) is within standard fraud-response
+    /// SLAs; `Small` and `Micro` are high-volume / lower-urgency. Pure and
+    /// side-effect-free.
+    #[must_use]
+    pub fn highest_magnitude(&self) -> Option<LossMagnitude> {
+        highest_magnitude(&self.signals)
     }
 
     /// A deterministic, plain-language explanation of the verdict.
@@ -9844,5 +9876,50 @@ mod tests {
             "geometry-only verdict should not be a targeted attack; signals={:?}",
             v.signals
         );
+    }
+
+    // ── Loss magnitude lens ──────────────────────────────────────────────────
+
+    #[test]
+    fn magnitude_catastrophic_for_pig_butchering_overlay() {
+        use crate::magnitude::LossMagnitude;
+        // Pig-butchering investment fraud: FBI IC3 2024 avg ~$305K per victim.
+        let w = OverlayWindow {
+            title: "exclusive vip trading group join our investment mentor and earn guaranteed profit connect your wallet now".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 100,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert_eq!(
+            v.highest_magnitude(),
+            Some(LossMagnitude::Catastrophic),
+            "pig-butchering lure must register Catastrophic magnitude; signals={:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn magnitude_none_for_geometry_only_verdict() {
+        let w = OverlayWindow {
+            title: "plain window".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: true,
+            origin: Origin::Unsolicited,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert_eq!(
+            v.highest_magnitude(),
+            None,
+            "geometry-only verdict must have no loss magnitude; signals={:?}",
+            v.signals
+        );
+        assert!(v.loss_magnitudes().is_empty());
     }
 }

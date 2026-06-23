@@ -369,6 +369,21 @@ fn cmd_classify(
                 "is_targeted_attack".into(),
                 serde_json::Value::Bool(v.is_targeted_attack()),
             );
+            let mags: Vec<serde_json::Value> = v
+                .loss_magnitudes()
+                .into_iter()
+                .map(|m| serde_json::Value::String(m.as_str().to_string()))
+                .collect();
+            obj.insert("loss_magnitudes".into(), serde_json::Value::Array(mags));
+            if let Some(h) = v.highest_magnitude() {
+                obj.insert(
+                    "highest_magnitude".into(),
+                    serde_json::json!({
+                        "band": h.as_str(),
+                        "range": h.range_label(),
+                    }),
+                );
+            }
         }
         println!(
             "{}",
@@ -422,6 +437,9 @@ fn cmd_classify(
                 print!(" [targeted]");
             }
             println!();
+        }
+        if let Some(h) = v.highest_magnitude() {
+            println!("exposure:  {} ({})", h.as_str(), h.range_label());
         }
         if let Some(rule) = &v.matched_rule {
             println!("matched:  {rule}");
@@ -549,6 +567,21 @@ fn cmd_classify_stream(window: &str, rules: Option<&std::path::Path>) -> Result<
                 "is_targeted_attack".into(),
                 serde_json::Value::Bool(v.is_targeted_attack()),
             );
+            let mags: Vec<serde_json::Value> = v
+                .loss_magnitudes()
+                .into_iter()
+                .map(|m| serde_json::Value::String(m.as_str().to_string()))
+                .collect();
+            obj.insert("loss_magnitudes".into(), serde_json::Value::Array(mags));
+            if let Some(h) = v.highest_magnitude() {
+                obj.insert(
+                    "highest_magnitude".into(),
+                    serde_json::json!({
+                        "band": h.as_str(),
+                        "range": h.range_label(),
+                    }),
+                );
+            }
         }
         println!(
             "{}",
