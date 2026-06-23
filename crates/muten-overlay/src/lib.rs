@@ -45,6 +45,7 @@ pub mod rules;
 pub mod scareware;
 pub mod sink;
 pub mod targeting;
+pub mod triage;
 
 pub use categories::{categories_of, category_of, DarkPatternCategory};
 pub use controller::{
@@ -69,6 +70,7 @@ pub use sink::{
 pub use targeting::{
     is_targeted_attack, victim_profile_of, victim_profiles_of_signals, VictimProfile,
 };
+pub use triage::{priority_of_score, priority_score, response_priority, ResponsePriority};
 
 use serde::{Deserialize, Serialize};
 
@@ -386,6 +388,39 @@ impl Verdict {
             self.highest_stage().map(|s| s.as_str()),
             self.highest_magnitude().map(|m| m.as_str()),
         )
+    }
+
+    /// The transparent integer **urgency score** for this verdict, synthesised
+    /// from its decision, kill-chain stage, recoverability, loss magnitude, and
+    /// targeting (see [`crate::triage::priority_score`]).
+    ///
+    /// Like the classifier's own `score`, every contribution is a named
+    /// constant and the total is an honest sum — the explainable basis for the
+    /// banded [`Verdict::response_priority`]. Pure and side-effect-free.
+    #[must_use]
+    pub fn priority_score(&self) -> u32 {
+        triage::priority_score(
+            self.decision,
+            self.highest_stage(),
+            self.worst_recoverability(),
+            self.highest_magnitude(),
+            self.is_targeted_attack(),
+        )
+    }
+
+    /// The operational **response priority** for this verdict — the ninth,
+    /// *synthesis* lens (see [`crate::triage`]).
+    ///
+    /// Where the eight descriptive lenses each answer one question about the
+    /// overlay, this answers the responder's only question when the queue is
+    /// long: *which one do I handle first?* It bands [`Verdict::priority_score`]
+    /// into [`ResponsePriority::Low`] → [`ResponsePriority::Critical`]
+    /// (`P4`→`P1`). `Critical` means an active, irreversible, or catastrophic
+    /// extraction is in progress and demands immediate intervention. Pure and
+    /// side-effect-free.
+    #[must_use]
+    pub fn response_priority(&self) -> ResponsePriority {
+        triage::priority_of_score(self.priority_score())
     }
 
     /// A deterministic, plain-language explanation of the verdict.
@@ -10152,5 +10187,72 @@ mod tests {
         let fp1 = classify(&w, &rules).signal_fingerprint();
         let fp2 = classify(&w, &rules).signal_fingerprint();
         assert_eq!(fp1, fp2, "signal_fingerprint is not deterministic");
+    }
+
+    // ── response_priority (triage synthesis) integration ──────────────────
+
+    #[test]
+    fn allow_verdict_is_lowest_priority() {
+        let w = OverlayWindow {
+            coverage_percent: 10,
+            has_close_button: true,
+            ..Default::default()
+        };
+        let rules = Ruleset::default();
+        let v = classify(&w, &rules);
+        assert_eq!(v.decision, Decision::Allow);
+        assert_eq!(v.priority_score(), 0);
+        assert_eq!(v.response_priority(), ResponsePriority::Low);
+    }
+
+    #[test]
+    fn gift_card_tech_support_overlay_is_critical_priority() {
+        // A fullscreen tech-support overlay demanding gift-card payment is the
+        // canonical drop-everything case: active extraction + irreversible.
+        let w = OverlayWindow {
+            title: "your computer is locked buy gift card and send codes to \
+                    microsoft support 1-800-555-0199 to unlock"
+                .to_string(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            ..Default::default()
+        };
+        let rules = Ruleset::default();
+        let v = classify(&w, &rules);
+        assert_eq!(v.decision, Decision::Block);
+        // Must carry the gift_card_demand extraction (irreversible) and an
+        // Extract-stage signal, pushing it to the top of the queue.
+        assert_eq!(
+            v.response_priority(),
+            ResponsePriority::Critical,
+            "score={}, signals={:?}",
+            v.priority_score(),
+            v.signals
+        );
+    }
+
+    #[test]
+    fn priority_score_is_deterministic_and_banded_consistently() {
+        let w = OverlayWindow {
+            title: "your computer is infected call 1-800-555-0199".to_string(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            ..Default::default()
+        };
+        let rules = Ruleset::default();
+        let v = classify(&w, &rules);
+        // The method-banded priority must equal banding the raw score.
+        assert_eq!(
+            v.response_priority(),
+            triage::priority_of_score(v.priority_score())
+        );
+        // Determinism across repeated classification.
+        assert_eq!(v.priority_score(), classify(&w, &rules).priority_score());
     }
 }

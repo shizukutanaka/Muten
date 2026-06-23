@@ -392,6 +392,14 @@ fn cmd_classify(
                 "campaign_bucket".into(),
                 serde_json::Value::String(v.campaign_bucket()),
             );
+            obj.insert(
+                "response_priority".into(),
+                serde_json::json!({
+                    "level": v.response_priority().as_str(),
+                    "p_label": v.response_priority().p_label(),
+                    "score": v.priority_score(),
+                }),
+            );
         }
         println!(
             "{}",
@@ -454,6 +462,13 @@ fn cmd_classify(
             println!("fingerprint: {fp}");
         }
         println!("campaign:  {}", v.campaign_bucket());
+        let prio = v.response_priority();
+        println!(
+            "priority:  {} ({}, score {})",
+            prio.as_str(),
+            prio.p_label(),
+            v.priority_score()
+        );
         if let Some(rule) = &v.matched_rule {
             println!("matched:  {rule}");
         }
@@ -602,6 +617,14 @@ fn cmd_classify_stream(window: &str, rules: Option<&std::path::Path>) -> Result<
             obj.insert(
                 "campaign_bucket".into(),
                 serde_json::Value::String(v.campaign_bucket()),
+            );
+            obj.insert(
+                "response_priority".into(),
+                serde_json::json!({
+                    "level": v.response_priority().as_str(),
+                    "p_label": v.response_priority().p_label(),
+                    "score": v.priority_score(),
+                }),
             );
         }
         println!(
