@@ -33,6 +33,7 @@
 pub mod categories;
 pub mod confusables;
 pub mod controller;
+pub mod extraction;
 pub mod merkle;
 pub mod mitre;
 pub mod monitor;
@@ -45,6 +46,10 @@ pub use categories::{categories_of, category_of, DarkPatternCategory};
 pub use controller::{
     ControllerError, EnumeratedWindow, NullController, OverlayController, SubprocessController,
     WindowId,
+};
+pub use extraction::{
+    extraction_vectors_of, extraction_vectors_of_signals, worst_recoverability, ExtractionVector,
+    Recoverability,
 };
 pub use monitor::{AuditEvent, AuditSink, MemorySink, Monitor, RunConfig};
 pub use persuasion::{principles_of, principles_of_signals, PersuasionPrinciple};
@@ -220,6 +225,34 @@ impl Verdict {
     #[must_use]
     pub fn persuasion_principles(&self) -> Vec<PersuasionPrinciple> {
         principles_of_signals(&self.signals)
+    }
+
+    /// The extraction vector(s) this verdict's signals characteristically use
+    /// to monetize the victim — gift card, cryptocurrency, wire transfer, card
+    /// charge, credential harvest, or device takeover — deduplicated and
+    /// sorted (see the [`crate::extraction`] module).
+    ///
+    /// A fourth, *defender-side* lens, orthogonal to the three deception
+    /// lenses ([`Verdict::categories`], [`Verdict::mitre_techniques`],
+    /// [`Verdict::persuasion_principles`]): it answers *what the victim loses*.
+    /// Empty when only pure-lure, scare, or geometry signals fired (no
+    /// determinate cash-out channel). Pure and side-effect-free.
+    #[must_use]
+    pub fn extraction_vectors(&self) -> Vec<ExtractionVector> {
+        extraction_vectors_of_signals(&self.signals)
+    }
+
+    /// The worst-case (least recoverable) [`Recoverability`] across this
+    /// verdict's extraction vectors, or `None` when no vector applies.
+    ///
+    /// The triage primitive for incident response: `Irreversible`
+    /// (gift card / crypto) demands the most urgent prevention response,
+    /// `TimeLimited` (wire) means racing the recall window, `Disputable`
+    /// (card) allows a chargeback, and `Mitigable` (credential / device)
+    /// means rotate-and-scan. Pure and side-effect-free.
+    #[must_use]
+    pub fn worst_recoverability(&self) -> Option<Recoverability> {
+        worst_recoverability(&self.signals)
     }
 
     /// A deterministic, plain-language explanation of the verdict.
@@ -4635,6 +4668,51 @@ mod tests {
             "geometry-only verdict should expose no persuasion principle; got {:?}",
             v.persuasion_principles()
         );
+    }
+
+    #[test]
+    fn extraction_vectors_surface_irreversible_recoverability() {
+        use crate::extraction::{ExtractionVector::GiftCard, Recoverability};
+        // A gift-card payment demand monetizes via an irreversible channel —
+        // the verdict should surface that vector and flag it as unrecoverable.
+        let w = OverlayWindow {
+            title: "to release your refund, pay with gift card and read me the codes now".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.extraction_vectors().contains(&GiftCard),
+            "expected GiftCard vector; got {:?} from {:?}",
+            v.extraction_vectors(),
+            v.signals
+        );
+        assert_eq!(
+            v.worst_recoverability(),
+            Some(Recoverability::Irreversible),
+            "gift-card loss must triage as irreversible"
+        );
+    }
+
+    #[test]
+    fn extraction_vectors_empty_for_geometry_only_verdict() {
+        // A pure geometry verdict carries no determinate cash-out channel.
+        let w = OverlayWindow {
+            title: "plain window".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: true,
+            origin: Origin::Unsolicited,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(v.extraction_vectors().is_empty());
+        assert_eq!(v.worst_recoverability(), None);
     }
 
     #[test]

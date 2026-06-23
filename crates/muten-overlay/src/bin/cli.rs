@@ -332,6 +332,21 @@ fn cmd_classify(
                 "persuasion_principles".into(),
                 serde_json::Value::Array(principles),
             );
+            let vectors: Vec<serde_json::Value> = v
+                .extraction_vectors()
+                .into_iter()
+                .map(|x| serde_json::Value::String(x.as_str().to_string()))
+                .collect();
+            obj.insert(
+                "extraction_vectors".into(),
+                serde_json::Value::Array(vectors),
+            );
+            if let Some(r) = v.worst_recoverability() {
+                obj.insert(
+                    "worst_recoverability".into(),
+                    serde_json::Value::String(r.as_str().to_string()),
+                );
+            }
         }
         println!(
             "{}",
@@ -358,6 +373,15 @@ fn cmd_classify(
         if !principles.is_empty() {
             let names: Vec<&str> = principles.iter().map(|p| p.as_str()).collect();
             println!("persuasion: {}", names.join(", "));
+        }
+        let vectors = v.extraction_vectors();
+        if !vectors.is_empty() {
+            let names: Vec<&str> = vectors.iter().map(|x| x.as_str()).collect();
+            print!("extraction: {}", names.join(", "));
+            if let Some(r) = v.worst_recoverability() {
+                print!(" (recoverability: {})", r.as_str());
+            }
+            println!();
         }
         if let Some(rule) = &v.matched_rule {
             println!("matched:  {rule}");
@@ -448,6 +472,21 @@ fn cmd_classify_stream(window: &str, rules: Option<&std::path::Path>) -> Result<
                 "persuasion_principles".into(),
                 serde_json::Value::Array(principles),
             );
+            let vectors: Vec<serde_json::Value> = v
+                .extraction_vectors()
+                .into_iter()
+                .map(|x| serde_json::Value::String(x.as_str().to_string()))
+                .collect();
+            obj.insert(
+                "extraction_vectors".into(),
+                serde_json::Value::Array(vectors),
+            );
+            if let Some(r) = v.worst_recoverability() {
+                obj.insert(
+                    "worst_recoverability".into(),
+                    serde_json::Value::String(r.as_str().to_string()),
+                );
+            }
         }
         println!(
             "{}",
