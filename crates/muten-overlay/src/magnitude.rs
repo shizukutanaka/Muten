@@ -165,6 +165,9 @@ pub fn magnitude_of(signal: &str) -> Option<LossMagnitude> {
         | "otp_interception_scam"       // OTP relay → account drain: varies; median Small
         | "fake_bsod_lure"              // initial tech-support call fee: $200–$500
         | "windows_defender_alert_lure" // Defender brand → tech-support call: $200–$500
+        | "fake_scanner_cue"            // fake AV scan → tech-support call: $200–$500
+        | "ip_alarm_lure"               // "IP hacked" → tech-support call: $200–$500
+        | "tech_support_chat_lure"      // live-chat tech-support pivot: $200–$500
         => Some(LossMagnitude::Small),
 
         // ── Medium ($2K – $20K) ─────────────────────────────────────────────
@@ -301,6 +304,25 @@ mod tests {
             magnitude_of("fake_bsod_lure"),
             Some(LossMagnitude::Small)
         );
+    }
+
+    #[test]
+    fn tech_support_family_is_small_and_consistent() {
+        // All tech-support call-driver lures share the same initial call-fee
+        // band as fake_bsod_lure (cross-lens drift fix).
+        for s in [
+            "fake_bsod_lure",
+            "windows_defender_alert_lure",
+            "fake_scanner_cue",
+            "ip_alarm_lure",
+            "tech_support_chat_lure",
+        ] {
+            assert_eq!(
+                magnitude_of(s),
+                Some(LossMagnitude::Small),
+                "{s} should share the tech-support Small band"
+            );
+        }
     }
 
     #[test]

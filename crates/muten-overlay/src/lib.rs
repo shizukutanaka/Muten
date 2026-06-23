@@ -9922,4 +9922,104 @@ mod tests {
         );
         assert!(v.loss_magnitudes().is_empty());
     }
+
+    // ── Cross-lens coverage guard ─────────────────────────────────────────────
+    //
+    // The seven classification lenses (categories, mitre, persuasion,
+    // extraction, lifecycle, targeting, magnitude) are each maintained as
+    // an independent signal→value mapping. Because they were added
+    // incrementally, the hazard is *drift*: a new scam-family signal gets
+    // wired into the classifier and a couple of lenses but silently missed
+    // by the others, leaving a half-classified verdict. These tests lock the
+    // invariants that must hold for every *scam-family content signal*, so a
+    // future omission fails CI instead of shipping.
+    //
+    // The canonical "scam-family content signal" set is defined as the
+    // signals the *targeting* lens maps (`victim_profile_of(..).is_some()`):
+    // targeting assigns every content scam family a victim population (a
+    // specific one, or `General` for broadcast scams), and assigns `None`
+    // only to window-geometry, Unicode-evasion, and delivery-infrastructure
+    // signals — exactly the signals that carry no scam-family semantics.
+
+    /// Every scam-family content signal must occupy a kill-chain stage.
+    /// (lifecycle totality — there is no scam family without a stage.)
+    #[test]
+    fn every_content_signal_has_a_lifecycle_stage() {
+        let mut missing = Vec::new();
+        for s in all_signals() {
+            if crate::targeting::victim_profile_of(s.name).is_none() {
+                continue; // geometry / evasion / infrastructure — exempt
+            }
+            if crate::lifecycle::stage_of(s.name).is_none() {
+                missing.push(s.name);
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "content signals missing a lifecycle stage (add to lifecycle::stage_of): {missing:?}"
+        );
+    }
+
+    /// Every scam-family content signal must pull a persuasion lever, except
+    /// the documented action / payment-rail "mechanic" signals whose lever is
+    /// carried by the accompanying scareware/authority signal. This locks the
+    /// persuasion lens against accidental omission while making the small set
+    /// of deliberate exemptions explicit and reviewable.
+    #[test]
+    fn every_content_signal_has_a_persuasion_principle_or_is_exempt() {
+        // Action / payment-rail mechanics: the demanded action is the
+        // extraction channel (see extraction lens), not a psychological lever.
+        const MECHANIC_EXEMPT: &[&str] = &[
+            "gift_card_demand",
+            "download_trap_lure",
+            "remote_access_lure",
+            "screen_share_lure",
+            "qr_code_lure",
+        ];
+        let mut missing = Vec::new();
+        for s in all_signals() {
+            if crate::targeting::victim_profile_of(s.name).is_none() {
+                continue; // geometry / evasion / infrastructure — exempt
+            }
+            if MECHANIC_EXEMPT.contains(&s.name) {
+                continue; // documented mechanic exemption
+            }
+            if crate::persuasion::principles_of(s.name).is_empty() {
+                missing.push(s.name);
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "content signals missing a persuasion principle (map in persuasion::principles_of, \
+             or add to MECHANIC_EXEMPT with rationale): {missing:?}"
+        );
+    }
+
+    /// The mechanic-exempt list must stay honest: every name in it must be a
+    /// real signal that is genuinely unmapped by the persuasion lens. This
+    /// prevents the exempt list from silently masking a future signal that
+    /// later *gains* a principle (the entry would become dead) or a typo.
+    #[test]
+    fn persuasion_mechanic_exempt_list_is_accurate() {
+        const MECHANIC_EXEMPT: &[&str] = &[
+            "gift_card_demand",
+            "download_trap_lure",
+            "remote_access_lure",
+            "screen_share_lure",
+            "qr_code_lure",
+        ];
+        let known: std::collections::HashSet<&str> =
+            all_signals().into_iter().map(|s| s.name).collect();
+        for &name in MECHANIC_EXEMPT {
+            assert!(
+                known.contains(name),
+                "MECHANIC_EXEMPT lists unknown signal {name:?}"
+            );
+            assert!(
+                crate::persuasion::principles_of(name).is_empty(),
+                "MECHANIC_EXEMPT lists {name:?} but it now has a persuasion principle — \
+                 remove it from the exempt list"
+            );
+        }
+    }
 }

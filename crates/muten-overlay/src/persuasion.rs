@@ -146,18 +146,40 @@ pub fn principles_of(signal: &str) -> &'static [PersuasionPrinciple] {
         | "crypto_drain_lure" => &[Authority, Intimidation],
 
         // ── Authority + Scarcity: official source + expiry/time pressure. ──
-        "av_brand_renewal_scam" | "subscription_lure" => &[Authority, Scarcity],
+        // package_fee_lure: impersonated carrier (USPS/DHL) + "package on
+        // hold, pay the customs fee now or it is returned".
+        "av_brand_renewal_scam" | "subscription_lure" | "package_fee_lure" => {
+            &[Authority, Scarcity]
+        }
+
+        // ── Authority alone (no primary threat): recovery_scam impersonates a
+        // fund-recovery agency / law firm / official promising to get money
+        // back (FBI IC3 2024 secondary-victimization), pulling deference to a
+        // helpful "official" rather than fear. ──
+        "recovery_scam" => &[Authority],
 
         // ── Intimidation alone: pure fear/alarm, no specific brand. ──
         "alarm_density" | "sextortion_lure" | "forced_retention_cue" => &[Intimidation],
 
-        // ── Scarcity alone: countdown / time pressure. ──
-        "urgency_countdown" => &[Scarcity],
+        // ── Scarcity alone: countdown / time pressure / limited supply. ──
+        // rental_scam_lure: "lots of interest — send the deposit now to
+        // secure the property" is loss-of-opportunity pressure.
+        "urgency_countdown" | "rental_scam_lure" => &[Scarcity],
 
         // ── Reciprocity (+ Scarcity / Social Proof): a free windfall the
-        // victim acts to claim, often with urgency or crowd framing. ──
-        "prize_lure" => &[Reciprocity, Scarcity],
-        "advance_fee_lure" | "government_grant_scam" | "survey_reward_scam" => &[Reciprocity],
+        // victim acts to claim, often with urgency or crowd framing. The
+        // advance-fee / promised-windfall family — a fee or step stands
+        // between the victim and money or benefits they are told they are
+        // owed (loan, grant, forgiveness, refund, benefit). ──
+        "prize_lure" | "timeshare_travel_scam" => &[Reciprocity, Scarcity],
+        "advance_fee_lure"
+        | "government_grant_scam"
+        | "survey_reward_scam"
+        | "loan_fee_scam"
+        | "debt_relief_scam"
+        | "student_loan_scam"
+        | "veterans_benefit_scam"
+        | "refund_scam_cue" => &[Reciprocity],
         "crypto_giveaway_scam" => &[Reciprocity, SocialProof],
 
         // ── Social Proof (+ Commitment): "join the community / members". ──
@@ -172,6 +194,22 @@ pub fn principles_of(signal: &str) -> &'static [PersuasionPrinciple] {
         "clickfix_instruction" | "task_app_scam" | "job_scam" | "secret_shopper_scam" => {
             &[Commitment]
         }
+
+        // ── Deliberate exemptions: action / payment-rail "mechanic" signals.
+        // These name the concrete action the victim is asked to perform — buy
+        // gift cards, download a tool, grant remote access, share a screen,
+        // scan a QR code — i.e. the *extraction mechanic*, not a psychological
+        // lever. The lever that drives compliance is carried by the
+        // accompanying scareware / authority signal (a fake-BSOD or
+        // tech-support overlay supplies Authority + Intimidation; this signal
+        // supplies the cash-out channel, surfaced by the extraction lens).
+        // They are listed explicitly so a future signal is a conscious choice,
+        // not an accidental omission (guarded by the cross-lens coverage test).
+        "gift_card_demand"
+        | "download_trap_lure"
+        | "remote_access_lure"
+        | "screen_share_lure"
+        | "qr_code_lure" => &[],
 
         // Descriptive / geometry / homoglyph-mechanic signals: no persuasion
         // principle of their own (handled by the UI-mechanic lens).
@@ -280,6 +318,60 @@ mod tests {
     fn task_and_clickfix_map_to_commitment() {
         assert_eq!(principles_of("task_app_scam"), &[Commitment]);
         assert_eq!(principles_of("clickfix_instruction"), &[Commitment]);
+    }
+
+    #[test]
+    fn advance_fee_windfall_family_maps_to_reciprocity() {
+        // Structurally identical promised-windfall scams must map consistently
+        // with advance_fee_lure / government_grant_scam (cross-lens drift fix).
+        for s in [
+            "loan_fee_scam",
+            "debt_relief_scam",
+            "student_loan_scam",
+            "veterans_benefit_scam",
+            "refund_scam_cue",
+        ] {
+            assert_eq!(
+                principles_of(s),
+                &[Reciprocity],
+                "{s} should map to Reciprocity like advance_fee_lure"
+            );
+        }
+        // Free-vacation prize scam parallels prize_lure.
+        assert_eq!(
+            principles_of("timeshare_travel_scam"),
+            &[Reciprocity, Scarcity]
+        );
+    }
+
+    #[test]
+    fn rental_and_package_and_recovery_map_consistently() {
+        // Housing pressure → Scarcity (loss of opportunity).
+        assert_eq!(principles_of("rental_scam_lure"), &[Scarcity]);
+        // Carrier impersonation + on-hold urgency → Authority + Scarcity.
+        assert_eq!(principles_of("package_fee_lure"), &[Authority, Scarcity]);
+        // Recovery agency imposter → Authority.
+        assert_eq!(principles_of("recovery_scam"), &[Authority]);
+    }
+
+    #[test]
+    fn action_mechanic_signals_are_deliberately_exempt() {
+        // These name the demanded action (the extraction channel), not a
+        // psychological lever — the lever is carried by the accompanying
+        // scareware/authority signal. They must stay empty here so the
+        // cross-lens coverage guard's exempt list stays accurate.
+        for s in [
+            "gift_card_demand",
+            "download_trap_lure",
+            "remote_access_lure",
+            "screen_share_lure",
+            "qr_code_lure",
+        ] {
+            assert!(
+                principles_of(s).is_empty(),
+                "{s} is an action mechanic and should carry no persuasion principle"
+            );
+        }
     }
 
     #[test]
