@@ -359,6 +359,16 @@ fn cmd_classify(
                     serde_json::Value::String(h.as_str().to_string()),
                 );
             }
+            let profiles: Vec<serde_json::Value> = v
+                .victim_profiles()
+                .into_iter()
+                .map(|p| serde_json::Value::String(p.as_str().to_string()))
+                .collect();
+            obj.insert("victim_profiles".into(), serde_json::Value::Array(profiles));
+            obj.insert(
+                "is_targeted_attack".into(),
+                serde_json::Value::Bool(v.is_targeted_attack()),
+            );
         }
         println!(
             "{}",
@@ -401,6 +411,15 @@ fn cmd_classify(
             print!("kill_chain: {}", names.join(", "));
             if let Some(h) = v.highest_stage() {
                 print!(" (highest: {})", h.as_str());
+            }
+            println!();
+        }
+        let profiles = v.victim_profiles();
+        if !profiles.is_empty() {
+            let names: Vec<&str> = profiles.iter().map(|p| p.as_str()).collect();
+            print!("targets:   {}", names.join(", "));
+            if v.is_targeted_attack() {
+                print!(" [targeted]");
             }
             println!();
         }
@@ -520,6 +539,16 @@ fn cmd_classify_stream(window: &str, rules: Option<&std::path::Path>) -> Result<
                     serde_json::Value::String(h.as_str().to_string()),
                 );
             }
+            let profiles: Vec<serde_json::Value> = v
+                .victim_profiles()
+                .into_iter()
+                .map(|p| serde_json::Value::String(p.as_str().to_string()))
+                .collect();
+            obj.insert("victim_profiles".into(), serde_json::Value::Array(profiles));
+            obj.insert(
+                "is_targeted_attack".into(),
+                serde_json::Value::Bool(v.is_targeted_attack()),
+            );
         }
         println!(
             "{}",

@@ -42,6 +42,7 @@ pub mod persuasion;
 pub mod rules;
 pub mod scareware;
 pub mod sink;
+pub mod targeting;
 
 pub use categories::{categories_of, category_of, DarkPatternCategory};
 pub use controller::{
@@ -53,6 +54,9 @@ pub use extraction::{
     Recoverability,
 };
 pub use lifecycle::{highest_stage, stage_of, stages_of_signals, ScamStage};
+pub use targeting::{
+    is_targeted_attack, victim_profile_of, victim_profiles_of_signals, VictimProfile,
+};
 pub use monitor::{AuditEvent, AuditSink, MemorySink, Monitor, RunConfig};
 pub use persuasion::{principles_of, principles_of_signals, PersuasionPrinciple};
 pub use rules::Ruleset;
@@ -286,6 +290,37 @@ impl Verdict {
     #[must_use]
     pub fn highest_stage(&self) -> Option<ScamStage> {
         highest_stage(&self.signals)
+    }
+
+    /// The victim population(s) this verdict's signals are designed to
+    /// target, deduplicated and sorted with [`VictimProfile::General`] last
+    /// (see the [`crate::targeting`] module).
+    ///
+    /// A sixth, *targeting* lens, orthogonal to all prior lenses: it answers
+    /// *who the attacker is trying to hurt*. Empty when only window-geometry,
+    /// evasion, or coercion-mechanic signals fired — those carry no demographic
+    /// information. Use [`Verdict::is_targeted_attack`] as the boolean
+    /// triage gate: targeted scams require population-specific awareness
+    /// training; broadcast scams are addressed by general messaging.
+    ///
+    /// Pure and side-effect-free.
+    #[must_use]
+    pub fn victim_profiles(&self) -> Vec<VictimProfile> {
+        victim_profiles_of_signals(&self.signals)
+    }
+
+    /// Returns `true` when this verdict's signals include at least one that
+    /// targets a **specific** victim population (any
+    /// [`VictimProfile`] other than `General`).
+    ///
+    /// The routing primitive for awareness-training leads: a `true` result
+    /// means a named demographic has been targeted and requires tailored
+    /// protective messaging (e.g., elder-fraud education for a
+    /// `healthcare_scam`); `false` means broad-population broadcast scam
+    /// where universal anti-scam messaging applies. Pure and side-effect-free.
+    #[must_use]
+    pub fn is_targeted_attack(&self) -> bool {
+        is_targeted_attack(&self.signals)
     }
 
     /// A deterministic, plain-language explanation of the verdict.
@@ -9760,6 +9795,54 @@ mod tests {
             v.scam_stages().is_empty(),
             "scam_stages should be empty for geometry-only verdict; got {:?}",
             v.scam_stages()
+        );
+    }
+
+    // ── Targeting / victim-profile lens ─────────────────────────────────────
+
+    #[test]
+    fn targeting_elder_adult_for_healthcare_scam_overlay() {
+        use crate::targeting::VictimProfile;
+        // A Medicare benefit-expiry overlay targets the 65+ population
+        // by statute; the victim profile lens must surface ElderAdult.
+        let w = OverlayWindow {
+            title: "your medicare benefit expiring soon call 1-800-555-0103 claim your free medical device".into(),
+            coverage_percent: 99,
+            topmost: true,
+            has_close_button: false,
+            origin: Origin::Unsolicited,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            v.victim_profiles().contains(&VictimProfile::ElderAdult),
+            "healthcare overlay must surface ElderAdult profile; signals={:?}",
+            v.signals
+        );
+        assert!(
+            v.is_targeted_attack(),
+            "healthcare_scam is a targeted (elder-adult) attack; signals={:?}",
+            v.signals
+        );
+    }
+
+    #[test]
+    fn targeting_general_only_is_not_targeted() {
+        // A plain fullscreen/topmost window that fires only geometry signals
+        // carries no demographic profile and is not a targeted attack.
+        let w = OverlayWindow {
+            title: "plain window".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: true,
+            origin: Origin::Unsolicited,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert!(
+            !v.is_targeted_attack(),
+            "geometry-only verdict should not be a targeted attack; signals={:?}",
+            v.signals
         );
     }
 }
