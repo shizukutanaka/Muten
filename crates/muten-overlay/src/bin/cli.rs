@@ -384,6 +384,14 @@ fn cmd_classify(
                     }),
                 );
             }
+            obj.insert(
+                "signal_fingerprint".into(),
+                serde_json::Value::String(v.signal_fingerprint()),
+            );
+            obj.insert(
+                "campaign_bucket".into(),
+                serde_json::Value::String(v.campaign_bucket()),
+            );
         }
         println!(
             "{}",
@@ -441,6 +449,11 @@ fn cmd_classify(
         if let Some(h) = v.highest_magnitude() {
             println!("exposure:  {} ({})", h.as_str(), h.range_label());
         }
+        let fp = v.signal_fingerprint();
+        if !fp.is_empty() {
+            println!("fingerprint: {fp}");
+        }
+        println!("campaign:  {}", v.campaign_bucket());
         if let Some(rule) = &v.matched_rule {
             println!("matched:  {rule}");
         }
@@ -582,6 +595,14 @@ fn cmd_classify_stream(window: &str, rules: Option<&std::path::Path>) -> Result<
                     }),
                 );
             }
+            obj.insert(
+                "signal_fingerprint".into(),
+                serde_json::Value::String(v.signal_fingerprint()),
+            );
+            obj.insert(
+                "campaign_bucket".into(),
+                serde_json::Value::String(v.campaign_bucket()),
+            );
         }
         println!(
             "{}",

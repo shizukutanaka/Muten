@@ -34,6 +34,7 @@ pub mod categories;
 pub mod confusables;
 pub mod controller;
 pub mod extraction;
+pub mod fingerprint;
 pub mod lifecycle;
 pub mod magnitude;
 pub mod merkle;
@@ -54,11 +55,9 @@ pub use extraction::{
     extraction_vectors_of, extraction_vectors_of_signals, worst_recoverability, ExtractionVector,
     Recoverability,
 };
+pub use fingerprint::{campaign_bucket, signal_fingerprint};
 pub use lifecycle::{highest_stage, stage_of, stages_of_signals, ScamStage};
 pub use magnitude::{highest_magnitude, magnitude_of, magnitudes_of_signals, LossMagnitude};
-pub use targeting::{
-    is_targeted_attack, victim_profile_of, victim_profiles_of_signals, VictimProfile,
-};
 pub use monitor::{AuditEvent, AuditSink, MemorySink, Monitor, RunConfig};
 pub use persuasion::{principles_of, principles_of_signals, PersuasionPrinciple};
 pub use rules::Ruleset;
@@ -66,6 +65,9 @@ pub use scareware::{assess, RepeatTracker, ScarewareDecision, ScarewareVerdict};
 pub use sink::{
     hmac_sha256, rotate_log, sign_checkpoint, verify_chain, verify_chain_continued,
     verify_checkpoint_sig, ChainedFileSink, CheckpointSig, GENESIS,
+};
+pub use targeting::{
+    is_targeted_attack, victim_profile_of, victim_profiles_of_signals, VictimProfile,
 };
 
 use serde::{Deserialize, Serialize};
@@ -353,6 +355,37 @@ impl Verdict {
     #[must_use]
     pub fn highest_magnitude(&self) -> Option<LossMagnitude> {
         highest_magnitude(&self.signals)
+    }
+
+    /// A **stable, human-readable canonical fingerprint** of this verdict's
+    /// signal set — the sorted, deduplicated signal names joined with `'|'`
+    /// (see [`crate::fingerprint::signal_fingerprint`]).
+    ///
+    /// Two verdicts produced from the same attack template produce the same
+    /// fingerprint regardless of signal-evaluation order.  A SOC analyst or
+    /// a SIEM rule can use this to deduplicate reports and identify recurring
+    /// attacks across endpoints.  An `Allow` verdict (no signals) yields an
+    /// empty string.  Pure and side-effect-free.
+    #[must_use]
+    pub fn signal_fingerprint(&self) -> String {
+        fingerprint::signal_fingerprint(&self.signals)
+    }
+
+    /// A coarse **campaign bucket** string `"category:stage:magnitude"` that
+    /// groups structurally similar campaign variants together, even when their
+    /// exact signal sets differ (see [`crate::fingerprint::campaign_bucket`]).
+    ///
+    /// Complement to [`Verdict::signal_fingerprint`]: the fingerprint gives
+    /// an exact template match (deduplication); the bucket gives a family
+    /// match (roll-up dashboards).  The format is always `"A:B:C"` with
+    /// `"unknown"` for absent components.  Pure and side-effect-free.
+    #[must_use]
+    pub fn campaign_bucket(&self) -> String {
+        fingerprint::campaign_bucket(
+            self.categories.first().map(|c| c.as_str()),
+            self.highest_stage().map(|s| s.as_str()),
+            self.highest_magnitude().map(|m| m.as_str()),
+        )
     }
 
     /// A deterministic, plain-language explanation of the verdict.
@@ -10021,5 +10054,103 @@ mod tests {
                  remove it from the exempt list"
             );
         }
+    }
+
+    // ── fingerprint / campaign_bucket integration ─────────────────────────
+
+    #[test]
+    fn allow_verdict_has_empty_fingerprint_and_unknown_bucket() {
+        // has_close_button: true avoids the no_close_button signal (which fires
+        // unconditionally when has_close_button is false, the field's Default).
+        let w = OverlayWindow {
+            coverage_percent: 10,
+            has_close_button: true,
+            ..Default::default()
+        };
+        let rules = Ruleset::default();
+        let v = classify(&w, &rules);
+        assert_eq!(v.decision, Decision::Allow);
+        // Zero signals → empty fingerprint and all-unknown bucket.
+        assert!(
+            v.signals.is_empty(),
+            "expected no signals, got: {:?}",
+            v.signals
+        );
+        assert_eq!(v.signal_fingerprint(), "");
+        assert_eq!(v.campaign_bucket(), "unknown:unknown:unknown");
+    }
+
+    #[test]
+    fn fingerprint_is_sorted_and_deduplication_safe() {
+        // A classic tech-support scam overlay.
+        let w = OverlayWindow {
+            title: "your computer is infected call 1-800-555-0199".to_string(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            ..Default::default()
+        };
+        let rules = Ruleset::default();
+        let v = classify(&w, &rules);
+        let fp = v.signal_fingerprint();
+        // Fingerprint must be non-empty, pipe-separated, and sorted.
+        assert!(
+            !fp.is_empty(),
+            "expected non-empty fingerprint for Block verdict"
+        );
+        let parts: Vec<&str> = fp.split('|').collect();
+        let mut sorted = parts.clone();
+        sorted.sort_unstable();
+        assert_eq!(parts, sorted, "fingerprint is not alphabetically sorted");
+        // No duplicates.
+        let deduped: Vec<&str> = {
+            let mut d = parts.clone();
+            d.dedup();
+            d
+        };
+        assert_eq!(parts, deduped, "fingerprint contains duplicate entries");
+    }
+
+    #[test]
+    fn campaign_bucket_has_two_colons_for_all_verdicts() {
+        let cases = [
+            OverlayWindow::default(),
+            OverlayWindow {
+                coverage_percent: 100,
+                topmost: true,
+                has_close_button: false,
+                blocks_input: true,
+                origin: Origin::Unsolicited,
+                ..Default::default()
+            },
+        ];
+        let rules = Ruleset::default();
+        for w in &cases {
+            let bucket = classify(w, &rules).campaign_bucket();
+            assert_eq!(
+                bucket.chars().filter(|&c| c == ':').count(),
+                2,
+                "campaign_bucket does not have exactly 2 colons: {bucket}"
+            );
+        }
+    }
+
+    #[test]
+    fn fingerprint_is_stable_across_repeated_classify_calls() {
+        let w = OverlayWindow {
+            title: "your computer is infected call 1-800-555-0199".to_string(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            ..Default::default()
+        };
+        let rules = Ruleset::default();
+        let fp1 = classify(&w, &rules).signal_fingerprint();
+        let fp2 = classify(&w, &rules).signal_fingerprint();
+        assert_eq!(fp1, fp2, "signal_fingerprint is not deterministic");
     }
 }
