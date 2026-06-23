@@ -347,6 +347,18 @@ fn cmd_classify(
                     serde_json::Value::String(r.as_str().to_string()),
                 );
             }
+            let stages: Vec<serde_json::Value> = v
+                .scam_stages()
+                .into_iter()
+                .map(|s| serde_json::Value::String(s.as_str().to_string()))
+                .collect();
+            obj.insert("scam_stages".into(), serde_json::Value::Array(stages));
+            if let Some(h) = v.highest_stage() {
+                obj.insert(
+                    "highest_stage".into(),
+                    serde_json::Value::String(h.as_str().to_string()),
+                );
+            }
         }
         println!(
             "{}",
@@ -380,6 +392,15 @@ fn cmd_classify(
             print!("extraction: {}", names.join(", "));
             if let Some(r) = v.worst_recoverability() {
                 print!(" (recoverability: {})", r.as_str());
+            }
+            println!();
+        }
+        let stages = v.scam_stages();
+        if !stages.is_empty() {
+            let names: Vec<&str> = stages.iter().map(|s| s.as_str()).collect();
+            print!("kill_chain: {}", names.join(", "));
+            if let Some(h) = v.highest_stage() {
+                print!(" (highest: {})", h.as_str());
             }
             println!();
         }
@@ -485,6 +506,18 @@ fn cmd_classify_stream(window: &str, rules: Option<&std::path::Path>) -> Result<
                 obj.insert(
                     "worst_recoverability".into(),
                     serde_json::Value::String(r.as_str().to_string()),
+                );
+            }
+            let stages: Vec<serde_json::Value> = v
+                .scam_stages()
+                .into_iter()
+                .map(|s| serde_json::Value::String(s.as_str().to_string()))
+                .collect();
+            obj.insert("scam_stages".into(), serde_json::Value::Array(stages));
+            if let Some(h) = v.highest_stage() {
+                obj.insert(
+                    "highest_stage".into(),
+                    serde_json::Value::String(h.as_str().to_string()),
                 );
             }
         }

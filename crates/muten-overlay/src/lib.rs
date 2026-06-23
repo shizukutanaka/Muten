@@ -34,6 +34,7 @@ pub mod categories;
 pub mod confusables;
 pub mod controller;
 pub mod extraction;
+pub mod lifecycle;
 pub mod merkle;
 pub mod mitre;
 pub mod monitor;
@@ -51,6 +52,7 @@ pub use extraction::{
     extraction_vectors_of, extraction_vectors_of_signals, worst_recoverability, ExtractionVector,
     Recoverability,
 };
+pub use lifecycle::{highest_stage, stage_of, stages_of_signals, ScamStage};
 pub use monitor::{AuditEvent, AuditSink, MemorySink, Monitor, RunConfig};
 pub use persuasion::{principles_of, principles_of_signals, PersuasionPrinciple};
 pub use rules::Ruleset;
@@ -253,6 +255,37 @@ impl Verdict {
     #[must_use]
     pub fn worst_recoverability(&self) -> Option<Recoverability> {
         worst_recoverability(&self.signals)
+    }
+
+    /// The Social Engineering Kill Chain stage(s) present in this verdict's
+    /// signals, sorted earliest-to-latest and deduplicated (see
+    /// [`crate::lifecycle`]).
+    ///
+    /// A fifth, *temporal* lens, orthogonal to the four deception lenses: it
+    /// answers *how far the attacker has progressed* against this victim —
+    /// from [`ScamStage::Lure`] (initial hook) through
+    /// [`ScamStage::TrustBuild`] (authority establishment) and
+    /// [`ScamStage::Pressure`] (cognitive override) to
+    /// [`ScamStage::Extract`] (active demand for value, most urgent).
+    ///
+    /// Empty when only geometry/evasion/delivery signals fired. Pure and
+    /// side-effect-free.
+    #[must_use]
+    pub fn scam_stages(&self) -> Vec<ScamStage> {
+        stages_of_signals(&self.signals)
+    }
+
+    /// The most advanced ([`ScamStage`]) kill-chain stage present in this
+    /// verdict, or `None` when no signal carries a determinate stage.
+    ///
+    /// The triage primitive for responders: [`ScamStage::Extract`] means an
+    /// active demand is being made and intervention must be immediate;
+    /// [`ScamStage::Pressure`] signals urgent cognitive override;
+    /// [`ScamStage::TrustBuild`] / [`ScamStage::Lure`] signal earlier phases
+    /// where education is the primary response. Pure and side-effect-free.
+    #[must_use]
+    pub fn highest_stage(&self) -> Option<ScamStage> {
+        highest_stage(&self.signals)
     }
 
     /// A deterministic, plain-language explanation of the verdict.
@@ -9670,6 +9703,63 @@ mod tests {
         assert_eq!(
             category_of("tech_support_chat_lure"),
             Some(DarkPatternCategory::InterfaceInterference)
+        );
+    }
+
+    // ── Lifecycle / kill-chain lens ──────────────────────────────────────────
+
+    #[test]
+    fn lifecycle_highest_stage_extract_for_active_gift_card_overlay() {
+        use crate::lifecycle::ScamStage;
+        // A gift-card payment demand fires Extract stage — the most urgent
+        // stage in the kill chain.
+        let w = OverlayWindow {
+            title: "to release your refund, pay with gift card and read me the codes now".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            age_ms: 150,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert_eq!(
+            v.highest_stage(),
+            Some(ScamStage::Extract),
+            "gift-card demand must surface Extract stage; signals={:?}",
+            v.signals
+        );
+        assert!(
+            v.scam_stages().contains(&ScamStage::Extract),
+            "scam_stages must contain Extract; got {:?}",
+            v.scam_stages()
+        );
+    }
+
+    #[test]
+    fn lifecycle_geometry_only_verdict_has_no_stage() {
+        // A plain fullscreen/topmost window with no content tell has no
+        // determinate kill-chain stage.
+        let w = OverlayWindow {
+            title: "plain window".into(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: true,
+            origin: Origin::Unsolicited,
+            ..Default::default()
+        };
+        let v = classify(&w, &Ruleset::default());
+        assert_eq!(
+            v.highest_stage(),
+            None,
+            "geometry-only verdict should have no kill-chain stage; signals={:?}",
+            v.signals
+        );
+        assert!(
+            v.scam_stages().is_empty(),
+            "scam_stages should be empty for geometry-only verdict; got {:?}",
+            v.scam_stages()
         );
     }
 }
