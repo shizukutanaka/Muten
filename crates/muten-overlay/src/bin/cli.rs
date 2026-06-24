@@ -6,6 +6,9 @@
 //!   that records dismiss requests instead of touching real windows).
 //!   On a real host the daemon swaps in an OS controller; the loop
 //!   logic is identical.
+//! - `triage` — classify a JSON window list and print it ordered by
+//!   response priority (highest first): turn a queue of overlays into a
+//!   worklist (the operational use of the triage lens).
 //! - `monitor` — run N sweeps over a JSON window list, writing a
 //!   tamper-evident chained audit log to disk and printing a summary.
 //! - `verify` — verify the tamper-evident hash chain of an audit log.
@@ -203,6 +206,22 @@ enum Cmd {
         #[arg(long)]
         metrics: Option<PathBuf>,
     },
+    /// Classify a JSON array of windows and print them ordered by response
+    /// priority, highest first — the operational use of the triage lens:
+    /// turn a queue of overlays into a worklist. Each row shows the priority
+    /// (P1..P4), urgency score, decision, campaign bucket, and id. Exit:
+    /// 0 if nothing blocked, 6 if any window blocked, 1 error.
+    Triage {
+        /// JSON file with an array of {id, ...OverlayWindow} objects,
+        /// or `-` for stdin.
+        windows: String,
+        #[arg(long)]
+        rules: Option<PathBuf>,
+        /// Emit a JSON array of per-window triage records (already sorted)
+        /// instead of the human-readable table. Exit code unchanged.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -244,6 +263,11 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             rules,
             json,
         } => cmd_enforce(&windows, rules.as_deref(), json),
+        Cmd::Triage {
+            windows,
+            rules,
+            json,
+        } => cmd_triage(&windows, rules.as_deref(), json),
         Cmd::Monitor {
             windows,
             rules,
@@ -894,6 +918,97 @@ fn cmd_enforce(
     } else {
         ExitCode::from(0)
     })
+}
+
+/// Classify a batch of windows and order them by descending response
+/// priority — the operational realization of the triage (9th) lens.
+///
+/// Sort key: `priority_score` descending, then `decision` (Block before
+/// Suspicious before Allow), then `id` ascending, so the ordering is total
+/// and deterministic regardless of input order.
+fn cmd_triage(
+    windows: &str,
+    rules: Option<&std::path::Path>,
+    json: bool,
+) -> Result<ExitCode, String> {
+    let enumerated = parse_windows(windows)?;
+    let rs = load_rules(rules)?;
+
+    // Classify each window, keeping its id alongside the verdict.
+    let mut rows: Vec<(String, muten_overlay::Verdict)> = enumerated
+        .into_iter()
+        .map(|e| {
+            let v = classify(&e.window, &rs);
+            (e.id, v)
+        })
+        .collect();
+
+    // Total, deterministic order: priority score desc, decision severity desc,
+    // then id asc as a stable tiebreaker.
+    rows.sort_by(|(id_a, va), (id_b, vb)| {
+        vb.priority_score()
+            .cmp(&va.priority_score())
+            .then_with(|| decision_rank(vb.decision).cmp(&decision_rank(va.decision)))
+            .then_with(|| id_a.cmp(id_b))
+    });
+
+    let any_block = rows.iter().any(|(_, v)| v.decision == Decision::Block);
+
+    if json {
+        let arr: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|(id, v)| {
+                let prio = v.response_priority();
+                serde_json::json!({
+                    "id": id,
+                    "priority": prio.as_str(),
+                    "p_label": prio.p_label(),
+                    "priority_score": v.priority_score(),
+                    "decision": format!("{:?}", v.decision).to_lowercase(),
+                    "score": v.score,
+                    "campaign_bucket": v.campaign_bucket(),
+                    "signal_fingerprint": v.signal_fingerprint(),
+                })
+            })
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::Value::Array(arr))
+                .map_err(|e| format!("encoding json: {e}"))?
+        );
+    } else {
+        let on = color_enabled();
+        for (id, v) in &rows {
+            let prio = v.response_priority();
+            let decision = paint(
+                &format!("{:?}", v.decision),
+                decision_color(v.decision, on),
+                on,
+            );
+            println!(
+                "{:4} score={:<4} {decision:11} {:12} {}",
+                prio.p_label(),
+                v.priority_score(),
+                v.campaign_bucket(),
+                sanitize_for_display(id),
+            );
+        }
+        eprintln!("{} window(s) triaged", rows.len());
+    }
+    Ok(if any_block {
+        ExitCode::from(6)
+    } else {
+        ExitCode::from(0)
+    })
+}
+
+/// Severity rank for tie-breaking in triage ordering (higher = more urgent).
+fn decision_rank(d: Decision) -> u8 {
+    match d {
+        Decision::Block => 2,
+        Decision::Suspicious => 1,
+        Decision::Allow => 0,
+    }
 }
 
 /// Write a Prometheus textfile (node_exporter --collector.textfile format).

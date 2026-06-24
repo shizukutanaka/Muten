@@ -144,3 +144,63 @@ fn stream_empty_input_exits_0() {
     assert_eq!(code, 0, "empty stream exits 0 (no worst code)");
     assert_eq!(out.trim(), "", "no output for empty input");
 }
+
+// ── triage subcommand (9th lens, operational) ───────────────────────────────
+
+/// A catastrophic-loss scam (pig-butchering crypto-drain) and a smaller
+/// gift-card tech-support scam, given in *reverse* priority order on input.
+const TRIAGE_BATCH: &str = r#"[
+  {"id":"low-benign","title":"my vacation photos","coverage_percent":40,"has_close_button":true},
+  {"id":"hi-giftcard","title":"your computer is locked buy gift card and send codes to microsoft support 1-800-555-0100","coverage_percent":100,"topmost":true,"has_close_button":false,"blocks_input":true,"origin":"unsolicited"},
+  {"id":"top-pig","title":"vip trading group guaranteed profit connect your wallet seed phrase to claim bonus","coverage_percent":100,"topmost":true,"has_close_button":false,"blocks_input":true,"origin":"unsolicited"}
+]"#;
+
+#[test]
+fn triage_json_sorts_by_descending_priority() {
+    let (code, out) = run(&["triage", "-", "--json"], TRIAGE_BATCH);
+    assert_eq!(code, 6, "at least one Block window → exit 6");
+    let v: serde_json::Value = serde_json::from_str(&out).expect("valid JSON array");
+    assert!(v.is_array());
+    let arr = v.as_array().unwrap();
+    assert_eq!(arr.len(), 3, "all three windows present");
+
+    // Catastrophic pig-butchering must sort first, gift-card second, benign last.
+    assert_eq!(arr[0]["id"], "top-pig");
+    assert_eq!(arr[1]["id"], "hi-giftcard");
+    assert_eq!(arr[2]["id"], "low-benign");
+
+    // Scores must be monotonically non-increasing (the sort invariant).
+    let s0 = arr[0]["priority_score"].as_u64().unwrap();
+    let s1 = arr[1]["priority_score"].as_u64().unwrap();
+    let s2 = arr[2]["priority_score"].as_u64().unwrap();
+    assert!(s0 >= s1 && s1 >= s2, "priority_score must be sorted desc");
+
+    // Schema spot-check on the top record.
+    assert_eq!(arr[0]["priority"], "critical");
+    assert_eq!(arr[0]["p_label"], "P1");
+    assert!(arr[0]["campaign_bucket"].is_string());
+    assert!(arr[0]["signal_fingerprint"].is_string());
+}
+
+#[test]
+fn triage_all_benign_exits_0() {
+    let windows = r#"[{"id":"a","title":"hello","has_close_button":true},
+                      {"id":"b","title":"world","has_close_button":true}]"#;
+    let (code, out) = run(&["triage", "-", "--json"], windows);
+    assert_eq!(code, 0, "no Block window → exit 0");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v.as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn triage_text_output_is_priority_first() {
+    let (code, out) = run(&["triage", "-"], TRIAGE_BATCH);
+    assert_eq!(code, 6);
+    // The first printed row is the highest-priority window (top-pig, P1).
+    let first = out.lines().next().expect("at least one row");
+    assert!(first.starts_with("P1"), "top row must be P1: {first:?}");
+    assert!(
+        first.contains("top-pig"),
+        "top row must be top-pig: {first:?}"
+    );
+}
