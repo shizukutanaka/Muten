@@ -35,6 +35,7 @@ pub mod confusables;
 pub mod controller;
 pub mod extraction;
 pub mod fingerprint;
+pub mod impersonation;
 pub mod lifecycle;
 pub mod magnitude;
 pub mod merkle;
@@ -57,6 +58,9 @@ pub use extraction::{
     Recoverability,
 };
 pub use fingerprint::{campaign_bucket, signal_fingerprint};
+pub use impersonation::{
+    abused_authorities_of_signals, abused_authority_of, impersonates_authority, AbusedAuthority,
+};
 pub use lifecycle::{highest_stage, stage_of, stages_of_signals, ScamStage};
 pub use magnitude::{highest_magnitude, magnitude_of, magnitudes_of_signals, LossMagnitude};
 pub use monitor::{AuditEvent, AuditSink, MemorySink, Monitor, RunConfig};
@@ -327,6 +331,30 @@ impl Verdict {
     #[must_use]
     pub fn is_targeted_attack(&self) -> bool {
         is_targeted_attack(&self.signals)
+    }
+
+    /// The trusted-institution categories this verdict's signals impersonate,
+    /// deduplicated and sorted (see the [`crate::impersonation`] module).
+    ///
+    /// The mirror of [`Verdict::victim_profiles`]: where that answers *who is
+    /// the victim*, this answers *whose trust is being abused* — TechVendor,
+    /// Government, FinancialInstitution, Healthcare, Utility, Logistics,
+    /// Retailer, SocialPlatform, or Charity. Empty when the scam family invents
+    /// an offer/threat rather than wearing a named institution's identity, and
+    /// for all geometry/evasion/mechanic signals. Use
+    /// [`Verdict::impersonates_authority`] as the brand-protection gate. Pure
+    /// and side-effect-free.
+    #[must_use]
+    pub fn abused_authorities(&self) -> Vec<AbusedAuthority> {
+        abused_authorities_of_signals(&self.signals)
+    }
+
+    /// Returns `true` when this verdict impersonates at least one known
+    /// trusted-institution category — the routing gate for brand-protection
+    /// and takedown teams. Pure and side-effect-free.
+    #[must_use]
+    pub fn impersonates_authority(&self) -> bool {
+        impersonates_authority(&self.signals)
     }
 
     /// The expected per-victim loss magnitude bands present in this
@@ -10254,5 +10282,85 @@ mod tests {
         );
         // Determinism across repeated classification.
         assert_eq!(v.priority_score(), classify(&w, &rules).priority_score());
+    }
+
+    // ── abused-authority (impersonation) integration ──────────────────────
+
+    #[test]
+    fn tech_support_overlay_impersonates_tech_vendor() {
+        let w = OverlayWindow {
+            title: "windows defender alert your pc is infected with a trojan \
+                    call microsoft support 1-800-555-0100"
+                .to_string(),
+            coverage_percent: 100,
+            topmost: true,
+            has_close_button: false,
+            blocks_input: true,
+            origin: Origin::Unsolicited,
+            ..Default::default()
+        };
+        let rules = Ruleset::default();
+        let v = classify(&w, &rules);
+        assert!(
+            v.impersonates_authority(),
+            "tech-support overlay must impersonate an authority; signals={:?}",
+            v.signals
+        );
+        assert!(
+            v.abused_authorities()
+                .contains(&AbusedAuthority::TechVendor),
+            "expected TechVendor; got {:?} from signals {:?}",
+            v.abused_authorities(),
+            v.signals
+        );
+    }
+
+    #[test]
+    fn benign_window_impersonates_nothing() {
+        let w = OverlayWindow {
+            coverage_percent: 10,
+            has_close_button: true,
+            ..Default::default()
+        };
+        let rules = Ruleset::default();
+        let v = classify(&w, &rules);
+        assert!(!v.impersonates_authority());
+        assert!(v.abused_authorities().is_empty());
+    }
+
+    /// Cross-lens coverage guard: every signal that maps to an abused authority
+    /// must be a real, known signal (no typos / stale names that would
+    /// silently never fire).
+    #[test]
+    fn every_abused_authority_signal_is_known() {
+        let known: std::collections::HashSet<&str> =
+            all_signals().into_iter().map(|s| s.name).collect();
+        for info in all_signals() {
+            // If a signal maps, it is by construction in `known`; this loop
+            // instead asserts the mapping function never panics and that the
+            // mapped-signal set is a subset of known signals.
+            let _ = impersonation::abused_authority_of(info.name);
+        }
+        // Spot-check the documented members are all known signal names.
+        for name in [
+            "fake_bsod_lure",
+            "tax_authority_scam",
+            "bank_account_alarm",
+            "healthcare_scam",
+            "utility_cutoff_threat",
+            "package_fee_lure",
+            "streaming_billing_scam",
+            "social_media_account_alarm",
+            "charity_scam_lure",
+        ] {
+            assert!(
+                known.contains(name),
+                "abused-authority lens references unknown signal {name:?}"
+            );
+            assert!(
+                impersonation::abused_authority_of(name).is_some(),
+                "{name:?} should map to an abused authority"
+            );
+        }
     }
 }

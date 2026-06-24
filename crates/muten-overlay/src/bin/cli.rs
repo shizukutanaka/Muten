@@ -393,6 +393,19 @@ fn cmd_classify(
                 "is_targeted_attack".into(),
                 serde_json::Value::Bool(v.is_targeted_attack()),
             );
+            let authorities: Vec<serde_json::Value> = v
+                .abused_authorities()
+                .into_iter()
+                .map(|a| serde_json::Value::String(a.as_str().to_string()))
+                .collect();
+            obj.insert(
+                "impersonated_authorities".into(),
+                serde_json::Value::Array(authorities),
+            );
+            obj.insert(
+                "impersonates_authority".into(),
+                serde_json::Value::Bool(v.impersonates_authority()),
+            );
             let mags: Vec<serde_json::Value> = v
                 .loss_magnitudes()
                 .into_iter()
@@ -477,6 +490,11 @@ fn cmd_classify(
                 print!(" [targeted]");
             }
             println!();
+        }
+        let authorities = v.abused_authorities();
+        if !authorities.is_empty() {
+            let names: Vec<&str> = authorities.iter().map(|a| a.as_str()).collect();
+            println!("impersonates: {}", names.join(", "));
         }
         if let Some(h) = v.highest_magnitude() {
             println!("exposure:  {} ({})", h.as_str(), h.range_label());
@@ -618,6 +636,19 @@ fn cmd_classify_stream(window: &str, rules: Option<&std::path::Path>) -> Result<
             obj.insert(
                 "is_targeted_attack".into(),
                 serde_json::Value::Bool(v.is_targeted_attack()),
+            );
+            let authorities: Vec<serde_json::Value> = v
+                .abused_authorities()
+                .into_iter()
+                .map(|a| serde_json::Value::String(a.as_str().to_string()))
+                .collect();
+            obj.insert(
+                "impersonated_authorities".into(),
+                serde_json::Value::Array(authorities),
+            );
+            obj.insert(
+                "impersonates_authority".into(),
+                serde_json::Value::Bool(v.impersonates_authority()),
             );
             let mags: Vec<serde_json::Value> = v
                 .loss_magnitudes()
@@ -968,6 +999,11 @@ fn cmd_triage(
                     "score": v.score,
                     "campaign_bucket": v.campaign_bucket(),
                     "signal_fingerprint": v.signal_fingerprint(),
+                    "impersonated_authorities": v
+                        .abused_authorities()
+                        .iter()
+                        .map(|a| a.as_str())
+                        .collect::<Vec<_>>(),
                 })
             })
             .collect();
