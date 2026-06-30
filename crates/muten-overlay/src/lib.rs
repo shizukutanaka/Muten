@@ -8263,6 +8263,18 @@ mod tests {
         "otp_interception_scam",
         "family_emergency_scam",
         "remote_access_lure",
+        // E56-E62 (signals added post-E55; previously omitted from this list)
+        "alarm_density",
+        "task_app_scam",
+        "software_subscription_scam",
+        "dark_web_breach_lure",
+        "cloud_quota_lure",
+        "windows_defender_alert_lure",
+        "tech_support_chat_lure",
+        // E63-E65
+        "toad_case_number_lure",
+        "wallet_connect_popup_lure",
+        "fake_browser_security_warning",
     ];
 
     /// Registry-completeness guard (Gap B). Every content signal that
@@ -8270,7 +8282,7 @@ mod tests {
     /// enumerable via `all_signals()` — otherwise an MDM operator listing
     /// signals (the `signals` CLI subcommand) to build a blocklist would
     /// never learn the signal exists. This cross-checks the curated
-    /// `CONTENT_SIGNALS` list (every AND-pair content signal E1–E61 and the
+    /// `CONTENT_SIGNALS` list (every AND-pair content signal E1–E65 and the
     /// structural URL signals) against the registry. Adding a
     /// `signals.push("x")` in `classify()` without adding `"x"` to the NAMES
     /// array fails here.
