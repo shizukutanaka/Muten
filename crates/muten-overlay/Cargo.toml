@@ -10,6 +10,12 @@ readme       = "README.md"
 keywords     = ["security", "scam", "overlay", "scareware", "endpoint"]
 categories   = ["command-line-utilities", "os"]
 
+[package.metadata.docs.rs]
+# Generate docs for all features so library consumers see the full public API.
+all-features = true
+# Ensure intra-doc links (e.g. `[Verdict]`, `[classify]`) resolve correctly.
+rustdoc-args = ["--cfg", "docsrs"]
+
 [lints.rust]
 unsafe_code = "forbid"
 

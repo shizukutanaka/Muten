@@ -3,6 +3,62 @@
 All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–24)
+
+### Added — new detection signals (E63–E65)
+- **`toad_case_number_lure`** (W=20, InterfaceInterference) — TOAD (Telephone-Oriented
+  Attack Delivery) fingerprint: fake case/ticket/incident ID paired with "call now" /
+  "call support" CTA. Proofpoint 2022/2024 data shows 554 % YoY surge in TOAD
+  campaigns. Full 10-lens wiring: Authority persuasion, Pressure lifecycle stage,
+  T1566 Phishing, General victim profile.
+- **`wallet_connect_popup_lure`** (W=30, InterfaceInterference) — Web3 wallet-drainer
+  popup: wallet-connect verb (connect MetaMask / link wallet / authorize wallet) +
+  reward hook (claim airdrop / free NFT / token airdrop). IC3 2024 #1 loss category
+  ($4.57 B). Full 10-lens wiring: Scarcity persuasion, Extract lifecycle, T1566,
+  Cryptocurrency extraction (Irreversible), Catastrophic magnitude, CryptoInvestor
+  victim profile.
+- **`fake_browser_security_warning`** (W=25, InterfaceInterference) — Fake browser
+  cert/SSL error + scam CTA (call support / click to fix / download security).
+  Impersonates Chrome/Firefox/Edge/Safari security error pages. Full 10-lens
+  wiring: Authority persuasion, TrustBuild lifecycle, T1036 Masquerading, TechVendor
+  impersonation family, General victim profile.
+
+### Fixed
+- **`remote_access_lure` trigger gap** — `fake_alert_present` guard was limited to 3
+  signals (blocklist_title, phone_number, clickfix_instruction). A fake BSOD + RAT
+  lure would miss `remote_access_lure`. Widened to 11 signals, adding fake_bsod_lure,
+  fake_scanner_cue, windows_defender_alert_lure, ip_alarm_lure, av_brand_renewal_scam,
+  tech_support_invoice_scam, windows_activation_scam.
+- **CONTENT_SIGNALS coverage gap** — 10 signals present in `all_signals()` were missing
+  from `CONTENT_SIGNALS`, so the full-wiring coverage guard `every_content_signal_is_
+  fully_wired()` silently skipped them. Added all 10 to the list (alarm_density,
+  task_app_scam, software_subscription_scam, dark_web_breach_lure, cloud_quota_lure,
+  windows_defender_alert_lure, tech_support_chat_lure, plus the 3 new E63–E65 signals).
+- **MITRE ATT&CK mappings** — 7 signals (alarm_density, task_app_scam, software_
+  subscription_scam, dark_web_breach_lure, cloud_quota_lure, tech_support_chat_lure,
+  windows_defender_alert_lure) lacked MITRE technique entries, causing the now-active
+  coverage guard to fail. Mapped to T1566 (Phishing) for 6 social-engineering signals
+  and T1036 (Masquerading) for windows_defender_alert_lure.
+- **2 broken rustdoc links** — `[fold_letter_digits_for_phone]` (rules.rs) and
+  `[normalize_for_match]` (lib.rs) referenced private functions; changed to backtick-
+  only code spans. `cargo doc --no-deps` now produces 0 warnings.
+
+### Improved
+- **Japanese alarm_density vocabulary** — Added 6 high-confidence Japanese fear-words
+  sourced from IPA 2024 サポート詐欺 advisory and JPCERT/CC corpus: ウイルス (virus),
+  マルウェア (malware), 凍結 (frozen/locked), 危険 (danger), ランサムウェア (ransomware),
+  トロイ (Trojan). Previously these JP-only scam titles would fall below the 3-word
+  threshold; now they correctly fire alarm_density.
+- **`#[non_exhaustive]` on 6 public enums** — DarkPatternCategory, Origin, ScamStage,
+  VictimProfile, ExtractionVector, AbusedAuthority. Prevents semver-breaking changes
+  when future signal families add new variants (roadmap C5-5).
+- **docs.rs metadata** — Added `[package.metadata.docs.rs]` with `all-features = true`
+  and `rustdoc-args = ["--cfg", "docsrs"]` so docs.rs generates docs for all features.
+
+### Tests
+- 1 309 unit + scoring + property tests (up from 1 308 baseline for this cycle),
+  0 failures, clippy-clean.
+
 ## [0.6.0] — evasion-resistant normalization (rounds 10–23)
 
 A long, additive hardening cycle for the homoglyph / text-evasion defence.
