@@ -625,7 +625,7 @@ impl Ruleset {
     ///
     /// Matching is digits-only on both sides: the title is confusable-folded
     /// (so full-width / look-alike digits normalize to ASCII), letter-for-digit
-    /// homoglyphs are folded (`O`→0, `l`→1 via [`fold_letter_digits_for_phone`]),
+    /// homoglyphs are folded (`O`→0, `l`→1 via `fold_letter_digits_for_phone`),
     /// every non-digit is dropped — so *any* separator (spaces, dots, middle-dots,
     /// slashes, …) and any combining/invisible char between digits is transparent —
     /// and each rule's digit string is sought as a substring. A curated scam number

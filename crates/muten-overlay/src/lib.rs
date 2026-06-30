@@ -2978,7 +2978,7 @@ pub fn contains_phone_number(text: &str) -> bool {
 /// across the rapid re-pops of an installed rogue AV while still
 /// distinguishing genuinely different alerts.
 ///
-/// The title is run through the *same* [`normalize_for_match`] pipeline
+/// The title is run through the *same* `normalize_for_match` pipeline
 /// the classifier uses for blocklist matching — not a weaker fold — so a
 /// flood cannot be hidden by **polymorphic titles**: re-popping the same
 /// alert with a per-appearance varying zero-width character, combining
