@@ -120,6 +120,7 @@ pub fn principles_of(signal: &str) -> &'static [PersuasionPrinciple] {
         | "software_subscription_scam"
         | "tech_support_invoice_scam"
         | "tech_support_chat_lure"
+        | "toad_case_number_lure"
         | "otp_interception_scam"
         | "healthcare_scam" => &[Authority],
 
@@ -137,7 +138,9 @@ pub fn principles_of(signal: &str) -> &'static [PersuasionPrinciple] {
         | "immigration_visa_scam"
         | "traffic_fine_scam"
         | "utility_cutoff_threat"
-        | "fake_copyright_scam" => &[Authority, Intimidation],
+        | "fake_copyright_scam"
+        | "fake_browser_security_warning"  // impersonates trusted browser security UI to invoke authority
+        => &[Authority, Intimidation],
         "bank_account_alarm"
         | "social_media_account_alarm"
         | "credential_harvest_cue"
@@ -165,6 +168,7 @@ pub fn principles_of(signal: &str) -> &'static [PersuasionPrinciple] {
         // rental_scam_lure: "lots of interest — send the deposit now to
         // secure the property" is loss-of-opportunity pressure.
         "urgency_countdown" | "rental_scam_lure" => &[Scarcity],
+        "wallet_connect_popup_lure" => &[Scarcity],   // "limited spots / early access" creates artificial scarcity
 
         // ── Reciprocity (+ Scarcity / Social Proof): a free windfall the
         // victim acts to claim, often with urgency or crowd framing. The

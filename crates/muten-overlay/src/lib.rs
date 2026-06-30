@@ -531,6 +531,8 @@ impl Verdict {
             "fake_scanner_cue",
             "windows_defender_alert_lure",
             "tech_support_chat_lure",
+            "toad_case_number_lure",
+            "fake_browser_security_warning",
         ]) {
             out.push(
                 "Do not call any phone number shown or click to chat with 'support' — genuine \
@@ -582,6 +584,7 @@ impl Verdict {
             "recovery_scam",
             "subscription_lure",
             "task_app_scam",
+            "wallet_connect_popup_lure",
         ]) {
             out.push(
                 "Do not pay or send money — especially via gift cards, wire transfer, \
@@ -856,6 +859,15 @@ fn signal_phrase(signal: &str) -> &str {
         "tech_support_chat_lure" => {
             "presents a fake tech-brand live-chat invite to social-engineer the victim into granting remote access via a chat session rather than a phone call"
         }
+        "toad_case_number_lure" => {
+            "displays a fake case or ticket number alongside a call-to-action — a TOAD (Telephone-Oriented Attack Delivery) fingerprint used to give the overlay fake bureaucratic legitimacy"
+        }
+        "wallet_connect_popup_lure" => {
+            "prompts the user to connect or authorize a crypto wallet to claim an airdrop, tokens, or exclusive rewards — a Web3 phishing pattern that grants the attacker full spend permission on the victim's wallet"
+        }
+        "fake_browser_security_warning" => {
+            "displays a fake browser security certificate or SSL error warning combined with a support call, download, or 'click to fix' CTA — real browser security errors never include a phone number or tech-support button"
+        }
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
         other => other,
@@ -998,6 +1010,9 @@ const W_DARK_WEB_BREACH_LURE: i32 = 30; // "dark web" + breach/credential vocabu
 const W_CLOUD_QUOTA_LURE: i32 = 25; // cloud storage brand + quota-full alarm (Apple ID / Google credential phishing)
 const W_WINDOWS_DEFENDER_ALERT_LURE: i32 = 35; // Windows/Microsoft Defender brand + named malware alert (MSTIC 2025)
 const W_TECH_SUPPORT_CHAT_LURE: i32 = 30; // live-chat CTA + tech-brand/support framing (Malwarebytes 2025 chat-pivot scam)
+const W_TOAD_CASE_NUMBER: i32 = 20;  // TOAD fingerprint: fake case-ID + call CTA (Proofpoint TOAD 2024)
+const W_WALLET_CONNECT: i32 = 30;  // Web3 wallet-connect phishing popup (IC3 2024 #1 loss, $4.57B)
+const W_FAKE_BROWSER_SECURITY: i32 = 25;  // Fake browser cert/SSL warning with scam CTA (impersonates Chrome/Firefox security UI)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
 /// The weight contribution of a built-in signal.  Returns `None` for
@@ -1097,6 +1112,9 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "cloud_quota_lure" => Some(W_CLOUD_QUOTA_LURE),
         "windows_defender_alert_lure" => Some(W_WINDOWS_DEFENDER_ALERT_LURE),
         "tech_support_chat_lure" => Some(W_TECH_SUPPORT_CHAT_LURE),
+        "toad_case_number_lure" => Some(W_TOAD_CASE_NUMBER),
+        "wallet_connect_popup_lure" => Some(W_WALLET_CONNECT),
+        "fake_browser_security_warning" => Some(W_FAKE_BROWSER_SECURITY),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
     }
@@ -1185,6 +1203,9 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "cloud_quota_lure"
             | "windows_defender_alert_lure"
             | "tech_support_chat_lure"
+            | "toad_case_number_lure"
+            | "wallet_connect_popup_lure"
+            | "fake_browser_security_warning"
     )
 }
 
@@ -1316,6 +1337,9 @@ pub fn all_signals() -> Vec<SignalInfo> {
         "cloud_quota_lure",
         "windows_defender_alert_lure",
         "tech_support_chat_lure",
+        "toad_case_number_lure",
+        "wallet_connect_popup_lure",
+        "fake_browser_security_warning",
     ];
     NAMES
         .iter()
@@ -2495,6 +2519,21 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
         signals.push("tech_support_chat_lure".into());
     }
 
+    if alert_shaped && confusables::has_toad_case_number_lure(&normalized_title) {
+        score += rules.weight_of("toad_case_number_lure", W_TOAD_CASE_NUMBER);
+        signals.push("toad_case_number_lure".into());
+    }
+
+    if alert_shaped && confusables::has_wallet_connect_popup_lure(&normalized_title) {
+        score += rules.weight_of("wallet_connect_popup_lure", W_WALLET_CONNECT);
+        signals.push("wallet_connect_popup_lure".into());
+    }
+
+    if alert_shaped && confusables::has_fake_browser_security_warning(&normalized_title) {
+        score += rules.weight_of("fake_browser_security_warning", W_FAKE_BROWSER_SECURITY);
+        signals.push("fake_browser_security_warning".into());
+    }
+
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
     // walk the victim through installing AnyDesk / TeamViewer / etc. to
     // seize the machine. These tools are legitimate, so their name alone
@@ -2505,8 +2544,16 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     // tool name but none of those alert tells, so it never fires. This can
     // only *add* to an already-suspicious window — never block on its own.
     let has_sig = |s: &str| signals.iter().any(|x| x == s);
-    let fake_alert_present =
-        has_sig("blocklist_title") || has_sig("phone_number") || has_sig("clickfix_instruction");
+    let fake_alert_present = has_sig("blocklist_title")
+        || has_sig("phone_number")
+        || has_sig("clickfix_instruction")
+        || has_sig("fake_bsod_lure")
+        || has_sig("fake_scanner_cue")
+        || has_sig("windows_defender_alert_lure")
+        || has_sig("ip_alarm_lure")
+        || has_sig("av_brand_renewal_scam")
+        || has_sig("tech_support_invoice_scam")
+        || has_sig("windows_activation_scam");
     if fake_alert_present && mentions_remote_access_tool(&normalized_title) {
         score += rules.weight_of("remote_access_lure", W_REMOTE_ACCESS_LURE);
         signals.push("remote_access_lure".into());

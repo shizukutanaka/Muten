@@ -10765,6 +10765,374 @@ mod e62_tests {
     }
 }
 
+/// TOAD (Telephone-Oriented Attack Delivery) case-number lure (E63).
+///
+/// Attackers display a fake "case number", "ticket ID", or "reference number"
+/// alongside a call-to-action to give the overlay bureaucratic legitimacy.
+/// AND-pair: `case_vocab` (case/ticket/incident/reference number)
+/// AND `call_instruction` (call now / call support / call us / speak with).
+/// The AND requirement keeps legitimate help-desk UIs (which show ticket IDs
+/// in closable, user-initiated windows) from firing via the `alert_shaped`
+/// guard in the caller, but also means the vocabulary itself is low-FP:
+/// the combination of case-number framing with a call CTA in an alert window
+/// is a TOAD fingerprint, not a normal app UX.
+#[must_use]
+pub fn has_toad_case_number_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let case_vocab = has("case number")
+        || has("case id")
+        || has("case #")
+        || has("case no")
+        || has("ticket number")
+        || has("ticket id")
+        || has("ticket #")
+        || has("incident number")
+        || has("incident id")
+        || has("reference number")
+        || has("reference id")
+        || has("ref number")
+        || has("ref #")
+        || has("your case")
+        || has("support case")
+        || has("claim number")
+        || has("confirmation number")
+        || has("事例番号")
+        || has("ケースid")
+        || has("チケット番号")
+        || has("照会番号")
+        || has("整理番号");
+    let call_instruction = has("call now")
+        || has("call us")
+        || has("call support")
+        || has("call microsoft")
+        || has("call apple")
+        || has("call our")
+        || has("call the")
+        || has("when you call")
+        || has("please call")
+        || has("provide this")
+        || has("mention this")
+        || has("speak with")
+        || has("speak to an")
+        || has("お電話ください")
+        || has("お問い合わせ番号")
+        || has("サポートに電話")
+        || has("お電話の際に");
+    case_vocab && call_instruction
+}
+
+#[cfg(test)]
+mod e63_tests {
+    use super::*;
+
+    #[test]
+    fn toad_case_number_fires_case_id_call_now() {
+        assert!(has_toad_case_number_lure(
+            "your case id is #MS-7823-4411 — call now to resolve the issue"
+        ));
+    }
+
+    #[test]
+    fn toad_case_number_fires_ticket_number_call_microsoft() {
+        assert!(has_toad_case_number_lure(
+            "ticket number: TSS-99012 — please call microsoft support immediately"
+        ));
+    }
+
+    #[test]
+    fn toad_case_number_fires_reference_number_speak_with() {
+        assert!(has_toad_case_number_lure(
+            "reference number: REF-123456 — speak with a certified technician"
+        ));
+    }
+
+    #[test]
+    fn toad_case_number_fires_incident_id_provide_this() {
+        assert!(has_toad_case_number_lure(
+            "incident id: INC-00456 — provide this number when you call support"
+        ));
+    }
+
+    #[test]
+    fn toad_case_number_fires_jp() {
+        assert!(has_toad_case_number_lure(
+            "整理番号：MS-7823 — お電話の際にこの番号をお伝えください"
+        ));
+    }
+
+    #[test]
+    fn toad_case_number_does_not_fire_case_number_only() {
+        assert!(!has_toad_case_number_lure(
+            "your case number is 12345 — view status online"
+        ));
+    }
+
+    #[test]
+    fn toad_case_number_does_not_fire_call_only() {
+        assert!(!has_toad_case_number_lure(
+            "call us at 1-800-555-0100 for support"
+        ));
+    }
+
+    #[test]
+    fn toad_case_number_does_not_fire_benign_helpdesk() {
+        assert!(!has_toad_case_number_lure(
+            "your support ticket has been submitted — we will email you updates"
+        ));
+    }
+}
+
+/// Web3 wallet-connect popup phishing lure (E64).
+///
+/// Fake "connect your wallet" overlays impersonating MetaMask, WalletConnect,
+/// Coinbase Wallet, or similar Web3 wallet interfaces. Victims are prompted to
+/// connect or "approve a transaction" to receive an airdrop, claim tokens, or
+/// access an "exclusive" NFT/DeFi platform — but the approval actually grants
+/// the attacker full spend permission on all tokens.
+///
+/// AND-pair: `wallet_connect_verb` (connect/link/authorize wallet)
+/// AND `reward_hook` (claim tokens/airdrop/verify wallet/unlock rewards).
+/// Distinct from `crypto_drain_lure` (seed-phrase harvest / wallet-brand alarm)
+/// and `crypto_giveaway_scam` (send-to-receive doubling scam).
+/// alert_shaped guard: legitimate dApp wallet-connect prompts appear as
+/// browser extension popups (user-initiated and small/closable).
+#[must_use]
+pub fn has_wallet_connect_popup_lure(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let wallet_connect_verb = has("connect wallet")
+        || has("connect your wallet")
+        || has("link wallet")
+        || has("link your wallet")
+        || has("connect metamask")
+        || has("connect coinbase")
+        || has("connect walletconnect")
+        || has("authorize wallet")
+        || has("authorize your wallet")
+        || has("approve transaction")
+        || has("approve this transaction")
+        || has("wallet connection")
+        || has("connect to claim")
+        || has("connect to verify")
+        || has("connect to receive")
+        || has("connect to access")
+        || has("ウォレットを接続")
+        || has("ウォレット接続")
+        || has("ウォレット認証")
+        || has("ウォレットをリンク");
+    let reward_hook = has("claim tokens")
+        || has("claim your tokens")
+        || has("claim airdrop")
+        || has("claim your airdrop")
+        || has("receive tokens")
+        || has("receive your reward")
+        || has("unlock rewards")
+        || has("unlock exclusive")
+        || has("nft reward")
+        || has("free nft")
+        || has("token airdrop")
+        || has("verify wallet")
+        || has("verify your wallet")
+        || has("whitelist spot")
+        || has("early access")
+        || has("exclusive access")
+        || has("defi rewards")
+        || has("staking rewards")
+        || has("トークンを受け取")
+        || has("エアドロップを請求")
+        || has("nft無料")
+        || has("報酬を受け取");
+    wallet_connect_verb && reward_hook
+}
+
+#[cfg(test)]
+mod e64_tests {
+    use super::*;
+
+    #[test]
+    fn wallet_connect_fires_connect_claim_tokens() {
+        assert!(has_wallet_connect_popup_lure(
+            "connect your wallet to claim tokens from the official airdrop"
+        ));
+    }
+
+    #[test]
+    fn wallet_connect_fires_connect_metamask_airdrop() {
+        assert!(has_wallet_connect_popup_lure(
+            "connect metamask to claim your airdrop — limited spots available"
+        ));
+    }
+
+    #[test]
+    fn wallet_connect_fires_approve_transaction_unlock_rewards() {
+        assert!(has_wallet_connect_popup_lure(
+            "approve this transaction to unlock exclusive defi rewards"
+        ));
+    }
+
+    #[test]
+    fn wallet_connect_fires_connect_to_verify_nft() {
+        assert!(has_wallet_connect_popup_lure(
+            "connect to verify your wallet and receive free nft"
+        ));
+    }
+
+    #[test]
+    fn wallet_connect_fires_jp() {
+        assert!(has_wallet_connect_popup_lure(
+            "ウォレットを接続してエアドロップを請求してください"
+        ));
+    }
+
+    #[test]
+    fn wallet_connect_does_not_fire_connect_only() {
+        assert!(!has_wallet_connect_popup_lure(
+            "connect your wallet to manage your portfolio"
+        ));
+    }
+
+    #[test]
+    fn wallet_connect_does_not_fire_airdrop_only() {
+        assert!(!has_wallet_connect_popup_lure(
+            "official ethereum airdrop — claim your tokens now"
+        ));
+    }
+
+    #[test]
+    fn wallet_connect_does_not_fire_seed_phrase() {
+        // seed-phrase harvest is covered by crypto_drain_lure, not this signal
+        assert!(!has_wallet_connect_popup_lure(
+            "enter your seed phrase to restore your wallet"
+        ));
+    }
+}
+
+/// Fake browser security certificate / SSL error warning (E65).
+///
+/// Scam overlays impersonate browser security warnings (Chrome's "Your
+/// connection is not private", Firefox's SSL error page) with an added
+/// fake CTA: call support, download a patch, or click to "fix" the error.
+/// Real browser security errors never show a support phone number, never ask
+/// the user to call a tech-support line, and never prompt a download from
+/// within the warning page.
+///
+/// AND-pair: `cert_error_vocab` (certificate expired / ssl error / connection
+/// not private / dangerous site) AND `scam_cta` (call support / download /
+/// click to fix / contact microsoft).
+/// alert_shaped guard: a user who navigated to a legitimate HTTPS error page
+/// sees a closable, non-fullscreen browser error — not a modal overlay.
+#[must_use]
+pub fn has_fake_browser_security_warning(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+    let cert_error_vocab = has("certificate expired")
+        || has("certificate has expired")
+        || has("ssl error")
+        || has("ssl certificate")
+        || has("your connection is not private")
+        || has("connection is not private")
+        || has("connection is not secure")
+        || has("your connection is not secure")
+        || has("not a private connection")
+        || has("security certificate")
+        || has("invalid certificate")
+        || has("certificate warning")
+        || has("certificate error")
+        || has("unsafe connection")
+        || has("this site is not secure")
+        || has("dangerous site")
+        || has("deceptive site")
+        || has("security warning")
+        || has("ssl/tls error")
+        || has("セキュリティ証明書")
+        || has("証明書エラー")
+        || has("接続はプライベートではありません")
+        || has("証明書の有効期限")
+        || has("ssl証明書");
+    let scam_cta = has("call support")
+        || has("call microsoft")
+        || has("call apple")
+        || has("call our technician")
+        || has("call a technician")
+        || has("call 1-8")
+        || has("contact microsoft")
+        || has("contact support")
+        || has("contact our")
+        || has("click here to fix")
+        || has("click to fix")
+        || has("fix now")
+        || has("fix this error")
+        || has("download security")
+        || has("install security")
+        || has("update your browser")
+        || has("repair connection")
+        || has("サポートに電話")
+        || has("今すぐ修正")
+        || has("セキュリティを更新")
+        || has("テクニシャンに連絡");
+    cert_error_vocab && scam_cta
+}
+
+#[cfg(test)]
+mod e65_tests {
+    use super::*;
+
+    #[test]
+    fn fake_browser_security_fires_ssl_error_call_support() {
+        assert!(has_fake_browser_security_warning(
+            "ssl error — your connection is not secure — call support to fix"
+        ));
+    }
+
+    #[test]
+    fn fake_browser_security_fires_cert_expired_call_microsoft() {
+        assert!(has_fake_browser_security_warning(
+            "security certificate expired — call microsoft immediately to renew"
+        ));
+    }
+
+    #[test]
+    fn fake_browser_security_fires_connection_not_private_click_fix() {
+        assert!(has_fake_browser_security_warning(
+            "your connection is not private — click here to fix this error now"
+        ));
+    }
+
+    #[test]
+    fn fake_browser_security_fires_dangerous_site_download() {
+        assert!(has_fake_browser_security_warning(
+            "dangerous site — certificate warning — download security patch"
+        ));
+    }
+
+    #[test]
+    fn fake_browser_security_fires_jp() {
+        assert!(has_fake_browser_security_warning(
+            "セキュリティ証明書エラー — サポートに電話してください"
+        ));
+    }
+
+    #[test]
+    fn fake_browser_security_does_not_fire_cert_vocab_only() {
+        // Legitimate SSL error page — no scam CTA
+        assert!(!has_fake_browser_security_warning(
+            "your connection is not private — attackers might be trying to steal your info"
+        ));
+    }
+
+    #[test]
+    fn fake_browser_security_does_not_fire_call_only() {
+        assert!(!has_fake_browser_security_warning(
+            "call our support team at 1-800-555-0100"
+        ));
+    }
+
+    #[test]
+    fn fake_browser_security_does_not_fire_benign_update() {
+        assert!(!has_fake_browser_security_warning(
+            "update your browser to the latest version for better security"
+        ));
+    }
+}
+
 // ── Spread-character de-obfuscation (Socratic robustness audit) ───────────────
 
 #[cfg(test)]

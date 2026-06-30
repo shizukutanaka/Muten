@@ -50,7 +50,7 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         "blocks_input" | "input_trap" => &["T1056"],
         // Sudden full-screen takeover and fake BSOD both match T1036 Masquerading:
         // they impersonate a legitimate OS crash/system dialog to deceive the victim.
-        "sudden_fullscreen_takeover" | "fake_bsod_lure" => &["T1036"],
+        "sudden_fullscreen_takeover" | "fake_bsod_lure" | "fake_browser_security_warning" => &["T1036"],
         // Urgency-coercion, forced-retention, cloud-lure delivery, and
         // fake-scanner overlays are social-engineering hooks that steer
         // victims toward the attacker's call or site: T1566 Phishing.
@@ -105,7 +105,9 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         | "fake_copyright_scam"
         | "crypto_giveaway_scam"
         | "otp_interception_scam"
-        | "family_emergency_scam" => &["T1566"],
+        | "family_emergency_scam"
+        | "toad_case_number_lure"
+        | "wallet_connect_popup_lure" => &["T1566"],
         _ => &[],
     }
 }
@@ -216,6 +218,9 @@ mod tests {
         assert_eq!(techniques_of("crypto_giveaway_scam"), &["T1566"]);
         assert_eq!(techniques_of("otp_interception_scam"), &["T1566"]);
         assert_eq!(techniques_of("family_emergency_scam"), &["T1566"]);
+        assert_eq!(techniques_of("toad_case_number_lure"), &["T1566"]);
+        assert_eq!(techniques_of("wallet_connect_popup_lure"), &["T1566"]);
+        assert_eq!(techniques_of("fake_browser_security_warning"), &["T1036"]);
     }
 
     #[test]

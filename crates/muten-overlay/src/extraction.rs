@@ -145,7 +145,9 @@ pub fn extraction_vectors_of(signal: &str) -> &'static [ExtractionVector] {
         "gift_card_demand" => &[GiftCard],
 
         // ── Cryptocurrency (irreversible) ────────────────────────────────
-        "crypto_drain_lure" | "crypto_giveaway_scam" | "pig_butchering_lure" => &[Cryptocurrency],
+        "crypto_drain_lure" | "crypto_giveaway_scam" | "pig_butchering_lure"
+        | "wallet_connect_popup_lure"   // wallet-connect approval = full spend permission; entire portfolio at risk
+        => &[Cryptocurrency],
         // Sextortion is paid overwhelmingly in crypto, occasionally gift cards.
         "sextortion_lure" => &[Cryptocurrency, GiftCard],
         // Recovery scams (secondary victimization) extract a fresh advance
@@ -211,7 +213,9 @@ pub fn extraction_vectors_of(signal: &str) -> &'static [ExtractionVector] {
         | "fake_scanner_cue"
         | "windows_defender_alert_lure"
         | "rogue_av_process"
-        | "tech_support_chat_lure" => &[DeviceTakeover],
+        | "tech_support_chat_lure"
+        | "fake_browser_security_warning"
+        | "toad_case_number_lure" => &[DeviceTakeover],
 
         // Pure lures / scare / geometry / homoglyph mechanics with no
         // determinate cash-out channel of their own.

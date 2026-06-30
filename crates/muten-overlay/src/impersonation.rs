@@ -122,6 +122,7 @@ pub fn abused_authority_of(signal: &str) -> Option<AbusedAuthority> {
         | "tech_support_invoice_scam"   // fake support-plan/AV invoice
         | "tech_support_chat_lure"      // live-chat "support agent" pivot
         | "software_subscription_scam"  // SaaS/AI-tool billing impersonation
+        | "fake_browser_security_warning"  // impersonates browser vendor (Chrome/Firefox/Edge/Safari) security UI
         => Some(AbusedAuthority::TechVendor),
 
         // ── Government ─────────────────────────────────────────────────────────
@@ -221,6 +222,7 @@ mod tests {
             "tech_support_invoice_scam",
             "tech_support_chat_lure",
             "software_subscription_scam",
+            "fake_browser_security_warning",
         ] {
             assert_eq!(
                 abused_authority_of(sig),

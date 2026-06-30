@@ -151,6 +151,7 @@ pub fn stage_of(signal: &str) -> Option<ScamStage> {
         | "refund_scam_cue"             // "call to get your refund" → extraction call
         | "family_emergency_scam"       // "wire bail / ransom money RIGHT NOW"
         | "tech_support_invoice_scam"   // "call to cancel this charge" → extraction call
+        | "wallet_connect_popup_lure"   // connect-wallet approval is the extraction step
         => Some(ScamStage::Extract),
 
         // ── Pressure (cognitive override — prevent rational deliberation) ────
@@ -166,6 +167,7 @@ pub fn stage_of(signal: &str) -> Option<ScamStage> {
         | "immigration_visa_scam"       // "deportation proceedings begin today"
         | "fake_copyright_scam"         // "legal action will commence within 24 hours"
         | "tax_authority_scam"          // "IRS will arrest you unless you pay NOW"
+        | "toad_case_number_lure"       // fake case number creates institutional pressure to call
         => Some(ScamStage::Pressure),
 
         // ── Lure (initial hook — attention and emotional engagement) ─────────
@@ -210,6 +212,7 @@ pub fn stage_of(signal: &str) -> Option<ScamStage> {
         | "authority_lure"              // FBI/police/Interpol/cybercrime impersonation
         | "phone_number"                // a support phone number is displayed
         | "blocklist_phone"             // a KNOWN scam phone number is displayed
+        | "fake_browser_security_warning" // fake browser security warning = trust-building via impersonated UI
         => Some(ScamStage::TrustBuild),
 
         // Window geometry, delivery mechanism, or evasion signals — these
@@ -285,6 +288,7 @@ mod tests {
             stage_of("tech_support_invoice_scam"),
             Some(ScamStage::Extract)
         );
+        assert_eq!(stage_of("wallet_connect_popup_lure"), Some(ScamStage::Extract));
     }
 
     #[test]
@@ -298,6 +302,7 @@ mod tests {
         assert_eq!(stage_of("immigration_visa_scam"), Some(ScamStage::Pressure));
         assert_eq!(stage_of("fake_copyright_scam"), Some(ScamStage::Pressure));
         assert_eq!(stage_of("tax_authority_scam"), Some(ScamStage::Pressure));
+        assert_eq!(stage_of("toad_case_number_lure"), Some(ScamStage::Pressure));
     }
 
     #[test]

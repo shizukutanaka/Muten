@@ -168,6 +168,9 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         "cloud_quota_lure" => Some(InterfaceInterference), // impersonates cloud storage brand via false quota alarm to harvest credentials or push payment
         "windows_defender_alert_lure" => Some(InterfaceInterference), // impersonates Windows Defender with fake named-malware alert to misdirect via false authority
         "tech_support_chat_lure" => Some(InterfaceInterference), // steers victim into remote-access session via fake tech-brand live-chat CTA
+        "toad_case_number_lure" => Some(InterfaceInterference), // fake case/ticket number establishes fraudulent legitimacy via authority framing
+        "wallet_connect_popup_lure" => Some(InterfaceInterference), // fake wallet-connect prompt steers victim into approving malicious transaction
+        "fake_browser_security_warning" => Some(InterfaceInterference), // fake browser security UI steers victim via misdirection
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }

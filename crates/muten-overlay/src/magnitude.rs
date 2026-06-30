@@ -168,6 +168,8 @@ pub fn magnitude_of(signal: &str) -> Option<LossMagnitude> {
         | "fake_scanner_cue"            // fake AV scan → tech-support call: $200–$500
         | "ip_alarm_lure"               // "IP hacked" → tech-support call: $200–$500
         | "tech_support_chat_lure"      // live-chat tech-support pivot: $200–$500
+        | "toad_case_number_lure"               // TOAD call → tech-support extraction: $200–$500
+        | "fake_browser_security_warning"       // fake SSL warning → call → tech-support: $200–$500
         => Some(LossMagnitude::Small),
 
         // ── Medium ($2K – $20K) ─────────────────────────────────────────────
@@ -209,8 +211,9 @@ pub fn magnitude_of(signal: &str) -> Option<LossMagnitude> {
         // 21,489+ complaints ≈ $305K average per complaint — the largest single
         // category in the IC3 report by total loss. Full wallet drains can
         // reach the entire portfolio value (millions for crypto investors).
-        "pig_butchering_lure"   // FBI IC3 2024 avg ≈ $305K per victim complaint
-        | "crypto_drain_lure"   // full wallet drain — entire portfolio
+        "pig_butchering_lure"       // FBI IC3 2024 avg ≈ $305K per victim complaint
+        | "crypto_drain_lure"       // full wallet drain — entire portfolio
+        | "wallet_connect_popup_lure"  // wallet drain = entire portfolio (IC3 2024 avg ≈ hundreds of thousands)
         => Some(LossMagnitude::Catastrophic),
 
         // Window-geometry, evasion, delivery, and pure-coercion signals carry

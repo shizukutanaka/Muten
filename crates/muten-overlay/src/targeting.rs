@@ -138,6 +138,7 @@ pub fn victim_profile_of(signal: &str) -> Option<VictimProfile> {
         "pig_butchering_lure"           // romance/mentor → invest on our platform
         | "crypto_giveaway_scam"        // celebrity/exchange doubling scam
         | "crypto_drain_lure"           // wallet alarm / seed-phrase harvest
+        | "wallet_connect_popup_lure"   // IC3 2024 #1 loss: wallet-drainer via fake connect popup
         => Some(VictimProfile::CryptoInvestor),
 
         // ── ElderAdult ───────────────────────────────────────────────────────
@@ -242,6 +243,8 @@ pub fn victim_profile_of(signal: &str) -> Option<VictimProfile> {
         | "blocklist_phone"             // known scam number: cross-context
         | "false_registration_billing"  // ワンクリック詐欺: Japanese internet users (general)
         | "survey_reward_scam"          // survey bait: young adults and general
+        | "toad_case_number_lure"       // TOAD: fake case ID + call CTA — broad telephone phishing
+        | "fake_browser_security_warning" // fake cert/SSL error: any browser user
         => Some(VictimProfile::General),
 
         // Window geometry, evasion mechanics, delivery signals, and pure
