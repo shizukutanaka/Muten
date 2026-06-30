@@ -49,6 +49,7 @@ use serde::Serialize;
 /// Ordered alphabetically by variant for stable audit output. Use
 /// [`impersonates_authority`] to test whether a verdict wears any institution's
 /// identity at all — the gate a brand-protection workflow filters on.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AbusedAuthority {

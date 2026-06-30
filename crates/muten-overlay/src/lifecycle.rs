@@ -59,6 +59,7 @@ use serde::Serialize;
 /// Ordered from **earliest** (`Lure`) to **most advanced** (`Extract`) so that
 /// `max()` over a set of stages yields the most advanced stage present —
 /// see [`highest_stage`].
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScamStage {

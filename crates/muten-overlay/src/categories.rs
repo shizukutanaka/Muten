@@ -27,6 +27,7 @@
 use serde::Serialize;
 
 /// One of the five Gray et al. (2018) dark-pattern strategies.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DarkPatternCategory {

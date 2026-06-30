@@ -78,6 +78,7 @@ impl Recoverability {
 }
 
 /// The mechanism by which a scam extracts value from its victim.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExtractionVector {

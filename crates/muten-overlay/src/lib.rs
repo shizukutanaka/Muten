@@ -81,6 +81,7 @@ use serde::{Deserialize, Serialize};
 /// How the window came to exist, as best the enumerator can tell.
 /// Unsolicited pop-ups are far more likely to be scams than windows
 /// the user explicitly opened.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum Origin {

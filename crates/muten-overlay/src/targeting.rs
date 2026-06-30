@@ -51,6 +51,7 @@ use serde::Serialize;
 /// [`is_targeted_attack`] to test whether any non-`General` profile is
 /// present — targeted scams need tailored awareness; broadcast scams need
 /// general messaging.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VictimProfile {
