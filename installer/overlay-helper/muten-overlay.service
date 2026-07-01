@@ -24,6 +24,19 @@
 # enable --now muten-overlay`) so it inherits the logged-in session's
 # DISPLAY/WAYLAND_DISPLAY automatically — swap in that placement if your
 # MDM pushes per-user configuration (e.g. via a login script or user GPO).
+#
+# NOTE on the single-instance lock: `daemon` refuses to start if
+# --audit-log's `.lock` file already exists (see `muten-overlay daemon
+# --help`), to stop two independently-launched instances from racing each
+# other and corrupting the audit hash chain. The `rm -f` of that lock file
+# in ExecStartPre below is safe ONLY because systemd itself is the sole
+# thing invoking ExecStart for this unit, and systemd guarantees the
+# previous instance is fully dead (via its own process tracking) before
+# ever running ExecStart again for the same unit — so clearing the lock
+# here can never race a still-running instance. Do NOT copy this `rm -f`
+# into a script that might run concurrently with an independently-started
+# muten-overlay process; that reintroduces the exact race the lock exists
+# to prevent.
 
 [Unit]
 Description=muten overlay scam/scareware protection daemon
@@ -39,7 +52,7 @@ ExecStart=/opt/muten/muten-overlay daemon /opt/muten/muten-overlay-helper-linux.
     --alert-interval-ms 250 \
     --stop-flag /run/muten/overlay-stop \
     --metrics /var/lib/node_exporter/textfile_collector/muten_overlay.prom
-ExecStartPre=/bin/rm -f /run/muten/overlay-stop
+ExecStartPre=/bin/rm -f /run/muten/overlay-stop /var/log/muten/overlay-audit.log.lock
 ExecStop=/bin/touch /run/muten/overlay-stop
 # ExecStop only *requests* the stop; systemd then waits up to
 # TimeoutStopSec for the daemon to notice the flag file and exit 0 on its

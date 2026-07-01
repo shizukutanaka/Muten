@@ -37,6 +37,19 @@
   helper probe failure) but NOT after a clean stop-flag exit (status 0),
   matching the same "graceful stop is not a crash" semantics as the
   systemd unit's Restart=on-failure.
+
+  NOTE on the single-instance lock: "daemon" refuses to start if the
+  audit-log's ".lock" file already exists (see "muten-overlay daemon
+  help"), to stop two independently-launched instances from racing each
+  other and corrupting the audit hash chain. ProgramArguments below wraps
+  the real invocation in "rm -f ... ; exec ..." to clear that lock before
+  every launch. This is safe ONLY because launchd itself is the sole thing
+  invoking this command for this label, and KeepAlive guarantees the
+  previous instance is fully dead (via launchd's own process tracking)
+  before ever relaunching it - so clearing the lock here can never race a
+  still-running instance. Do NOT copy this cleanup into a script that
+  might run concurrently with an independently-started muten-overlay
+  process; that reintroduces the exact race the lock exists to prevent.
 -->
 <plist version="1.0">
 <dict>
@@ -45,19 +58,9 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/muten/muten-overlay</string>
-        <string>daemon</string>
-        <string>/usr/local/muten/muten-overlay-helper-macos.sh</string>
-        <string>--rules</string>
-        <string>/usr/local/muten/rules.txt</string>
-        <string>--audit-log</string>
-        <string>/usr/local/var/log/muten/overlay-audit.log</string>
-        <string>--interval-ms</string>
-        <string>1000</string>
-        <string>--alert-interval-ms</string>
-        <string>250</string>
-        <string>--stop-flag</string>
-        <string>/usr/local/muten/overlay-stop</string>
+        <string>/bin/sh</string>
+        <string>-c</string>
+        <string>rm -f /usr/local/var/log/muten/overlay-audit.log.lock; exec /usr/local/muten/muten-overlay daemon /usr/local/muten/muten-overlay-helper-macos.sh --rules /usr/local/muten/rules.txt --audit-log /usr/local/var/log/muten/overlay-audit.log --interval-ms 1000 --alert-interval-ms 250 --stop-flag /usr/local/muten/overlay-stop</string>
     </array>
 
     <key>RunAtLoad</key>

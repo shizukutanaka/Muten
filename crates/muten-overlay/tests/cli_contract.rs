@@ -426,3 +426,138 @@ fn daemon_exits_cleanly_when_no_events_are_ever_emitted() {
     let metrics_text = std::fs::read_to_string(&metrics).expect("metrics written");
     assert!(metrics_text.contains("muten_blocks_total 0"));
 }
+
+/// Regression guard for the `--helper-timeout-ms` CLI flag itself.
+///
+/// `subprocess_available_returns_false_on_hung_helper_within_timeout` in
+/// controller.rs already proves the *library* timeout mechanism works, but
+/// nothing previously proved the CLI actually threads `--helper-timeout-ms`
+/// through to `SubprocessController::with_timeout` — a refactor could
+/// silently drop that wiring (e.g. reverting to `SubprocessController::new`,
+/// which uses the library's own default) and no test would catch it. This
+/// spawns a helper that hangs for a full hour and asserts the *whole
+/// process* (not just the library call) exits promptly once the configured
+/// timeout elapses, not after some much longer fallback or never.
+#[cfg(unix)]
+fn write_hanging_daemon_helper(dir: &std::path::Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join("hang-helper.sh");
+    std::fs::write(&path, "#!/bin/sh\nsleep 3600\n").unwrap();
+    let mut perms = std::fs::metadata(&path).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&path, perms).unwrap();
+    path
+}
+
+#[cfg(unix)]
+#[test]
+fn daemon_cli_helper_timeout_ms_flag_bounds_a_hung_probe() {
+    let dir = tempfile::tempdir().unwrap();
+    let helper = write_hanging_daemon_helper(dir.path());
+    let audit_log = dir.path().join("audit.log");
+
+    let start = std::time::Instant::now();
+    let status = Command::new(env!("CARGO_BIN_EXE_muten-overlay"))
+        .args([
+            "daemon",
+            helper.to_str().unwrap(),
+            "--audit-log",
+            audit_log.to_str().unwrap(),
+            "--helper-timeout-ms",
+            "300",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .unwrap();
+    let elapsed = start.elapsed();
+
+    assert_eq!(
+        status.code(),
+        Some(1),
+        "the startup probe against a hung helper must fail (exit 1), not hang"
+    );
+    assert!(
+        // Deliberately tight: the library's own default timeout (used if
+        // --helper-timeout-ms were silently dropped and the CLI fell back
+        // to SubprocessController::new) is 5000ms. A threshold near 5s
+        // would not distinguish "the flag worked" from "the flag was
+        // silently ignored" — 2s comfortably separates the two while
+        // leaving generous margin above the requested 300ms.
+        elapsed < std::time::Duration::from_secs(2),
+        "with --helper-timeout-ms 300, the probe must fail in ~300ms, not \
+         the library's 5000ms default, took {elapsed:?} — this likely means \
+         the CLI flag stopped reaching SubprocessController::with_timeout"
+    );
+}
+
+/// Regression guard for the single-instance lock: `ChainedFileSink::open`
+/// has no cross-process coordination, so two daemon instances pointed at
+/// the same `--audit-log` would each start from the same chain head and
+/// race to append, corrupting the tamper-evident hash chain. The daemon
+/// must refuse to start a second instance against the same audit log, and
+/// must release the lock on a graceful stop so a subsequent (non-
+/// concurrent) restart isn't blocked by its own prior run.
+#[cfg(unix)]
+#[test]
+fn daemon_refuses_second_instance_on_same_audit_log_and_releases_lock_on_stop() {
+    let dir = tempfile::tempdir().unwrap();
+    let helper = write_quiet_daemon_helper(dir.path());
+    let audit_log = dir.path().join("audit.log");
+    let stop_flag = dir.path().join("stop");
+
+    let mut first = Command::new(env!("CARGO_BIN_EXE_muten-overlay"))
+        .args([
+            "daemon",
+            helper.to_str().unwrap(),
+            "--audit-log",
+            audit_log.to_str().unwrap(),
+            "--interval-ms",
+            "50",
+            "--stop-flag",
+            stop_flag.to_str().unwrap(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn first daemon");
+
+    // Give the first instance time to acquire the lock before racing a
+    // second one against it.
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let lock_path = dir.path().join("audit.log.lock");
+    assert!(
+        lock_path.exists(),
+        "the first instance must hold a visible lock file while running"
+    );
+
+    let second_status = Command::new(env!("CARGO_BIN_EXE_muten-overlay"))
+        .args([
+            "daemon",
+            helper.to_str().unwrap(),
+            "--audit-log",
+            audit_log.to_str().unwrap(),
+            "--interval-ms",
+            "50",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("run second daemon");
+    assert_eq!(
+        second_status.code(),
+        Some(1),
+        "a second instance against the same audit log must refuse to start, \
+         not race the first instance's writes"
+    );
+
+    // Stop the first instance gracefully and confirm the lock is released
+    // (not left stale after a clean shutdown).
+    std::fs::write(&stop_flag, "").unwrap();
+    let first_status = first.wait().expect("first daemon exits");
+    assert_eq!(first_status.code(), Some(0));
+    assert!(
+        !lock_path.exists(),
+        "a graceful stop must release the lock file so a later restart isn't blocked"
+    );
+}

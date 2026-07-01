@@ -27,6 +27,20 @@
   own ExecStart-equivalent (the Actions/Exec/Arguments below) does not do
   this automatically, so add a Remove-Item step to your logon script if you
   redeploy the stop-flag path across sessions.
+
+  NOTE on the single-instance lock: "daemon" refuses to start if the
+  audit-log's ".lock" file already exists (see "muten-overlay daemon
+  help"), to stop two independently-launched instances from racing each
+  other and corrupting the audit hash chain. The Actions/Exec below wraps
+  the real invocation in a PowerShell Remove-Item step to clear that lock
+  before every launch. This is safe ONLY because Task Scheduler itself is
+  the sole thing invoking this action for this task, and
+  MultipleInstancesPolicy=IgnoreNew plus RestartOnFailure together
+  guarantee the previous instance is fully dead before this task is
+  relaunched - so clearing the lock here can never race a still-running
+  instance. Do NOT copy this cleanup into a script that might run
+  concurrently with an independently-started muten-overlay process; that
+  reintroduces the exact race the lock exists to prevent.
 -->
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
@@ -59,8 +73,8 @@
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>C:\Program Files\muten\muten-overlay.exe</Command>
-      <Arguments>daemon "C:\Program Files\muten\muten-overlay-helper-windows.ps1" --rules "C:\ProgramData\muten\rules.txt" --audit-log "C:\ProgramData\muten\overlay-audit.log" --interval-ms 1000 --alert-interval-ms 250 --stop-flag "C:\ProgramData\muten\overlay-stop"</Arguments>
+      <Command>powershell.exe</Command>
+      <Arguments>-NoProfile -ExecutionPolicy Bypass -Command "Remove-Item -Path 'C:\ProgramData\muten\overlay-audit.log.lock' -ErrorAction SilentlyContinue; &amp; 'C:\Program Files\muten\muten-overlay.exe' daemon 'C:\Program Files\muten\muten-overlay-helper-windows.ps1' --rules 'C:\ProgramData\muten\rules.txt' --audit-log 'C:\ProgramData\muten\overlay-audit.log' --interval-ms 1000 --alert-interval-ms 250 --stop-flag 'C:\ProgramData\muten\overlay-stop'"</Arguments>
     </Exec>
   </Actions>
 </Task>

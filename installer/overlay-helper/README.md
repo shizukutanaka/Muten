@@ -30,6 +30,21 @@ pattern: touch a "stop-flag" file, wait one sweep interval, and the daemon
 exits 0 on its own (`--stop-flag`; see `muten-overlay daemon --help`). No
 signal handler is needed, which keeps the crate `#![forbid(unsafe_code)]`.
 
+## Single-instance lock
+
+`daemon` refuses to start a second time against the same `--audit-log`
+path — it creates `<audit-log>.lock` on startup and removes it on a
+graceful stop. This matters because the audit log is a hash chain: two
+instances writing to it concurrently would each start from the same head
+and race to append, corrupting the chain and defeating its whole tamper-
+evidence purpose. If a prior run was killed uncleanly (SIGKILL, power
+loss, a crash) the lock file is left behind — the daemon's error message
+in that case tells you to confirm no other instance is actually running
+(check your OS's process list) before deleting the stale `.lock` file and
+retrying. Do not script an automatic "always delete the lock and restart"
+recovery step; that reintroduces the exact corruption risk the lock exists
+to prevent if the previous instance is, in fact, still alive.
+
 ## Push patterns per MDM
 
 None of these require anything muten doesn't already ship — they are

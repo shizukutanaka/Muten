@@ -3,7 +3,46 @@
 All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Conventional Commits](https://www.conventionalcommits.org/).
 
-## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–27)
+## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–28)
+
+### Fixed — concurrent-instance audit-chain corruption risk
+- **No single-instance guard on `daemon`** — `ChainedFileSink::open` reads
+  the chain head into in-process memory with no cross-process coordination;
+  two daemon instances pointed at the same `--audit-log` would each start
+  from the same head and race to append, corrupting the tamper-evident
+  hash chain — silently defeating the entire point of running one. A real
+  advisory lock (`flock`) isn't reachable within this crate's constraints
+  (needs either a newer std API than MSRV 1.75 ships, or raw libc FFI,
+  and the crate is `forbid(unsafe_code)` with no new dependencies).
+  Added a best-effort, std-only, safe-Rust lock: `daemon` atomically
+  creates `<audit-log>.lock` (`create_new`, POSIX `O_EXCL`) before opening
+  the audit log, refuses to start if it already exists, and removes it on
+  a graceful stop. Documented, not hidden: a plain file isn't a kernel-
+  held lock, so it does not self-clear after an unclean kill/crash — the
+  error message tells the operator to confirm no other instance is
+  genuinely running before deleting a stale lock, and the 3 service-
+  manager templates were updated to auto-clear the lock in their
+  supervisor-invoked startup step specifically (safe there, and only
+  there, because systemd/launchd/Task Scheduler each independently
+  guarantee the previous instance is fully dead before restarting the
+  same managed unit/agent/task — an ad-hoc script bypassing the service
+  manager must not adopt the same auto-clear).
+- Proven with a real two-process race, not just a unit test of the lock
+  function in isolation: a new `cli_contract.rs` test spawns one daemon,
+  confirms a second spawn against the same `--audit-log` is refused (exit
+  1), then stops the first gracefully and confirms the lock file is
+  released for a legitimate restart.
+
+### Fixed — untested `--helper-timeout-ms` CLI wiring
+- The prior round's library-level timeout tests proved `SubprocessController
+  ::with_timeout` works, but nothing proved the CLI flag actually reaches
+  it — a refactor could silently revert `cmd_daemon` to
+  `SubprocessController::new` (the library's own 5000ms default) and no
+  test would notice. Added a regression test with a tight 2-second
+  threshold (deliberately far below the 5000ms default, to actually
+  distinguish "the flag worked" from "the flag was silently dropped") and
+  verified it has real teeth by temporarily reverting the wiring and
+  confirming the test fails, then restoring it.
 
 ### Fixed — hung-helper freeze and zero-event crash in the new daemon loop
 - **`SubprocessController` had no timeout** — `Command::output()` blocks
@@ -152,7 +191,7 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
   old 3-signal trigger.
 
 ### Tests
-- 1 323 unit tests + 17 `cli_contract` integration tests (up from 1 308
+- 1 323 unit tests + 19 `cli_contract` integration tests (up from 1 308
   unit-test baseline for this cycle), 0 failures, clippy-clean.
 
 ## [0.6.0] — evasion-resistant normalization (rounds 10–23)

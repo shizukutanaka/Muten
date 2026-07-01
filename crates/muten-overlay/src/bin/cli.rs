@@ -234,9 +234,13 @@ enum Cmd {
     /// `enforce`/`monitor` only replay a static window list against a
     /// dry-run controller for demonstration and testing. Intended to be
     /// wrapped by a service manager (systemd/launchd/Scheduled Task) — see
-    /// `installer/overlay-helper/README.md`. Exit: 0 on graceful stop
-    /// (`--stop-flag` file appears), 1 if the helper fails its startup probe
-    /// or a fatal I/O error occurs.
+    /// `installer/overlay-helper/README.md`. Refuses to start a second
+    /// instance against the same `--audit-log` (creates `<audit-log>.lock`,
+    /// removed on graceful stop; if a prior run crashed uncleanly, verify no
+    /// other instance is actually running before deleting a stale lock).
+    /// Exit: 0 on graceful stop (`--stop-flag` file appears), 1 if the
+    /// helper fails its startup probe, a lock is already held, or a fatal
+    /// I/O error occurs.
     Daemon {
         /// Path (or bare name, resolved via $PATH) of the platform helper
         /// binary/script implementing the `--probe`/`enumerate`/`dismiss`
@@ -1281,6 +1285,64 @@ fn cmd_monitor(
     Ok(ExitCode::from(0))
 }
 
+/// Best-effort single-instance guard for `daemon`.
+///
+/// `ChainedFileSink::open` reads the chain head into *in-process* memory
+/// with no cross-process coordination — two daemon instances pointed at
+/// the same `--audit-log` would each start from the same head and race to
+/// append, corrupting the hash chain and silently defeating the whole
+/// point of running a tamper-evident log. A real advisory lock (`flock`)
+/// isn't available here: it needs either a newer std API than MSRV 1.75
+/// ships or raw libc FFI, and this crate is `forbid(unsafe_code)` with no
+/// new dependencies. `create_new` (atomic create-or-fail, POSIX `O_EXCL`)
+/// is the best safe-Rust, std-only approximation: it reliably catches the
+/// common case (an operator or a botched deployment script starts a
+/// second instance while the first is still healthy), but — being a
+/// plain file, not a kernel-held lock — it does NOT self-clear if the
+/// process is killed uncleanly (SIGKILL, power loss, panic). A stale lock
+/// after a crash requires operator judgement to remove; the error message
+/// says so explicitly rather than silently auto-removing a lock that
+/// might belong to a genuinely still-running instance.
+struct DaemonLock {
+    path: std::path::PathBuf,
+}
+
+impl Drop for DaemonLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+fn acquire_daemon_lock(audit_log: &std::path::Path) -> Result<DaemonLock, String> {
+    let mut lock_path = audit_log.as_os_str().to_os_string();
+    lock_path.push(".lock");
+    let lock_path = std::path::PathBuf::from(lock_path);
+
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&lock_path)
+    {
+        Ok(mut f) => {
+            use std::io::Write;
+            let _ = write!(f, "{}", std::process::id());
+            Ok(DaemonLock { path: lock_path })
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            let existing_pid = std::fs::read_to_string(&lock_path).unwrap_or_default();
+            Err(format!(
+                "lock file {} already exists (pid {existing_pid:?} recorded inside) — another \
+                 daemon may already be writing this audit log. If that process has genuinely \
+                 exited (check with your OS's process list) and this is a stale lock left by an \
+                 unclean shutdown, remove the file and retry; otherwise stop the other instance \
+                 first",
+                lock_path.display()
+            ))
+        }
+        Err(e) => Err(format!("creating lock file {}: {e}", lock_path.display())),
+    }
+}
+
 /// Run the real, continuous protection loop against a live host.
 ///
 /// Unlike `cmd_monitor` (which replays a fixed window list against
@@ -1319,6 +1381,11 @@ fn cmd_daemon(
              to start the loop"
         ));
     }
+    // Acquire the single-instance lock only after the (cheap, harmless)
+    // helper probe but before touching the audit log — a probe failure
+    // shouldn't require lock cleanup, and the lock must exist before any
+    // ChainedFileSink::open call races another instance's.
+    let _lock = acquire_daemon_lock(audit_log)?;
     eprintln!(
         "muten-overlay daemon: helper={helper:?} interval_ms={interval_ms} \
          helper_timeout_ms={helper_timeout_ms}"
