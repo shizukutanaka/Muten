@@ -37,7 +37,7 @@ This repository currently contains the **screen** half:
 | 10-lens signal analysis | Dark-pattern category (Gray et al. 2018), MITRE ATT&CK technique, Cialdini persuasion principle, extraction vector + recoverability, kill-chain stage, victim-targeting profile, loss magnitude, campaign fingerprint, response-priority triage, abused-authority impersonation |
 | `Monitor` | Daemon sweep loop + tamper-evident SHA-256 audit chain (RFC 6962 Merkle root + inclusion proofs) |
 | OS helpers | Windows (Win32), macOS (osascript), X11 (wmctrl), **Wayland** (wlroots) |
-| CLI | `classify` / `scareware` / `rules` / `enforce` / `triage` / `monitor` / `verify` / `signals` |
+| CLI | `classify` / `scareware` / `rules` / `enforce` / `triage` / `monitor` / `daemon` / `verify` / `signals` |
 
 Detection is informed by published threat intel and the security literature
 (FBI IC3 2025, Microsoft Edge Scareware Blocker, IPA/消費者庁 for Japanese

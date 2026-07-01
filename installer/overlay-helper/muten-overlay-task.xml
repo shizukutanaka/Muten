@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Windows Scheduled Task for the muten-overlay daemon.
+
+  Runs at user logon (window enumeration/dismissal needs the interactive
+  desktop session, same constraint as the macOS LaunchAgent) and restarts
+  automatically if it exits unexpectedly.
+
+  Install (elevated PowerShell, or push via Intune "Win32 app" / GPO
+  "Scheduled Tasks" preference, or Ansible's win_scheduled_task module):
+
+    schtasks /create /tn "muten-overlay" /xml muten-overlay-task.xml
+
+  Edit the paths below (C:\Program Files\muten\...) to match your
+  deployment layout before importing, or template-substitute them from
+  your MDM's packaging step.
+
+  Graceful stop (matches the daemon's "stop-flag" contract - no signal
+  handler needed, keeps muten-overlay forbid(unsafe_code)):
+
+    New-Item -ItemType File -Path "C:\ProgramData\muten\overlay-stop" -Force
+    # wait one sweep interval tick, then:
+    schtasks /end /tn "muten-overlay"
+
+  Remove Path (or Delete) the stop-flag file before the next logon/restart
+  so the daemon does not see a stale flag and exit immediately - the task's
+  own ExecStart-equivalent (the Actions/Exec/Arguments below) does not do
+  this automatically, so add a Remove-Item step to your logon script if you
+  redeploy the stop-flag path across sessions.
+-->
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>muten overlay scam/scareware protection daemon</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>7</Priority>
+    <RestartOnFailure>
+      <Interval>PT1M</Interval>
+      <Count>999</Count>
+    </RestartOnFailure>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>C:\Program Files\muten\muten-overlay.exe</Command>
+      <Arguments>daemon "C:\Program Files\muten\muten-overlay-helper-windows.ps1" --rules "C:\ProgramData\muten\rules.txt" --audit-log "C:\ProgramData\muten\overlay-audit.log" --interval-ms 1000 --alert-interval-ms 250 --stop-flag "C:\ProgramData\muten\overlay-stop"</Arguments>
+    </Exec>
+  </Actions>
+</Task>

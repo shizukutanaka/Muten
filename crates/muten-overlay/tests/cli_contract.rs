@@ -204,3 +204,117 @@ fn triage_text_output_is_priority_first() {
         "top row must be top-pig: {first:?}"
     );
 }
+
+// ── daemon subcommand (real continuous protection loop) ─────────────────────
+//
+// Unlike `enforce`/`monitor` (dry-run, replay a static window list against
+// NullController), `daemon` shells out to a real platform helper via
+// SubprocessController and loops forever until a stop-flag file appears.
+// These tests spawn the real binary against a fake shell-script helper
+// (mirroring controller.rs's own `fake_helper` unit-test technique) so the
+// whole probe→loop→dismiss→audit→graceful-stop path is exercised end to end,
+// not just the library call underneath it.
+
+#[cfg(unix)]
+fn write_fake_daemon_helper(dir: &std::path::Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join("helper.sh");
+    let json = r#"[{"id":"w1","window":{"title":"your computer is infected call microsoft support 1-800-555-0100","coverage_percent":100,"topmost":true,"has_close_button":false,"blocks_input":true,"origin":"unsolicited","age_ms":200}}]"#;
+    let script = format!(
+        "#!/bin/sh\ncase \"$1\" in\n\
+         --probe) exit 0 ;;\n\
+         enumerate) echo '{json}' ;;\n\
+         dismiss) exit 0 ;;\n\
+         *) exit 1 ;;\n\
+         esac\n"
+    );
+    std::fs::write(&path, script).unwrap();
+    let mut perms = std::fs::metadata(&path).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&path, perms).unwrap();
+    path
+}
+
+#[cfg(unix)]
+#[test]
+fn daemon_fails_fast_on_unavailable_helper() {
+    let dir = tempfile::tempdir().unwrap();
+    let audit_log = dir.path().join("audit.log");
+    let child = Command::new(env!("CARGO_BIN_EXE_muten-overlay"))
+        .args([
+            "daemon",
+            "/nonexistent/muten-helper-xyz",
+            "--audit-log",
+            audit_log.to_str().unwrap(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .unwrap();
+    assert_eq!(
+        child.code(),
+        Some(1),
+        "an unavailable helper must fail fast, not loop"
+    );
+    assert!(
+        !audit_log.exists(),
+        "no audit log should be created before the probe check passes"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn daemon_runs_sweeps_and_stops_gracefully_on_stop_flag() {
+    let dir = tempfile::tempdir().unwrap();
+    let helper = write_fake_daemon_helper(dir.path());
+    let audit_log = dir.path().join("audit.log");
+    let stop_flag = dir.path().join("stop");
+    let metrics = dir.path().join("metrics.prom");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_muten-overlay"))
+        .args([
+            "daemon",
+            helper.to_str().unwrap(),
+            "--audit-log",
+            audit_log.to_str().unwrap(),
+            "--interval-ms",
+            "50",
+            "--stop-flag",
+            stop_flag.to_str().unwrap(),
+            "--metrics",
+            metrics.to_str().unwrap(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn daemon");
+
+    // Let it complete a handful of sweeps against the fake helper, then
+    // signal a graceful stop the same way a service manager's `ExecStop`
+    // would (touch the flag file — no signal handler, per the crate's
+    // forbid(unsafe_code) constraint).
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    std::fs::write(&stop_flag, "").unwrap();
+
+    let status = child.wait().expect("daemon exits");
+    assert_eq!(status.code(), Some(0), "graceful stop must exit 0");
+
+    // The audit log is a real, verifiable hash chain — not a stub.
+    let log_text = std::fs::read_to_string(&audit_log).expect("audit log written");
+    assert!(!log_text.trim().is_empty(), "at least one sweep occurred");
+    for line in log_text.lines() {
+        let v: serde_json::Value = serde_json::from_str(line).expect("valid JSONL event");
+        assert!(v["kind"].is_string());
+        assert!(v["hash"].is_string());
+    }
+
+    // Prometheus metrics reflect real, non-zero activity.
+    let metrics_text = std::fs::read_to_string(&metrics).expect("metrics written");
+    assert!(metrics_text.contains("muten_sweeps_total"));
+    assert!(!metrics_text.contains("muten_sweeps_total 0"));
+    assert!(
+        metrics_text.contains("muten_dismissals_total")
+            && !metrics_text.contains("muten_dismissals_total 0"),
+        "the scam window returned by the fake helper should have been dismissed: {metrics_text}"
+    );
+}

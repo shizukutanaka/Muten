@@ -3,7 +3,39 @@
 All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Conventional Commits](https://www.conventionalcommits.org/).
 
-## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–25)
+## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–26)
+
+### Added — `daemon` subcommand (real continuous protection loop)
+- **`muten-overlay daemon <helper>`** — Socratic gap analysis found that
+  `enforce`/`monitor` only ever run against `NullController` over a static
+  window list (dry-run/demo tooling), while `SubprocessController` (real
+  helper invocation) and `Monitor::run`/`Monitor::sweep` (a fully generic,
+  production-ready continuous loop with adaptive interval and a signal-free
+  file-based stop mechanism) already existed in the library, fully tested,
+  but nothing in the shipped binary ever wired them together. There was no
+  way to actually run muten-overlay as a live protective agent on a real
+  machine.
+- Probes the helper once at startup and fails fast (exit 1) rather than
+  looping forever against a broken helper; loops `Monitor::sweep` unbounded
+  against a real wall clock and a real `--stop-flag` file
+  (`--interval-ms`/`--alert-interval-ms`/`--audit-log`/`--stop-flag`/
+  `--metrics`); writes an honest `muten_sweeps_total` Prometheus counter on
+  graceful shutdown (hand-rolled sweep loop rather than calling
+  `Monitor::run` directly, since `run` only returns the dismissed count).
+- Verified end-to-end against a real fake-helper subprocess (not just unit
+  tests of the library pieces in isolation): 2 new `cli_contract.rs`
+  integration tests spawn the actual binary, drive it through several real
+  sweeps, trigger a graceful stop via the flag-file convention, and assert
+  the resulting audit log is a valid verifiable hash chain and the metrics
+  file reflects real, non-zero activity.
+- **`installer/overlay-helper/`** gained the actual deployment artifacts
+  the product's own docs promised ("pushed via MDM") but never shipped:
+  a systemd unit (`muten-overlay.service`), a macOS launchd agent
+  (`com.muten.overlay.plist`), a Windows Scheduled Task
+  (`muten-overlay-task.xml`), and a `README.md` documenting the
+  Intune/Jamf/GPO/Ansible push pattern for each, plus the shared
+  signal-free graceful-stop convention (touch a stop-flag file; the daemon
+  exits 0 on its own within one sweep interval).
 
 ### Added — new detection signal (E66)
 - **`notification_permission_bait`** (W=20, InterfaceInterference) — fake content-gate

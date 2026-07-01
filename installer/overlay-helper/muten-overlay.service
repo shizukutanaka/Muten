@@ -1,0 +1,61 @@
+# systemd unit for the muten-overlay daemon (Linux / X11 or Wayland).
+#
+# Install:
+#   sudo cp muten-overlay.service /etc/systemd/system/
+#   sudo cp muten-overlay-helper-linux.sh /opt/muten/       # or -wayland.sh
+#   sudo cp <path-to-built-binary>/muten-overlay /opt/muten/
+#   sudo cp your-blocklist.txt /opt/muten/rules.txt
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now muten-overlay
+#
+# Graceful stop (matches the daemon's --stop-flag contract — no signal
+# handler needed, keeps muten-overlay forbid(unsafe_code)):
+#   sudo systemctl stop muten-overlay
+# ExecStop below simply touches the stop-flag file; the daemon notices it
+# within one --interval-ms tick and exits 0 on its own. systemd's default
+# TimeoutStopSec (90s) is far more than one tick needs.
+#
+# NOTE: window enumeration/dismissal needs a live desktop session (X11
+# DISPLAY or a Wayland compositor socket). Running this as a *system* unit
+# (as shown) only works if the helper can reach the target user's session
+# (e.g. via `loginctl` env passthrough, or a compositor that exposes a
+# system-wide socket). Most fleets should instead install this as a *user*
+# unit (~/.config/systemd/user/muten-overlay.service, `systemctl --user
+# enable --now muten-overlay`) so it inherits the logged-in session's
+# DISPLAY/WAYLAND_DISPLAY automatically — swap in that placement if your
+# MDM pushes per-user configuration (e.g. via a login script or user GPO).
+
+[Unit]
+Description=muten overlay scam/scareware protection daemon
+After=graphical.target
+Wants=graphical.target
+
+[Service]
+Type=simple
+ExecStart=/opt/muten/muten-overlay daemon /opt/muten/muten-overlay-helper-linux.sh \
+    --rules /opt/muten/rules.txt \
+    --audit-log /var/log/muten/overlay-audit.log \
+    --interval-ms 1000 \
+    --alert-interval-ms 250 \
+    --stop-flag /run/muten/overlay-stop \
+    --metrics /var/lib/node_exporter/textfile_collector/muten_overlay.prom
+ExecStartPre=/bin/rm -f /run/muten/overlay-stop
+ExecStop=/bin/touch /run/muten/overlay-stop
+# ExecStop only *requests* the stop; systemd then waits up to
+# TimeoutStopSec for the daemon to notice the flag file and exit 0 on its
+# own (one --interval-ms tick, so the default 90s is far more than enough).
+# Do NOT set KillSignal/KillMode to skip this wait — that would SIGKILL the
+# process mid-sweep instead of letting it finish writing the audit chain.
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=muten
+LogsDirectory=muten
+
+# Hardening (adjust if your desktop session needs broader access to reach
+# the display server / window manager IPC socket).
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/log/muten /var/lib/node_exporter/textfile_collector /run/muten
+
+[Install]
+WantedBy=graphical.target

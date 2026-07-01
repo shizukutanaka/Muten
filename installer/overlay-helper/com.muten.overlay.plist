@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd agent for the muten-overlay daemon (macOS).
+
+  This MUST be installed as a per-user LaunchAgent, not a system-wide
+  LaunchDaemon: window enumeration/dismissal needs the logged-in user's
+  desktop session (the helper's osascript/System Events calls only see
+  windows in that session), and the Accessibility permission it requires
+  is granted per-user, not system-wide.
+
+  Install (or push via an MDM profile's "Custom Configuration Profile" /
+  Jamf "Files and Processes" payload that copies this into
+  /Library/LaunchAgents/ and runs `launchctl bootstrap gui/<uid>`):
+
+    sudo cp com.muten.overlay.plist /Library/LaunchAgents/
+    sudo cp muten-overlay-helper-macos.sh /usr/local/muten/
+    sudo cp <built-binary>/muten-overlay /usr/local/muten/
+    sudo cp your-blocklist.txt /usr/local/muten/rules.txt
+    sudo launchctl bootstrap gui/$(id -u) /Library/LaunchAgents/com.muten.overlay.plist
+
+  Accessibility permission (required for the helper's window control) must
+  be pre-granted via an MDM PPPC (Privacy Preferences Policy Control)
+  profile targeting /usr/local/muten/muten-overlay-helper-macos.sh — an
+  interactive TCC prompt cannot be scripted, so this step is MDM-profile-
+  only, not covered by this plist.
+
+  Graceful stop (matches the daemon's "stop-flag" contract — no signal
+  handler needed, keeps muten-overlay forbid(unsafe_code)):
+
+    touch /usr/local/muten/overlay-stop
+    # wait one sweep interval tick, then:
+    launchctl bootout gui/$(id -u)/com.muten.overlay
+
+  KeepAlive below restarts the daemon if it exits unexpectedly (crash,
+  helper probe failure) but NOT after a clean stop-flag exit (status 0),
+  matching the same "graceful stop is not a crash" semantics as the
+  systemd unit's Restart=on-failure.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.muten.overlay</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/muten/muten-overlay</string>
+        <string>daemon</string>
+        <string>/usr/local/muten/muten-overlay-helper-macos.sh</string>
+        <string>--rules</string>
+        <string>/usr/local/muten/rules.txt</string>
+        <string>--audit-log</string>
+        <string>/usr/local/var/log/muten/overlay-audit.log</string>
+        <string>--interval-ms</string>
+        <string>1000</string>
+        <string>--alert-interval-ms</string>
+        <string>250</string>
+        <string>--stop-flag</string>
+        <string>/usr/local/muten/overlay-stop</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/usr/local/var/log/muten/overlay-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/usr/local/var/log/muten/overlay-stderr.log</string>
+</dict>
+</plist>

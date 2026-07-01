@@ -1,16 +1,20 @@
 //! `muten-overlay` CLI. Subcommands:
 //! - `classify` / `scareware` — dry-run a single decision (no action).
 //! - `rules` — summarize a blocklist file.
-//! - `enforce` — run the full enumerate→classify→dismiss loop over a
-//!   JSON window list using the NullController (a dry-run controller
-//!   that records dismiss requests instead of touching real windows).
-//!   On a real host the daemon swaps in an OS controller; the loop
-//!   logic is identical.
+//! - `enforce` — dry-run the full enumerate→classify→dismiss loop over a
+//!   static JSON window list using the `NullController` (records dismiss
+//!   requests instead of touching real windows). For demonstration/testing.
 //! - `triage` — classify a JSON window list and print it ordered by
 //!   response priority (highest first): turn a queue of overlays into a
 //!   worklist (the operational use of the triage lens).
-//! - `monitor` — run N sweeps over a JSON window list, writing a
-//!   tamper-evident chained audit log to disk and printing a summary.
+//! - `monitor` — dry-run N sweeps over a static JSON window list against
+//!   `NullController`, writing a tamper-evident chained audit log and
+//!   printing an event summary. For demonstration/testing.
+//! - `daemon` — the real, continuous protection loop: shells out to a
+//!   platform helper via `SubprocessController` to enumerate and dismiss
+//!   actual windows, forever, until a stop-flag file appears. The
+//!   production entry point a service manager (systemd/launchd/Scheduled
+//!   Task) wraps.
 //! - `verify` — verify the tamper-evident hash chain of an audit log.
 //! - `signals` — list every built-in detection signal with metadata.
 
@@ -18,6 +22,7 @@
 
 use clap::{Parser, Subcommand};
 use muten_overlay::confusables::sanitize_for_display;
+use muten_overlay::controller::{OverlayController, SubprocessController};
 use muten_overlay::sink::merkle_root_of_log;
 use muten_overlay::{
     all_signals, classify, enforce, verify_chain, ChainedFileSink, Decision, EnumeratedWindow,
@@ -222,6 +227,46 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Run the real, continuous protection loop against a live host: shells
+    /// out to a platform helper (see `installer/overlay-helper/`) to
+    /// enumerate and dismiss actual windows, forever, writing a persistent
+    /// tamper-evident audit log. This is the production entry point;
+    /// `enforce`/`monitor` only replay a static window list against a
+    /// dry-run controller for demonstration and testing. Intended to be
+    /// wrapped by a service manager (systemd/launchd/Scheduled Task) — see
+    /// `installer/overlay-helper/README.md`. Exit: 0 on graceful stop
+    /// (`--stop-flag` file appears), 1 if the helper fails its startup probe
+    /// or a fatal I/O error occurs.
+    Daemon {
+        /// Path (or bare name, resolved via $PATH) of the platform helper
+        /// binary/script implementing the `--probe`/`enumerate`/`dismiss`
+        /// protocol. Override at runtime with $MUTEN_OVERLAY_HELPER.
+        helper: String,
+        #[arg(long)]
+        rules: Option<PathBuf>,
+        /// Milliseconds between sweeps.
+        #[arg(long, default_value_t = 1000)]
+        interval_ms: u64,
+        /// Shortened sweep interval (ms) after a sweep that produced ≥1
+        /// Block/Suspicious detection, so the daemon reacts faster to an
+        /// actively re-spawning rogue-AV process. Omit to disable.
+        #[arg(long)]
+        alert_interval_ms: Option<u64>,
+        /// Tamper-evident chained audit log path. Required: a daemon with
+        /// no persisted trail defeats the point of running one.
+        #[arg(long)]
+        audit_log: PathBuf,
+        /// If set, the daemon checks for this file's existence once per
+        /// sweep and exits gracefully the moment it appears — a signal-free
+        /// stop mechanism (keeps this crate `forbid(unsafe_code)`; a service
+        /// manager's `ExecStop`/`stop` action can simply `touch` this path.
+        #[arg(long)]
+        stop_flag: Option<PathBuf>,
+        /// Write Prometheus textfile metrics here once, on graceful
+        /// shutdown (compatible with node_exporter --collector.textfile).
+        #[arg(long)]
+        metrics: Option<PathBuf>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -281,6 +326,23 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             sweeps,
             audit_log.as_deref(),
             json,
+            metrics.as_deref(),
+        ),
+        Cmd::Daemon {
+            helper,
+            rules,
+            interval_ms,
+            alert_interval_ms,
+            audit_log,
+            stop_flag,
+            metrics,
+        } => cmd_daemon(
+            &helper,
+            rules.as_deref(),
+            interval_ms,
+            alert_interval_ms,
+            &audit_log,
+            stop_flag.as_deref(),
             metrics.as_deref(),
         ),
     }
@@ -1201,6 +1263,104 @@ fn cmd_monitor(
             eprintln!("metrics: {}", metrics_path.display());
         }
     }
+    Ok(ExitCode::from(0))
+}
+
+/// Run the real, continuous protection loop against a live host.
+///
+/// Unlike `cmd_monitor` (which replays a fixed window list against
+/// `NullController` for demonstration/testing), this constructs a real
+/// `SubprocessController` that shells out to the platform helper, probes it
+/// once up front (fail fast rather than looping forever against a broken
+/// helper), then loops `Monitor::sweep` unbounded with a real wall clock and
+/// a real stop-flag file. This is the function a systemd/launchd/Scheduled-
+/// Task wrapper actually invokes on a managed endpoint. See
+/// `installer/overlay-helper/README.md` for service-manager examples.
+///
+/// Hand-rolls the sweep loop (mirroring `Monitor::run`'s adaptive-interval
+/// logic) rather than calling `Monitor::run` directly, because `run` only
+/// returns the total dismissed count — this needs an accurate sweep count
+/// too, to report an honest `muten_sweeps_total` metric on shutdown.
+#[allow(clippy::too_many_arguments)]
+fn cmd_daemon(
+    helper: &str,
+    rules: Option<&std::path::Path>,
+    interval_ms: u64,
+    alert_interval_ms: Option<u64>,
+    audit_log: &std::path::Path,
+    stop_flag: Option<&std::path::Path>,
+    metrics: Option<&std::path::Path>,
+) -> Result<ExitCode, String> {
+    let rs = load_rules(rules)?;
+    let ctrl = SubprocessController::new(helper);
+    if !ctrl.available() {
+        return Err(format!(
+            "helper {helper:?} failed its --probe check (not found, not executable, or \
+             reported unavailable on this host) — refusing to start the loop"
+        ));
+    }
+    eprintln!("muten-overlay daemon: helper={helper:?} interval_ms={interval_ms}");
+
+    let mut mon = Monitor::new(rs);
+    let sink = ChainedFileSink::open(audit_log)
+        .map_err(|e| format!("opening audit log {}: {e}", audit_log.display()))?;
+
+    let now_ms = || {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
+    };
+    // No per-OS process-list verb in the helper protocol yet (C7-style
+    // extension); rogue_av_process stays unavailable in daemon mode, same
+    // as cmd_monitor's demo loop.
+    let no_proc = |_: &str| None;
+    let should_stop = || stop_flag.is_some_and(std::path::Path::exists);
+
+    let mut total_dismissed = 0u64;
+    let mut sweeps = 0u64;
+    loop {
+        if should_stop() {
+            break;
+        }
+        let outcome = mon.sweep(&ctrl, &sink, now_ms(), no_proc);
+        total_dismissed += u64::from(outcome.dismissed);
+        sweeps += 1;
+        let sleep_ms = if outcome.detections > 0 {
+            alert_interval_ms.unwrap_or(interval_ms)
+        } else {
+            interval_ms
+        };
+        if sleep_ms > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
+        }
+    }
+    let total = total_dismissed;
+
+    let head = sink.head();
+    eprintln!(
+        "muten-overlay daemon: stopped gracefully — {sweeps} sweep(s), {total} dismissal(s), \
+         head={head}"
+    );
+    let text = std::fs::read_to_string(audit_log)
+        .map_err(|e| format!("reading log {}: {e}", audit_log.display()))?;
+    let (event_count, verified_head) =
+        verify_chain(&text).map_err(|e| format!("written log failed verification: {e}"))?;
+    eprintln!("audit log: {event_count} event(s), head={verified_head}, verified OK");
+
+    if let Some(metrics_path) = metrics {
+        let (blocks, suspicious_count, scareware_count) = count_audit_kinds(Some(audit_log))?;
+        write_prometheus_metrics(
+            metrics_path,
+            sweeps,
+            total,
+            blocks,
+            suspicious_count,
+            scareware_count,
+        )?;
+        eprintln!("metrics: {}", metrics_path.display());
+    }
+
     Ok(ExitCode::from(0))
 }
 
