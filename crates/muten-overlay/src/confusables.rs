@@ -2327,8 +2327,15 @@ pub fn has_crypto_drain_lure(s: &str) -> bool {
         || (has("suspicious") && has("activity"));
     let wallet_alarm = wallet_word && alarm_action;
 
-    // wallet_coerce: connect/validate/verify/link + wallet brand
-    let coerce_verb = has("connect") || has("validate") || has("verify") || has("link");
+    // wallet_coerce: validate/verify/link + wallet brand. Deliberately
+    // excludes bare "connect" — "Connect Wallet" is the single most common,
+    // universally benign primary CTA on every legitimate Web3 dApp (Uniswap,
+    // OpenSea, every WalletConnect/RainbowKit-based site), so pairing it alone
+    // with a wallet word is a guaranteed false positive. A "connect" + wallet
+    // overlay with an actual coercion angle is still caught: wallet_alarm
+    // (paired with an alarm word) or `has_wallet_connect_popup_lure` (paired
+    // with a reward hook) below.
+    let coerce_verb = has("validate") || has("verify") || has("link");
     let wallet_coerce = coerce_verb && wallet_word;
 
     // seed_harvest: seed/recovery phrase or private key + request
@@ -6646,13 +6653,26 @@ mod tests {
 
     #[test]
     fn crypto_drain_lure_fires_on_wallet_coercion() {
-        assert!(has_crypto_drain_lure("connect your wallet to continue"));
         assert!(has_crypto_drain_lure("validate your wallet now"));
         assert!(has_crypto_drain_lure(
             "verify your metamask wallet to restore access"
         ));
         assert!(has_crypto_drain_lure(
             "link your coinbase wallet to claim funds"
+        ));
+    }
+
+    #[test]
+    fn crypto_drain_lure_does_not_fire_on_bare_connect_wallet() {
+        // "Connect Wallet" is the universal, always-benign primary CTA on
+        // every legitimate Web3 dApp (Uniswap, OpenSea, MetaMask itself).
+        // Bare "connect" + wallet word must NOT fire — only validate/verify/
+        // link (wallet_coerce), an alarm word (wallet_alarm), or a reward
+        // hook (has_wallet_connect_popup_lure) make it a scam signal.
+        assert!(!has_crypto_drain_lure("connect wallet — metamask"));
+        assert!(!has_crypto_drain_lure("connect your wallet to continue"));
+        assert!(!has_crypto_drain_lure(
+            "connect your wallet to view your nft collection"
         ));
     }
 

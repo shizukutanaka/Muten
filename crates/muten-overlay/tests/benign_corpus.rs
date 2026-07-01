@@ -101,6 +101,12 @@ const BENIGN_TITLES: &[&str] = &[
     "Security alert: new sign-in on your account",       // ~ authority/urgency (no demand)
     "Your free trial ends in 7 days", // ~ subscription_lure (no cancel-fee demand)
     "Update available for your application", // ~ download_trap (no "install to fix virus")
+    "Your support ticket #48213 has been created — we'll respond within 24 hours", // ~ toad_case_number_lure (case id, no call CTA)
+    "Case number CX-9931 has been assigned to your inquiry", // ~ toad_case_number_lure (case id, no call CTA)
+    "Connect Wallet — MetaMask", // ~ wallet_connect_popup_lure (connect verb, no reward hook)
+    "Connect your wallet to view your NFT collection", // ~ wallet_connect_popup_lure (connect verb, no airdrop/reward)
+    "Your connection is not private — Advanced", // ~ fake_browser_security_warning (real Chrome cert warning, no call/download CTA)
+    "NET::ERR_CERT_AUTHORITY_INVALID", // ~ fake_browser_security_warning (real cert error code, no scam CTA)
     // ── Japanese legitimate ──────────────────────────────────────────────
     "ご注文ありがとうございます - Amazon",
     "請求書の発行が完了しました",

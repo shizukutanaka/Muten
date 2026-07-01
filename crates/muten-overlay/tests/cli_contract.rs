@@ -152,7 +152,7 @@ fn stream_empty_input_exits_0() {
 const TRIAGE_BATCH: &str = r#"[
   {"id":"low-benign","title":"my vacation photos","coverage_percent":40,"has_close_button":true},
   {"id":"hi-giftcard","title":"your computer is locked buy gift card and send codes to microsoft support 1-800-555-0100","coverage_percent":100,"topmost":true,"has_close_button":false,"blocks_input":true,"origin":"unsolicited"},
-  {"id":"top-pig","title":"vip trading group guaranteed profit connect your wallet seed phrase to claim bonus","coverage_percent":100,"topmost":true,"has_close_button":false,"blocks_input":true,"origin":"unsolicited"}
+  {"id":"top-pig","title":"vip trading group guaranteed profit connect your wallet seed phrase required to claim bonus","coverage_percent":100,"topmost":true,"has_close_button":false,"blocks_input":true,"origin":"unsolicited"}
 ]"#;
 
 #[test]
