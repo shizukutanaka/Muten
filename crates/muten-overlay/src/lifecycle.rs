@@ -289,7 +289,10 @@ mod tests {
             stage_of("tech_support_invoice_scam"),
             Some(ScamStage::Extract)
         );
-        assert_eq!(stage_of("wallet_connect_popup_lure"), Some(ScamStage::Extract));
+        assert_eq!(
+            stage_of("wallet_connect_popup_lure"),
+            Some(ScamStage::Extract)
+        );
     }
 
     #[test]

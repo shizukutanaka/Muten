@@ -1011,9 +1011,9 @@ const W_DARK_WEB_BREACH_LURE: i32 = 30; // "dark web" + breach/credential vocabu
 const W_CLOUD_QUOTA_LURE: i32 = 25; // cloud storage brand + quota-full alarm (Apple ID / Google credential phishing)
 const W_WINDOWS_DEFENDER_ALERT_LURE: i32 = 35; // Windows/Microsoft Defender brand + named malware alert (MSTIC 2025)
 const W_TECH_SUPPORT_CHAT_LURE: i32 = 30; // live-chat CTA + tech-brand/support framing (Malwarebytes 2025 chat-pivot scam)
-const W_TOAD_CASE_NUMBER: i32 = 20;  // TOAD fingerprint: fake case-ID + call CTA (Proofpoint TOAD 2024)
-const W_WALLET_CONNECT: i32 = 30;  // Web3 wallet-connect phishing popup (IC3 2024 #1 loss, $4.57B)
-const W_FAKE_BROWSER_SECURITY: i32 = 25;  // Fake browser cert/SSL warning with scam CTA (impersonates Chrome/Firefox security UI)
+const W_TOAD_CASE_NUMBER: i32 = 20; // TOAD fingerprint: fake case-ID + call CTA (Proofpoint TOAD 2024)
+const W_WALLET_CONNECT: i32 = 30; // Web3 wallet-connect phishing popup (IC3 2024 #1 loss, $4.57B)
+const W_FAKE_BROWSER_SECURITY: i32 = 25; // Fake browser cert/SSL warning with scam CTA (impersonates Chrome/Firefox security UI)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
 /// The weight contribution of a built-in signal.  Returns `None` for

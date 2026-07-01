@@ -1941,18 +1941,18 @@ pub fn has_alarm_density(s: &str) -> bool {
         "immediately",
         // ── Japanese (pass-through: CJK unaffected by to_ascii_lowercase) ─────
         // Source corpus: IPA サポート詐欺, 国民生活センター, JPCERT/CC reports.
-        "感染",         // kansen — infection / infected
-        "侵害",         // shingai — breach / violation
-        "漏洩",         // rouei — data leak
-        "ハッキング",   // hakkingu — hacking
-        "不正アクセス", // fusei-akusesu — unauthorized access
-        "緊急",         // kinkyuu — emergency / urgent
-        "ウイルス",     // uirusu — virus (IPA 2024: #1 tech-support scam title word)
-        "マルウェア",   // maruuea — malware
-        "凍結",         // touketsu — frozen/locked (account-freeze impersonation)
-        "危険",         // kiken — danger/dangerous (common in JP fake-alert titles)
+        "感染",           // kansen — infection / infected
+        "侵害",           // shingai — breach / violation
+        "漏洩",           // rouei — data leak
+        "ハッキング",     // hakkingu — hacking
+        "不正アクセス",   // fusei-akusesu — unauthorized access
+        "緊急",           // kinkyuu — emergency / urgent
+        "ウイルス",       // uirusu — virus (IPA 2024: #1 tech-support scam title word)
+        "マルウェア",     // maruuea — malware
+        "凍結",           // touketsu — frozen/locked (account-freeze impersonation)
+        "危険",           // kiken — danger/dangerous (common in JP fake-alert titles)
         "ランサムウェア", // ransomuwea — ransomware (fake ransomware alerts)
-        "トロイ",       // toroi — Trojan (short for トロイの木馬, trojan horse)
+        "トロイ",         // toroi — Trojan (short for トロイの木馬, trojan horse)
     ];
     ALARM_WORDS.iter().filter(|&&w| s.contains(w)).count() >= 3
 }
@@ -6151,13 +6151,17 @@ mod tests {
         // ウイルス + 感染 + 緊急 — three independent JP fear-words in a real scam title.
         assert!(has_alarm_density("ウイルス感染を検出 — 緊急対応が必要です"));
         // 凍結 + 不正アクセス + 緊急 — account-freeze alarm pattern.
-        assert!(has_alarm_density("アカウント凍結 — 不正アクセスを検知 — 緊急確認"));
+        assert!(has_alarm_density(
+            "アカウント凍結 — 不正アクセスを検知 — 緊急確認"
+        ));
         // ランサムウェア + 感染 + 緊急 — ransomware scare.
         assert!(has_alarm_density("ランサムウェア感染を検出 緊急対処が必要"));
         // トロイ + 侵害 + 漏洩 — Trojan + breach + leak combination.
         assert!(has_alarm_density("トロイの木馬 侵害 漏洩 — サポートに電話"));
         // 危険 + マルウェア + 感染 — danger + malware + infected.
-        assert!(has_alarm_density("危険 マルウェア感染が確認されました 今すぐ対処"));
+        assert!(has_alarm_density(
+            "危険 マルウェア感染が確認されました 今すぐ対処"
+        ));
     }
 
     #[test]
@@ -8223,8 +8227,7 @@ mod tests {
         let apple_real = has_cloud_quota_lure("icloud storage almost full");
         // "Storage is full" / "running low on storage — upgrade" are Google's
         // real Drive/One quota notification wording, also legitimate.
-        let google_real =
-            has_cloud_quota_lure("google drive storage is full — upgrade your plan");
+        let google_real = has_cloud_quota_lure("google drive storage is full — upgrade your plan");
         assert!(
             !apple_real && !google_real,
             "must not fire on the real OS/app quota notification's own wording \

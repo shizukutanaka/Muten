@@ -42,6 +42,23 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 - **2 broken rustdoc links** — `[fold_letter_digits_for_phone]` (rules.rs) and
   `[normalize_for_match]` (lib.rs) referenced private functions; changed to backtick-
   only code spans. `cargo doc --no-deps` now produces 0 warnings.
+- **`crypto_drain_lure` false positive** — the `wallet_coerce` sub-pattern fired on
+  bare "connect" + any wallet word (wallet/metamask/coinbase/web3/defi/nft) with no
+  alarm or reward context. "Connect Wallet" is the universal, always-benign primary
+  CTA on every legitimate Web3 dApp (Uniswap, OpenSea, MetaMask itself); confirmed via
+  the `benign_corpus` adversarial-benign test harness. Removed "connect" from the
+  coercion-verb list — genuine drainer patterns remain caught via `wallet_alarm`
+  (connect + alarm word) and the new `wallet_connect_popup_lure` (connect + reward
+  hook).
+- **`cloud_quota_lure` false positive** — generic quota wording ("storage is full",
+  "storage almost full", "upgrade your plan") is the verbatim text of Apple's and
+  Google's own real, legitimate low-storage notifications (e.g. Apple's actual
+  notification title "iCloud Storage Almost Full"), so a phishing overlay mimicking
+  that UI could never be distinguished from the real thing by content alone. Redesigned
+  as a two-tier AND-pair: an explicit deletion/loss consequence ("your photos will be
+  deleted" — language real first-party copy avoids) fires alone; generic quota wording
+  now additionally requires explicit sign-in/urgency pressure ("verify your account",
+  "act now") that a passive OS notification never applies.
 
 ### Improved
 - **Japanese alarm_density vocabulary** — Added 6 high-confidence Japanese fear-words
@@ -55,8 +72,15 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 - **docs.rs metadata** — Added `[package.metadata.docs.rs]` with `all-features = true`
   and `rustdoc-args = ["--cfg", "docsrs"]` so docs.rs generates docs for all features.
 
+### Documentation
+- `docs/OVERLAY_BLOCKING.md` scoring table was missing 27 of 64 signals (everything
+  added after `loan_fee_scam`) — added one row per signal, each individually verified
+  against the actual `W_*` weight constant, detector doc comment, `category_of()`, and
+  `techniques_of()` mapping. Also fixed a stale `remote_access_lure` row describing the
+  old 3-signal trigger.
+
 ### Tests
-- 1 309 unit + scoring + property tests (up from 1 308 baseline for this cycle),
+- 1 311 unit + scoring + property tests (up from 1 308 baseline for this cycle),
   0 failures, clippy-clean.
 
 ## [0.6.0] — evasion-resistant normalization (rounds 10–23)
