@@ -107,6 +107,8 @@ const BENIGN_TITLES: &[&str] = &[
     "Connect your wallet to view your NFT collection", // ~ wallet_connect_popup_lure (connect verb, no airdrop/reward)
     "Your connection is not private — Advanced", // ~ fake_browser_security_warning (real Chrome cert warning, no call/download CTA)
     "NET::ERR_CERT_AUTHORITY_INVALID", // ~ fake_browser_security_warning (real cert error code, no scam CTA)
+    "iCloud Storage Almost Full", // ~ cloud_quota_lure (real Apple notification title, no consequence threat)
+    "Google Drive is running out of storage — Upgrade your plan", // ~ cloud_quota_lure (real Google copy, no urgency)
     // ── Japanese legitimate ──────────────────────────────────────────────
     "ご注文ありがとうございます - Amazon",
     "請求書の発行が完了しました",

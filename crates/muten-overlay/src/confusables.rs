@@ -3844,15 +3844,25 @@ pub fn has_dark_web_breach_lure(s: &str) -> bool {
 /// *hosted* on a cloud blob URL to evade blocklists) — this fires on the
 /// overlay *content* impersonating a cloud-storage quota alarm.
 ///
-/// AND-pair:
+/// Pattern: `cloud_brand` AND (`strong_threat` OR (`soft_quota_language` AND
+/// `phishing_urgency`)).
 /// - `cloud_brand`: named cloud storage service (iCloud, Google Drive,
 ///   OneDrive, Dropbox, etc.)
-/// - `quota_alarm`: storage-full / capacity-exceeded / data-loss urgency
-///   (e.g. "storage is full", "your photos will be deleted", "quota exceeded",
-///   "upgrade your storage plan").
+/// - `strong_threat`: an explicit deletion/loss consequence ("your photos
+///   will be deleted") — language real first-party quota notices avoid
+///   (Apple's actual copy says backups will merely stop, not that existing
+///   files "will be deleted").
+/// - `soft_quota_language` / `phishing_urgency`: generic quota wording
+///   ("storage is almost full", "upgrade your plan") is *not* sufficient
+///   alone — Apple's and Google's own real low-storage notifications use
+///   nearly this exact wording — so it must combine with explicit sign-in/
+///   urgency pressure ("verify your account", "act now") that a passive OS
+///   notification never applies.
 ///
-/// FP risk: legitimate cloud apps show quota warnings but are always
-/// user-initiated and closable → `alert_shaped` guard eliminates them.
+/// FP risk: bare quota wording is deliberately excluded from firing alone
+/// (see two-tier design above) because it is identical to Apple's/Google's
+/// real notification copy; the `alert_shaped` guard further filters
+/// user-initiated, closable legitimate cloud apps.
 /// Sources: Apple Security Research 2025 iCloud phishing spike; FTC 2025
 /// brand-impersonation report (Apple = top-5 impersonated brand);
 /// APWG Q1 2025 credential-phishing trend report.
@@ -3874,9 +3884,24 @@ pub fn has_cloud_quota_lure(s: &str) -> bool {
         || has("グーグルドライブ")   // Google Drive (JP)
         || has("ワンドライブ"); // OneDrive (JP)
 
-    let quota_alarm = has("storage is full")
-        || has("storage almost full")
-        || has("storage limit reached")
+    // Two-tier design (real Apple/Google FP guard). Apple's and Google's own
+    // real, legitimate low-storage notifications ("iCloud Storage Almost
+    // Full", "You're running out of storage — Upgrade your plan") use almost
+    // exactly this vocabulary with no scam-specific element, because a
+    // phishing overlay deliberately mimics the first-party UI. Bare quota
+    // language alone is NOT sufficient evidence; it must combine with either
+    // an explicit consequence threat real copy avoids ("your photos will be
+    // deleted" vs. Apple's softer "won't be backed up") or explicit sign-in/
+    // urgency pressure a passive OS notification never applies.
+    let strong_threat = has("your photos will be deleted")
+        || has("your files will be lost")
+        || has("your data will be deleted")
+        || has("your data will be lost")
+        || has("photos and videos will be lost")
+        || has("写真が削除されます")    // photos will be deleted (JP)
+        || has("データが失われます"); // data will be lost (JP)
+
+    let soft_quota_language = has("storage limit reached")
         || has("running out of storage")
         || has("out of storage")
         || has("storage capacity")
@@ -3885,17 +3910,23 @@ pub fn has_cloud_quota_lure(s: &str) -> bool {
         || has("upgrade your storage")
         || has("upgrade your plan")
         || has("upgrade now to keep")
-        || has("your photos will be deleted")
-        || has("your files will be lost")
-        || has("your data will be deleted")
-        || has("your data will be lost")
-        || has("photos and videos will be lost")
         || has("expand your storage")
-        || has("ストレージがいっぱい")  // storage is full (JP)
-        || has("ストレージ容量不足")    // storage capacity shortage (JP)
-        || has("ストレージを拡張")      // expand storage (JP)
-        || has("写真が削除されます")    // photos will be deleted (JP)
-        || has("データが失われます"); // data will be lost (JP)
+        || has("ストレージ容量不足")  // storage capacity shortage (JP)
+        || has("ストレージを拡張"); // expand storage (JP)
+
+    let phishing_urgency = has("verify your account")
+        || has("confirm your account")
+        || has("sign in now")
+        || has("log in now")
+        || has("act now")
+        || has("immediately")
+        || has("within 24 hours")
+        || has("today only")
+        || has("今すぐ確認")  // verify right now (JP)
+        || has("今すぐログイン") // sign in right now (JP)
+        || has("至急"); // urgent (JP)
+
+    let quota_alarm = strong_threat || (soft_quota_language && phishing_urgency);
 
     cloud_brand && quota_alarm
 }
@@ -8141,8 +8172,10 @@ mod tests {
         assert!(has_cloud_quota_lure(
             "icloud storage is full — your photos will be deleted — upgrade your storage now"
         ));
+        // Soft quota language alone (below) is not sufficient — it must pair
+        // with explicit sign-in/urgency pressure real OS notices never apply.
         assert!(has_cloud_quota_lure(
-            "apple storage running out of storage — upgrade your plan to keep your data"
+            "apple storage running out of storage — verify your account immediately to avoid losing access"
         ));
     }
 
@@ -8174,6 +8207,29 @@ mod tests {
         assert!(!has_cloud_quota_lure(
             "storage is full — please free up space to continue"
         ));
+        // Cloud brand + soft quota language WITHOUT urgency/sign-in pressure —
+        // this is exactly how real Apple/Google notifications read, so it
+        // must not fire without the phishing_urgency component.
+        assert!(!has_cloud_quota_lure(
+            "google drive is running out of storage — upgrade your plan"
+        ));
+    }
+
+    #[test]
+    fn cloud_quota_real_apple_google_notification_wording() {
+        // "iCloud Storage Almost Full" is Apple's actual, verbatim real-OS
+        // notification title (System Settings / Photos app) shown to every
+        // iPhone/Mac user who nears their iCloud quota — no scam involved.
+        let apple_real = has_cloud_quota_lure("icloud storage almost full");
+        // "Storage is full" / "running low on storage — upgrade" are Google's
+        // real Drive/One quota notification wording, also legitimate.
+        let google_real =
+            has_cloud_quota_lure("google drive storage is full — upgrade your plan");
+        assert!(
+            !apple_real && !google_real,
+            "must not fire on the real OS/app quota notification's own wording \
+             (apple={apple_real}, google={google_real})"
+        );
     }
 
     // ── has_windows_defender_alert_lure (E54) ───────────────────────────────
