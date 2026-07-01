@@ -43,15 +43,15 @@
 
 同種: clippy, ripgrep, tokei (高品質Rust crate)
 
-1. ★★★ **`#![deny(missing_docs)]`**: 公開API全docコメント強制。[現状: 多くにdocあるが強制なし]
+1. ✓DONE ★★★ **`#![deny(missing_docs)]`**: 公開API全docコメント強制。lib.rs に実装済み、0警告確認済み(2026-07)。
 2. ★★ **`cargo-semver-checks`**: API破壊を CI で検出。[根拠: 公開crateのSemVer遵守] [現状: なし]
 3. ★★ **feature flags**: `cli`/`monitor`/`sink` を optional feature 化、ライブラリ利用者が最小依存に。[現状: 全部入り]
 4. ★★★ **`no_std` 検討**: classify/rules/confusables は std不要にできる。組込み利用可能性。[現状: std前提]
-5. ★ **`#[non_exhaustive]`**: enum (Decision, DarkPatternCategory) に付与し将来の追加を非破壊に。[現状: なし]
-6. ★★ **fuzzing (cargo-fuzz)**: parse系(rules/confusables/phone)を fuzz。[根拠: property testの先] [現状: proptestのみ]
+5. ✓DONE ★ **`#[non_exhaustive]`**: DarkPatternCategory/Origin/ScamStage/VictimProfile/ExtractionVector/AbusedAuthority に付与済み(2026-07)。
+6. ✓DONE ★★ **fuzzing (cargo-fuzz)**: fuzz/fuzz_targets/ に4ターゲット実装済み(fuzz_classify, fuzz_ruleset_parse, fuzz_verify_chain, fuzz_window_json)。
 7. ✓DONE ★★ **`cargo-deny`**: 依存ライセンス/脆弱性/重複を CI gate。[現状: なし]
 8. ✓DONE ★ **MSRV CI matrix**: 1.75.0 を CI で実際にテスト。[現状: 宣言のみ]
-9. ★★ **docs.rs メタデータ**: `[package.metadata.docs.rs]` で全feature doc生成。[現状: なし]
+9. ✓DONE ★★ **docs.rs メタデータ**: `[package.metadata.docs.rs]` に all-features=true 設定済み(2026-07)。
 10. ★ **ベンチマーク (criterion)**: classify/fold のスループット計測、回帰検出。[現状: なし]
 
 ## カテゴリ4: CLI / 開発者ツール
@@ -60,7 +60,7 @@
 
 1. ★★ **シェル補完生成**: clap_complete で bash/zsh/fish/pwsh。[根拠: モダンCLI標準] [現状: なし]
 2. ✓DONE(部分, v0.5.0) ★★ **`--json` 出力**: classify/scareware に `--json`(verdict + explanation を機械可読JSONで)。SIEM連携。monitor/enforce は次段。[現状: text]
-3. ★★★ **stdin ストリーミング**: helper出力を pipe で連続classify。[現状: enforce が JSON配列一括]
+3. ✓DONE ★★★ **stdin ストリーミング**: `classify --stream` で NDJSON を1行ずつ連続classify実装済み(cmd_classify_stream)。
 4. ★ **man page 生成**: clap_mangen。[現状: なし]
 5. ★★ **`--quiet`/`--verbose`/`-v`**: ログレベル制御。[現状: なし]
 6. ★ **カラー出力**: Block=赤/Suspicious=黄(#00C4CC accent)、`--no-color`対応。[現状: プレーン]
@@ -78,17 +78,17 @@
 3. ★ **signal の信頼度重み**: helper が確実に取れたか(origin=unknownは低信頼)で減衰。[現状: bool加点]
 4. ★★ **複合ルール (AND条件)**: 「fullscreen AND phone AND no_close」を単独より高スコア。[現状: 線形加算のみ]
 5. ★ **時間減衰**: 古いsignalの重み低下。[現状: なし]
-6. ★★ **YARA風ルール言語**: blocklistを表現力あるDSLに。[根拠: YARA業界標準] [現状: prefix:形式]
+6. ★★(部分) **YARA風ルール言語**: `composite:` で AND条件DSL実装済み(rules.rs)。フル正規表現/OR条件等は未対応。[現状: composite: prefix形式]
 7. ★ **per-signal の誤検出率記録**: 監査ログから signal別精度を集計。[現状: なし]
 8. ✓DONE(v0.5.0) ★★ **explainability出力強化**: `Verdict::explain()` が「なぜBlockか」を決定論的な自然文で返す(UIGuard的)。CLI `why:` 行 + `--json` の `explanation`。[根拠: arXiv:2308.05898] [現状: signal名リスト]
-9. ★ **正規表現/glob title マッチ**: 現状substring。「call .* now」等。[現状: substring]
+9. ★(部分) **正規表現/glob title マッチ**: `glob:` で全文ワイルドカードは実装済み(rules.rs)。title: 自体への正規表現は未対応。[現状: title:はsubstring、glob:は別ruleで全文match]
 10. ★★ **ベースライン学習(任意)**: 環境の正常window分布を学習し外れ値検出。ただしML黒箱回避(I6)とのバランス要。[現状: 静的]
 
 ## カテゴリ6: 可観測性 / 改ざん耐性監査
 
 同種: Certificate Transparency, sigstore rekor, AWS QLDB
 
-1. ★★★ **Merkle tree anchoring**: 現状linear chain(検証O(n))。Merkleなら O(log n) inclusion proof。80M events→3KB proof。[根拠: Crosby-Wallach NDSS 2009, arXiv:2605.00065] [現状: linear hash chain]
+1. ✓DONE ★★★ **Merkle tree anchoring**: merkle.rs に merkle_root/inclusion_proof/consistency_proof/verify_inclusion/verify_consistency 実装済み。README記載の「RFC 6962 Merkle root + inclusion proofs」。
 2. ★★★ **root の外部アンカー**: chain head を別security domain(HSM/別ストレージ)に。同じ場所だと攻撃者が両方改竄。[根拠: weak root anchoring antipattern] [現状: 同一ファイル]
 3. ★★ **forward-security (Schneier-Kelsey)**: 鍵を進化させ過去ログを将来の鍵漏洩から保護。[根拠: Schneier-Kelsey 1999] [現状: なし]
 4. ★★ **OpenTelemetry export**: 監査イベントをOTel spanで。[根拠: CLAUDE.md §9.3] [現状: JSONLのみ]
