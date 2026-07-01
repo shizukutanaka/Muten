@@ -77,6 +77,50 @@ fn monitor_json_emits_events_document() {
     assert_eq!(v["events"][0]["kind"], "overlay_blocked");
 }
 
+/// Regression guard: `ChainedFileSink` creates its file lazily on the
+/// first `emit()`. An all-benign window list fires zero Block/Suspicious/
+/// scareware events, so the file may never be created at all — a common,
+/// healthy scenario that must exit 0 with zero counts, not crash trying to
+/// read a file that was never written.
+#[test]
+fn monitor_with_audit_log_and_metrics_on_all_benign_windows_exits_0() {
+    let dir = tempfile::tempdir().unwrap();
+    let audit_log = dir.path().join("audit.log");
+    let metrics = dir.path().join("metrics.prom");
+    let windows = r#"[{"id":"a","title":"My App","coverage_percent":10,"has_close_button":true}]"#;
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_muten-overlay"))
+        .args([
+            "monitor",
+            "-",
+            "--audit-log",
+            audit_log.to_str().unwrap(),
+            "--metrics",
+            metrics.to_str().unwrap(),
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(windows.as_bytes())
+        .unwrap();
+    let status = child.wait().unwrap();
+
+    assert_eq!(
+        status.code(),
+        Some(0),
+        "an all-benign monitor run must not fail just because no audit \
+         events (and therefore no audit-log file) were ever produced"
+    );
+    let metrics_text = std::fs::read_to_string(&metrics).expect("metrics written");
+    assert!(metrics_text.contains("muten_blocks_total 0"));
+}
+
 // ── --stream (NDJSON) contract ─────────────────────────────────────
 
 // NDJSON requires one JSON object per *line*; SCAM spans multiple lines,
@@ -317,4 +361,68 @@ fn daemon_runs_sweeps_and_stops_gracefully_on_stop_flag() {
             && !metrics_text.contains("muten_dismissals_total 0"),
         "the scam window returned by the fake helper should have been dismissed: {metrics_text}"
     );
+}
+
+/// Regression guard: `ChainedFileSink` creates its file lazily on the
+/// first `emit()`. A helper that only ever enumerates an empty desktop
+/// fires zero audit events, so the audit-log file may genuinely never be
+/// created — a common, healthy scenario (the machine has no scam overlays
+/// on it) that must exit 0, not crash trying to read a file that was
+/// never written.
+#[cfg(unix)]
+fn write_quiet_daemon_helper(dir: &std::path::Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join("quiet-helper.sh");
+    let script = "#!/bin/sh\ncase \"$1\" in\n\
+                  --probe) exit 0 ;;\n\
+                  enumerate) echo '[]' ;;\n\
+                  dismiss) exit 2 ;;\n\
+                  *) exit 1 ;;\n\
+                  esac\n";
+    std::fs::write(&path, script).unwrap();
+    let mut perms = std::fs::metadata(&path).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&path, perms).unwrap();
+    path
+}
+
+#[cfg(unix)]
+#[test]
+fn daemon_exits_cleanly_when_no_events_are_ever_emitted() {
+    let dir = tempfile::tempdir().unwrap();
+    let helper = write_quiet_daemon_helper(dir.path());
+    let audit_log = dir.path().join("audit.log");
+    let stop_flag = dir.path().join("stop");
+    let metrics = dir.path().join("metrics.prom");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_muten-overlay"))
+        .args([
+            "daemon",
+            helper.to_str().unwrap(),
+            "--audit-log",
+            audit_log.to_str().unwrap(),
+            "--interval-ms",
+            "50",
+            "--stop-flag",
+            stop_flag.to_str().unwrap(),
+            "--metrics",
+            metrics.to_str().unwrap(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn daemon");
+
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    std::fs::write(&stop_flag, "").unwrap();
+    let status = child.wait().expect("daemon exits");
+
+    assert_eq!(
+        status.code(),
+        Some(0),
+        "a daemon that never sees a scam window must still exit 0 on \
+         graceful stop, even though the audit-log file was never created"
+    );
+    let metrics_text = std::fs::read_to_string(&metrics).expect("metrics written");
+    assert!(metrics_text.contains("muten_blocks_total 0"));
 }

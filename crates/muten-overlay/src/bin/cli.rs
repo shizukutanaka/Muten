@@ -266,6 +266,12 @@ enum Cmd {
         /// shutdown (compatible with node_exporter --collector.textfile).
         #[arg(long)]
         metrics: Option<PathBuf>,
+        /// Per-call timeout (ms) for the helper process. A helper that
+        /// hangs (a broken window-manager IPC call, a stuck modal dialog,
+        /// a frozen COM call) is killed rather than freezing the daemon
+        /// loop forever — this also bounds the startup probe check.
+        #[arg(long, default_value_t = 5000)]
+        helper_timeout_ms: u64,
     },
 }
 
@@ -336,6 +342,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             audit_log,
             stop_flag,
             metrics,
+            helper_timeout_ms,
         } => cmd_daemon(
             &helper,
             rules.as_deref(),
@@ -344,6 +351,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             &audit_log,
             stop_flag.as_deref(),
             metrics.as_deref(),
+            helper_timeout_ms,
         ),
     }
 }
@@ -1175,8 +1183,15 @@ fn cmd_monitor(
         total = mon.run(&ctrl, &sink, &cfg, clock, no_proc, || false);
         let head = sink.head();
         summary_head = Some(head.clone());
-        // Verify what we just wrote.
-        let text = std::fs::read_to_string(path).map_err(|e| format!("reading log: {e}"))?;
+        // Verify what we just wrote. ChainedFileSink creates the file
+        // lazily on its first emit(); an all-benign window list never
+        // calls emit() at all, so the file may genuinely not exist yet —
+        // that's an empty, trivially-valid chain, not an error.
+        let text = if path.exists() {
+            std::fs::read_to_string(path).map_err(|e| format!("reading log: {e}"))?
+        } else {
+            String::new()
+        };
         let count = match verify_chain(&text) {
             Ok((count, head)) => {
                 if !json {
@@ -1290,16 +1305,24 @@ fn cmd_daemon(
     audit_log: &std::path::Path,
     stop_flag: Option<&std::path::Path>,
     metrics: Option<&std::path::Path>,
+    helper_timeout_ms: u64,
 ) -> Result<ExitCode, String> {
     let rs = load_rules(rules)?;
-    let ctrl = SubprocessController::new(helper);
+    let ctrl = SubprocessController::with_timeout(
+        helper,
+        std::time::Duration::from_millis(helper_timeout_ms),
+    );
     if !ctrl.available() {
         return Err(format!(
-            "helper {helper:?} failed its --probe check (not found, not executable, or \
-             reported unavailable on this host) — refusing to start the loop"
+            "helper {helper:?} failed its --probe check within {helper_timeout_ms}ms (not \
+             found, not executable, hung, or reported unavailable on this host) — refusing \
+             to start the loop"
         ));
     }
-    eprintln!("muten-overlay daemon: helper={helper:?} interval_ms={interval_ms}");
+    eprintln!(
+        "muten-overlay daemon: helper={helper:?} interval_ms={interval_ms} \
+         helper_timeout_ms={helper_timeout_ms}"
+    );
 
     let mut mon = Monitor::new(rs);
     let sink = ChainedFileSink::open(audit_log)
@@ -1342,8 +1365,17 @@ fn cmd_daemon(
         "muten-overlay daemon: stopped gracefully — {sweeps} sweep(s), {total} dismissal(s), \
          head={head}"
     );
-    let text = std::fs::read_to_string(audit_log)
-        .map_err(|e| format!("reading log {}: {e}", audit_log.display()))?;
+    // ChainedFileSink creates the log lazily on its first emit(); a quiet
+    // run with zero Block/Suspicious/scareware events (the common, healthy
+    // case) never calls emit() at all, so the file may genuinely not exist
+    // yet. Treat that the same as an empty chain (0 events, GENESIS head)
+    // rather than failing the whole graceful shutdown over it.
+    let text = if audit_log.exists() {
+        std::fs::read_to_string(audit_log)
+            .map_err(|e| format!("reading log {}: {e}", audit_log.display()))?
+    } else {
+        String::new()
+    };
     let (event_count, verified_head) =
         verify_chain(&text).map_err(|e| format!("written log failed verification: {e}"))?;
     eprintln!("audit log: {event_count} event(s), head={verified_head}, verified OK");
@@ -1370,6 +1402,13 @@ fn count_audit_kinds(audit_log: Option<&std::path::Path>) -> Result<(u64, u64, u
     let Some(path) = audit_log else {
         return Ok((0, 0, 0));
     };
+    // ChainedFileSink creates the log lazily on its first emit(); a run
+    // with zero Block/Suspicious/scareware events never calls emit() at
+    // all, so the file may genuinely not exist yet — that's 0 of each
+    // kind, not an error.
+    if !path.exists() {
+        return Ok((0, 0, 0));
+    }
     let text = std::fs::read_to_string(path).map_err(|e| format!("reading log: {e}"))?;
     let (mut blocks, mut suspicious, mut scareware) = (0u64, 0u64, 0u64);
     for line in text.lines() {

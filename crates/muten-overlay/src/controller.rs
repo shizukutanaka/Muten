@@ -41,6 +41,13 @@ pub enum ControllerError {
     Dismiss(String),
     /// This controller is not supported on the current host.
     Unsupported,
+    /// The helper process did not exit within the configured timeout and
+    /// was killed. Distinct from `Enumerate`/`Dismiss` because a hang (a
+    /// broken window-manager IPC call, a stuck modal dialog blocking
+    /// AppleScript, a frozen COM call) is a different failure mode than a
+    /// clean non-zero exit or unparseable output, and an operator
+    /// triaging the audit log benefits from telling them apart.
+    Timeout(String),
 }
 
 impl std::fmt::Display for ControllerError {
@@ -49,6 +56,7 @@ impl std::fmt::Display for ControllerError {
             Self::Enumerate(s) => write!(f, "enumerate failed: {s}"),
             Self::Dismiss(s) => write!(f, "dismiss failed: {s}"),
             Self::Unsupported => write!(f, "controller unsupported on this host"),
+            Self::Timeout(s) => write!(f, "helper timed out: {s}"),
         }
     }
 }
@@ -160,24 +168,112 @@ impl OverlayController for NullController {
 /// separate, swappable helper. The cost is one process spawn per
 /// sweep, well within the daemon's tick budget (same trade-off the
 /// audio backend documents).
+///
+/// Every call is bounded by [`Self::timeout`] (default 5s): a helper that
+/// hangs — a broken window-manager IPC call, a stuck modal blocking
+/// AppleScript, a frozen COM call — is killed rather than blocking the
+/// daemon loop forever. Without this, a single hung helper invocation
+/// would freeze not just that sweep but the daemon's entire graceful-stop
+/// mechanism, since the stop-flag is only checked *between* sweeps.
 pub struct SubprocessController {
     helper: String,
+    timeout: std::time::Duration,
 }
+
+/// Default per-call timeout: generous for a single `wmctrl`/`osascript`/
+/// PowerShell invocation (which normally completes in well under a
+/// second) while still bounding a genuine hang to a few seconds rather
+/// than forever.
+const DEFAULT_HELPER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// How often the timeout-bounded waiter polls the child for exit. Short
+/// enough that the timeout deadline is honored promptly, long enough to
+/// avoid busy-spinning the CPU while waiting on a normal sub-second call.
+const HELPER_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(20);
 
 impl SubprocessController {
     /// `helper` is the path/name of the platform helper. Override via
-    /// `$MUTEN_OVERLAY_HELPER` for testing or non-PATH installs.
+    /// `$MUTEN_OVERLAY_HELPER` for testing or non-PATH installs. Uses
+    /// [`DEFAULT_HELPER_TIMEOUT`]; call [`Self::with_timeout`] to override.
     #[must_use]
     pub fn new(helper: impl Into<String>) -> Self {
-        let h = std::env::var("MUTEN_OVERLAY_HELPER").unwrap_or_else(|_| helper.into());
-        Self { helper: h }
+        Self::with_timeout(helper, DEFAULT_HELPER_TIMEOUT)
     }
 
+    /// Like [`Self::new`], with an explicit per-call timeout.
+    #[must_use]
+    pub fn with_timeout(helper: impl Into<String>, timeout: std::time::Duration) -> Self {
+        let h = std::env::var("MUTEN_OVERLAY_HELPER").unwrap_or_else(|_| helper.into());
+        Self { helper: h, timeout }
+    }
+
+    /// Run the helper with `args`, killing it and returning
+    /// `ControllerError::Timeout` if it does not exit within `self.timeout`.
+    ///
+    /// Spawns (rather than using the simpler `Command::output()`) so the
+    /// child can be polled and killed; stdout/stderr are drained on
+    /// separate threads *while* polling, not after, so a helper that
+    /// writes more than the OS pipe buffer before exiting can't deadlock
+    /// this call (it would otherwise block on `write()` waiting for us to
+    /// read, while we block waiting for it to exit).
     fn run(&self, args: &[&str]) -> Result<std::process::Output, ControllerError> {
-        std::process::Command::new(&self.helper)
+        let mut child = std::process::Command::new(&self.helper)
             .args(args)
-            .output()
-            .map_err(|e| ControllerError::Enumerate(e.to_string()))
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| ControllerError::Enumerate(e.to_string()))?;
+
+        let stdout_pipe = child.stdout.take();
+        let stderr_pipe = child.stderr.take();
+        let drain = |mut pipe: Option<std::process::ChildStdout>| {
+            std::thread::spawn(move || {
+                let mut buf = Vec::new();
+                if let Some(p) = pipe.as_mut() {
+                    use std::io::Read;
+                    let _ = p.read_to_end(&mut buf);
+                }
+                buf
+            })
+        };
+        let drain_err = |mut pipe: Option<std::process::ChildStderr>| {
+            std::thread::spawn(move || {
+                let mut buf = Vec::new();
+                if let Some(p) = pipe.as_mut() {
+                    use std::io::Read;
+                    let _ = p.read_to_end(&mut buf);
+                }
+                buf
+            })
+        };
+        let stdout_handle = drain(stdout_pipe);
+        let stderr_handle = drain_err(stderr_pipe);
+
+        let start = std::time::Instant::now();
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) => {
+                    if start.elapsed() >= self.timeout {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return Err(ControllerError::Timeout(format!(
+                            "{:?} did not exit within {:?}",
+                            self.helper, self.timeout
+                        )));
+                    }
+                    std::thread::sleep(HELPER_POLL_INTERVAL);
+                }
+                Err(e) => return Err(ControllerError::Enumerate(e.to_string())),
+            }
+        };
+        let stdout = stdout_handle.join().unwrap_or_default();
+        let stderr = stderr_handle.join().unwrap_or_default();
+        Ok(std::process::Output {
+            status,
+            stdout,
+            stderr,
+        })
     }
 }
 
@@ -187,12 +283,12 @@ impl OverlayController for SubprocessController {
     }
 
     fn available(&self) -> bool {
-        // The helper must run and answer `--probe` with exit 0. We
-        // don't trust PATH alone since a same-named non-helper could
-        // shadow it.
-        std::process::Command::new(&self.helper)
-            .arg("--probe")
-            .output()
+        // The helper must run and answer `--probe` with exit 0 within the
+        // timeout. We don't trust PATH alone since a same-named non-helper
+        // could shadow it. Routed through the same timeout-bounded `run`
+        // as enumerate/dismiss so a hung helper fails the startup probe
+        // instead of hanging it.
+        self.run(&["--probe"])
             .map(|o| o.status.success())
             .unwrap_or(false)
     }
@@ -289,8 +385,16 @@ mod tests {
             "enumerate failed: x"
         );
         assert_eq!(
+            ControllerError::Dismiss("y".into()).to_string(),
+            "dismiss failed: y"
+        );
+        assert_eq!(
             ControllerError::Unsupported.to_string(),
             "controller unsupported on this host"
+        );
+        assert_eq!(
+            ControllerError::Timeout("z".into()).to_string(),
+            "helper timed out: z"
         );
     }
 
@@ -396,5 +500,99 @@ mod tests {
         // w1 is not "win"/"gone" → helper exit 1 → dismiss errored →
         // folded to dismissed=false (sweep didn't abort).
         assert!(!outcomes[0].dismissed);
+    }
+
+    /// A helper that hangs forever on every verb — models a broken
+    /// window-manager IPC call, a stuck modal blocking AppleScript, or a
+    /// frozen COM call. Used to prove the timeout actually bounds the
+    /// wait rather than blocking indefinitely.
+    #[cfg(unix)]
+    fn hanging_helper(dir: &std::path::Path) -> String {
+        use std::io::Write;
+        let path = dir.join("hang.sh");
+        // `sleep infinity` isn't portable to all /bin/sh; a very long
+        // fixed sleep behaves identically for this test's purposes (the
+        // timeout will kill it long before it would ever complete).
+        let script = "#!/bin/sh\nsleep 3600\n";
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut f = std::fs::File::create(&path).unwrap();
+            f.write_all(script.as_bytes()).unwrap();
+            f.sync_all().unwrap();
+            let mut perms = f.metadata().unwrap().permissions();
+            perms.set_mode(0o755);
+            drop(f);
+            std::fs::set_permissions(&path, perms).unwrap();
+        }
+        path.to_string_lossy().into_owned()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn subprocess_available_returns_false_on_hung_helper_within_timeout() {
+        let _guard = SUBPROCESS_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let helper = hanging_helper(dir.path());
+        let c = SubprocessController::with_timeout(helper, std::time::Duration::from_millis(200));
+        let start = std::time::Instant::now();
+        assert!(
+            !c.available(),
+            "a hung --probe must be treated as unavailable, not block forever"
+        );
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(2),
+            "available() must return promptly once the timeout elapses, took {:?}",
+            start.elapsed()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn subprocess_enumerate_times_out_on_hung_helper() {
+        let _guard = SUBPROCESS_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let helper = hanging_helper(dir.path());
+        let c = SubprocessController::with_timeout(helper, std::time::Duration::from_millis(200));
+        let start = std::time::Instant::now();
+        let err = c.enumerate().expect_err("hung helper must error, not hang");
+        assert!(
+            matches!(err, ControllerError::Timeout(_)),
+            "expected Timeout, got {err:?}"
+        );
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(2),
+            "enumerate() must return promptly once the timeout elapses, took {:?}",
+            start.elapsed()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn subprocess_dismiss_times_out_on_hung_helper() {
+        let _guard = SUBPROCESS_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let helper = hanging_helper(dir.path());
+        let c = SubprocessController::with_timeout(helper, std::time::Duration::from_millis(200));
+        let err = c
+            .dismiss(&"w1".to_string())
+            .expect_err("hung helper must error, not hang");
+        assert!(matches!(err, ControllerError::Timeout(_)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn subprocess_default_timeout_does_not_affect_well_behaved_helper() {
+        // A regression guard: adding the timeout mechanism must not slow
+        // down or break a normal, fast-responding helper.
+        let _guard = SUBPROCESS_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let helper = fake_helper(dir.path());
+        let c = SubprocessController::new(helper);
+        let start = std::time::Instant::now();
+        assert!(c.available());
+        assert!(
+            start.elapsed() < std::time::Duration::from_millis(500),
+            "a fast helper must not be slowed down by the timeout machinery"
+        );
     }
 }

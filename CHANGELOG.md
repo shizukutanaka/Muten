@@ -3,7 +3,35 @@
 All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Conventional Commits](https://www.conventionalcommits.org/).
 
-## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–26)
+## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–27)
+
+### Fixed — hung-helper freeze and zero-event crash in the new daemon loop
+- **`SubprocessController` had no timeout** — `Command::output()` blocks
+  synchronously forever; a helper hang (a broken window-manager IPC call, a
+  stuck modal blocking AppleScript, a frozen COM call) would freeze the
+  entire `daemon` loop, including its own graceful-stop check (the
+  stop-flag is only polled *between* sweeps). Found by turning the same
+  Socratic questioning on the `daemon` feature just added in the prior
+  round: "what happens if the subprocess never returns?" Fixed by
+  rewriting `run`/`available` to spawn, drain stdout/stderr on separate
+  threads (avoiding a pipe-buffer deadlock while polling), and poll
+  `try_wait` against a bounded timeout (default 5s, `with_timeout`
+  constructor, `--helper-timeout-ms` CLI flag) — a hung helper is killed
+  and surfaced as the new `ControllerError::Timeout` variant instead of
+  blocking forever. 4 new tests prove a genuinely hung helper (`sleep
+  3600`) is killed within the configured timeout, not left running.
+- **`cmd_monitor`/`cmd_daemon` crashed on an all-benign run** —
+  `ChainedFileSink` creates its log file lazily on the first `emit()`; a
+  run where every window classifies as Allow (or, for `daemon`, an empty
+  desktop) never calls `emit()` at all, so the file may genuinely never
+  exist. The post-run verification/metrics code unconditionally read the
+  file, so this common, healthy, zero-detection case crashed with exit 1
+  instead of exiting 0 with zero counts — caught by manually running the
+  exact scenario end-to-end (not just unit-testing the pieces in
+  isolation). Fixed in 3 places (`cmd_monitor`'s own chain-verification
+  read, `cmd_daemon`'s, and the shared `count_audit_kinds` helper both use)
+  by treating a missing file the same as an empty, trivially-valid chain.
+  2 new `cli_contract.rs` regression tests cover both subcommands.
 
 ### Added — `daemon` subcommand (real continuous protection loop)
 - **`muten-overlay daemon <helper>`** — Socratic gap analysis found that
@@ -124,8 +152,8 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
   old 3-signal trigger.
 
 ### Tests
-- 1 319 unit + scoring + property tests (up from 1 308 baseline for this cycle),
-  0 failures, clippy-clean.
+- 1 323 unit tests + 17 `cli_contract` integration tests (up from 1 308
+  unit-test baseline for this cycle), 0 failures, clippy-clean.
 
 ## [0.6.0] — evasion-resistant normalization (rounds 10–23)
 
