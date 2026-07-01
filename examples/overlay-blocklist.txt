@@ -5,10 +5,23 @@
 # Sekoia, Huntress (KongTuke/CrashFix), Gen Threat Labs.
 #
 # Format:
-#   host: <domain>     block any URL on this host or a subdomain of it
-#   title: <substring> contribute W_TITLE_HIT to the suspicion score
-#   glob: <pattern>    full-string wildcard match (* = any chars, ? = one char)
-#   <bare line>        treated as a host rule
+#   host: <domain>       block any URL on this host or a subdomain of it
+#   title: <substring>   contribute W_TITLE_HIT to the suspicion score
+#   glob: <pattern>      full-string wildcard match (* = any chars, ? = one char)
+#   process: <name>      known rogue-AV process name (fires `rogue_av_process`);
+#                        matched after stripping spaces/hyphens/underscores
+#   phone: <number>      known scam phone number, digits-only match (any
+#                        separator format matches); requires >= 7 digits
+#   composite: <name> <weight> <cond1> [<cond2> ...]
+#                        declarative AND-condition rule: contributes <weight>
+#                        only when every condition holds (e.g. `fullscreen
+#                        topmost has_phone_number`). See SPECIFICATION.md
+#                        for the full condition-name list.
+#   weight: <signal> <value>
+#                        override a built-in signal's default score
+#                        contribution without recompiling (e.g. tune down an
+#                        overly-aggressive signal in the field)
+#   <bare line>          treated as a host rule
 #   # comment
 #
 # SCOPE NOTE: muten's classifier blocks on a CONFIRMED host match or a
@@ -747,3 +760,37 @@ title: 駐車違反反則金未払いすぐにお支払いください未払い�
 title: 高速料金の未払い料金があります至急お支払いください罰則金の支払いを         # JP: expressway toll unpaid, urgent payment, penalty
 glob: * parking violation * pay within *
 glob: * unpaid toll * pay immediately *
+
+# ─────────────────────────────────────────────────────────────────
+# ADVANCED RULE TYPES (process: / phone: / composite: / weight:)
+# These are less commonly needed than host:/title:/glob: above, but are
+# real, supported rule types — demonstrated here so operators discover
+# them. See the Format block at the top of this file and
+# docs/SPECIFICATION.md for the full syntax and condition-name list.
+# ─────────────────────────────────────────────────────────────────
+
+# process: known rogue-AV / fake-security-tool process names — see the
+# "PROCESS PATTERNS" sections above for the 49 shipped by default.
+# Matched against the OS process list (case-insensitive, spaces/hyphens/
+# underscores stripped), independent of any window title or URL.
+
+# phone: known scam phone numbers. Digits-only match, so any separator
+# format in the title (1-800-…, +81-120-…, dot- or space-separated)
+# still matches this single rule.
+phone: 1-800-555-0100
+phone: +81-120-000-000
+
+# composite: declarative AND-condition rules (C5-2). Fires only when
+# every listed condition holds; contributes the given weight in addition
+# to whatever individual signals also fired. Useful for scoring a
+# specific combination higher than the sum of its parts without waiting
+# for a code release.
+composite: fullscreen_phone_lockdown 15 fullscreen topmost has_phone_number no_close_button
+composite: unsolicited_blocklist_hit 10 unsolicited has_blocklist_title
+
+# weight: override a built-in signal's default score contribution, e.g.
+# to soften a signal that is firing too aggressively in your fleet, or
+# raise one that under-scores for your risk tolerance. Value may be
+# negative.
+weight: phone_number 25
+weight: urgency_countdown 10
