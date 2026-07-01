@@ -11,7 +11,7 @@ tool and now enforces two things:
   antivirus / scareware**.
 
 This repository currently contains the **screen** half:
-[`crates/muten-overlay`](crates/muten-overlay) (v0.5.0).
+[`crates/muten-overlay`](crates/muten-overlay) (v0.6.0).
 
 ## Design principles
 
@@ -34,10 +34,10 @@ This repository currently contains the **screen** half:
 | `classify()` | Explainable overlay scorer → Allow / Suspicious / Block |
 | scareware detection | Repeat-flood + rogue-AV process signals |
 | confusable folding | Defeats homoglyph/typosquat evasion (title **and** host) |
-| dark-pattern categories | Tags verdicts with Gray et al. (2018) strategies |
+| 10-lens signal analysis | Dark-pattern category (Gray et al. 2018), MITRE ATT&CK technique, Cialdini persuasion principle, extraction vector + recoverability, kill-chain stage, victim-targeting profile, loss magnitude, campaign fingerprint, response-priority triage, abused-authority impersonation |
 | `Monitor` | Daemon sweep loop + tamper-evident SHA-256 audit chain (RFC 6962 Merkle root + inclusion proofs) |
 | OS helpers | Windows (Win32), macOS (osascript), X11 (wmctrl), **Wayland** (wlroots) |
-| CLI | `classify` / `rules` / `scareware` / `enforce` / `monitor` |
+| CLI | `classify` / `scareware` / `rules` / `enforce` / `triage` / `monitor` / `verify` / `signals` |
 
 Detection is informed by published threat intel and the security literature
 (FBI IC3 2025, Microsoft Edge Scareware Blocker, IPA/消費者庁 for Japanese
@@ -87,7 +87,7 @@ produces these.
 
 ## Status
 
-`muten-overlay` v0.6.0 — 1307 tests, `clippy -D warnings` clean, MSRV 1.75.0.
+`muten-overlay` v0.6.0 — 1311 tests, `clippy -D warnings` clean, MSRV 1.75.0.
 CI runs format/lint/test, an MSRV build, and a supply-chain gate
 (cargo-audit + cargo-deny + gitleaks) on every PR.
 
