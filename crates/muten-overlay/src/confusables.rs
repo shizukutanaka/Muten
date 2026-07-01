@@ -11234,6 +11234,147 @@ mod e65_tests {
     }
 }
 
+/// Fake browser-notification-permission bait (E66).
+///
+/// A 2025-2026 growth vector distinct from ClickFix: scam pages gate access
+/// to a fake video, download, or "content" behind the browser's native
+/// notification-permission prompt ("Click Allow to continue watching") rather
+/// than a CAPTCHA. Once the victim clicks "Allow", the site can push
+/// OS-level notifications — including fake system/security alerts that
+/// visually mimic Windows Defender or Chrome — persistently, even with the
+/// browser closed, without ever needing to re-lure the victim into visiting
+/// the site again (Malwarebytes Nov 2025, "Matrix Push C2"; Trend Micro /
+/// Cybernews reporting on the broader "push notification scam" category).
+///
+/// Distinct from `has_clickfix_instruction`'s `captcha_frame` (which requires
+/// "not a robot" / "verify human" / "confirm human" language): this signal
+/// fires on the equally common variant that has no CAPTCHA framing at all —
+/// "Allow notifications to continue" — which `clickfix_instruction` does not
+/// cover. Also distinct from `has_download_trap_lure` (download/install/
+/// update + required), since "notifications" is not in that vocabulary.
+///
+/// AND-pair:
+/// - `notify_verb`: an instruction to allow/enable/confirm a notification
+///   permission grant.
+/// - `false_gate`: framing the permission grant as a prerequisite to unlock
+///   content — no legitimate service actually requires a notification-
+///   permission grant to watch a video, start a download, or view a page.
+///
+/// The `alert_shaped` guard in `classify()` keeps a legitimate, closable,
+/// user-initiated "enable notifications for updates?" prompt (which a real
+/// news site or web-app might show) out of scope.
+#[must_use]
+pub fn has_notification_permission_bait(s: &str) -> bool {
+    let has = |a: &str| s.contains(a);
+
+    let notify_verb = has("allow notifications")
+        || has("click allow")
+        || has("press allow")
+        || has("tap allow")
+        || has("enable notifications")
+        || has("confirm notifications")
+        || has("confirm push notifications")
+        || has("allow push notifications")
+        || has("通知を許可")      // allow notifications (JP)
+        || has("許可をクリック")  // click allow (JP)
+        || has("通知を有効")      // enable notifications (JP)
+        || has("プッシュ通知を許可"); // allow push notifications (JP)
+
+    let false_gate = has("to continue")
+        || has("to watch")
+        || has("to download")
+        || has("to access")
+        || has("to view")
+        || has("to play")
+        || has("to proceed")
+        || has("続行するには")    // to continue (JP)
+        || has("視聴するには")    // to watch (JP)
+        || has("ダウンロードするには") // to download (JP)
+        || has("再生するには"); // to play (JP)
+
+    notify_verb && false_gate
+}
+
+#[cfg(test)]
+mod e66_tests {
+    use super::*;
+
+    #[test]
+    fn notification_bait_fires_allow_to_continue_watching() {
+        assert!(has_notification_permission_bait(
+            "click allow to continue watching this video"
+        ));
+    }
+
+    #[test]
+    fn notification_bait_fires_allow_to_download() {
+        assert!(has_notification_permission_bait(
+            "allow notifications to download this file"
+        ));
+    }
+
+    #[test]
+    fn notification_bait_fires_enable_to_access() {
+        assert!(has_notification_permission_bait(
+            "enable notifications to access this content"
+        ));
+    }
+
+    #[test]
+    fn notification_bait_fires_jp() {
+        assert!(has_notification_permission_bait(
+            "続行するには通知を許可してください"
+        ));
+        assert!(has_notification_permission_bait(
+            "視聴するにはプッシュ通知を許可する必要があります"
+        ));
+    }
+
+    #[test]
+    fn notification_bait_does_not_fire_half_pair() {
+        // notify_verb without false_gate
+        assert!(!has_notification_permission_bait(
+            "allow notifications to stay updated on new articles"
+        ));
+        // false_gate without notify_verb
+        assert!(!has_notification_permission_bait(
+            "sign in to continue watching this video"
+        ));
+    }
+
+    #[test]
+    fn notification_bait_does_not_fire_legitimate_prompt() {
+        // A real news site's opt-in, no false gate framing
+        assert!(!has_notification_permission_bait(
+            "get notified about breaking news — enable notifications"
+        ));
+    }
+
+    #[test]
+    fn notification_bait_distinct_from_clickfix_captcha() {
+        // No CAPTCHA/robot/human language — this is exactly the gap
+        // has_clickfix_instruction's captcha_frame does not cover.
+        assert!(!has_clickfix_instruction(
+            "click allow to continue watching this video"
+        ));
+        assert!(has_notification_permission_bait(
+            "click allow to continue watching this video"
+        ));
+    }
+
+    #[test]
+    fn notification_bait_distinct_from_download_trap() {
+        // "notifications" is not in download_trap_lure's plugin/software
+        // vocabulary, so the two signals do not double-fire on this title.
+        assert!(!has_download_trap_lure(
+            "allow notifications to access this content"
+        ));
+        assert!(has_notification_permission_bait(
+            "allow notifications to access this content"
+        ));
+    }
+}
+
 // ── Spread-character de-obfuscation (Socratic robustness audit) ───────────────
 
 #[cfg(test)]

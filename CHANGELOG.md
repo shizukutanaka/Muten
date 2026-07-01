@@ -3,7 +3,19 @@
 All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Conventional Commits](https://www.conventionalcommits.org/).
 
-## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–24)
+## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–25)
+
+### Added — new detection signal (E66)
+- **`notification_permission_bait`** (W=20, InterfaceInterference) — fake content-gate
+  behind the browser's native notification-permission prompt: "Click Allow to continue
+  watching / download / access" with no CAPTCHA framing at all (distinct from
+  `clickfix_instruction`'s "not a robot" / "verify human" vocabulary, which does not
+  cover this variant). Once granted, the site can push OS-level fake system alerts
+  persistently, even with the browser closed — a distinct 2025-2026 growth vector
+  ("Matrix Push C2", Malwarebytes Nov 2025) from ClickFix's clipboard-paste technique.
+  Full 10-lens wiring: T1566 Phishing, Extract lifecycle stage, DeviceTakeover
+  extraction (Mitigable), Medium magnitude, General victim profile; exempt from the
+  persuasion lens as an action/gate mechanic (like `download_trap_lure`/`qr_code_lure`).
 
 ### Added — new detection signals (E63–E65)
 - **`toad_case_number_lure`** (W=20, InterfaceInterference) — TOAD (Telephone-Oriented
@@ -80,7 +92,7 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
   old 3-signal trigger.
 
 ### Tests
-- 1 311 unit + scoring + property tests (up from 1 308 baseline for this cycle),
+- 1 319 unit + scoring + property tests (up from 1 308 baseline for this cycle),
   0 failures, clippy-clean.
 
 ## [0.6.0] — evasion-resistant normalization (rounds 10–23)

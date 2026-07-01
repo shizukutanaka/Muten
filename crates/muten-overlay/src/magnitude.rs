@@ -193,6 +193,7 @@ pub fn magnitude_of(signal: &str) -> Option<LossMagnitude> {
         | "prize_lure"              // claim fee escalation: $500–$5,000
         | "qr_code_lure"            // quishing → payment/credential: $500–$10,000
         | "screen_share_lure"       // remote-session bank drain: $2,000–$20,000
+        | "notification_permission_bait" // persistent push funnel → tech-support escalation: $500–$10,000
         => Some(LossMagnitude::Medium),
 
         // ── Large ($20K – $200K) ────────────────────────────────────────────

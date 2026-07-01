@@ -210,7 +210,7 @@ pub fn principles_of(signal: &str) -> &'static [PersuasionPrinciple] {
         // They are listed explicitly so a future signal is a conscious choice,
         // not an accidental omission (guarded by the cross-lens coverage test).
         "gift_card_demand" | "download_trap_lure" | "remote_access_lure" | "screen_share_lure"
-        | "qr_code_lure" => &[],
+        | "qr_code_lure" | "notification_permission_bait" => &[],
 
         // Descriptive / geometry / homoglyph-mechanic signals: no persuasion
         // principle of their own (handled by the UI-mechanic lens).
@@ -367,6 +367,7 @@ mod tests {
             "remote_access_lure",
             "screen_share_lure",
             "qr_code_lure",
+            "notification_permission_bait",
         ] {
             assert!(
                 principles_of(s).is_empty(),

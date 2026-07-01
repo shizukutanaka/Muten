@@ -133,6 +133,7 @@ pub fn stage_of(signal: &str) -> Option<ScamStage> {
         | "screen_share_lure"           // "share your screen with our agent"
         | "clickfix_instruction"        // "press Win+R and paste this command"
         | "download_trap_lure"          // "download our security tool to continue"
+        | "notification_permission_bait" // "click allow to continue watching"
         | "qr_code_lure"                // "scan this QR code to verify" (quishing)
         | "crypto_drain_lure"           // "connect your wallet / enter seed phrase"
         | "pig_butchering_lure"         // "invest on this platform" (deposit demand)

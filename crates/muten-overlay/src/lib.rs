@@ -619,6 +619,14 @@ impl Verdict {
         if fired(&["qr_code_lure"]) {
             out.push("Do not scan the QR code shown.");
         }
+        // 6b. Never click "Allow" on a notification-permission prompt gating content.
+        if fired(&["notification_permission_bait"]) {
+            out.push(
+                "Do not click 'Allow' on the notification prompt — no legitimate site requires \
+                 notification permission to view a page, watch a video, or start a download, and \
+                 granting it lets the site push fake system alerts to your device later.",
+            );
+        }
         // 7. Authority / utility / court impersonation reassurance.
         if fired(&[
             "authority_lure",
@@ -869,6 +877,9 @@ fn signal_phrase(signal: &str) -> &str {
         "fake_browser_security_warning" => {
             "displays a fake browser security certificate or SSL error warning combined with a support call, download, or 'click to fix' CTA — real browser security errors never include a phone number or tech-support button"
         }
+        "notification_permission_bait" => {
+            "gates access to a video, download, or page behind the browser's notification-permission prompt — no legitimate site requires a notification-permission grant to view content, and granting it lets the attacker push fake system alerts directly to the OS notification tray afterward"
+        }
         "input_trap" => "locks the screen by trapping keyboard/mouse",
         "sudden_fullscreen_takeover" => "seized the full screen the instant it appeared",
         other => other,
@@ -1014,6 +1025,7 @@ const W_TECH_SUPPORT_CHAT_LURE: i32 = 30; // live-chat CTA + tech-brand/support 
 const W_TOAD_CASE_NUMBER: i32 = 20; // TOAD fingerprint: fake case-ID + call CTA (Proofpoint TOAD 2024)
 const W_WALLET_CONNECT: i32 = 30; // Web3 wallet-connect phishing popup (IC3 2024 #1 loss, $4.57B)
 const W_FAKE_BROWSER_SECURITY: i32 = 25; // Fake browser cert/SSL warning with scam CTA (impersonates Chrome/Firefox security UI)
+const W_NOTIFICATION_PERMISSION_BAIT: i32 = 20; // fake "click Allow to continue" notification-permission gate (Matrix Push C2 2025)
 const W_USER_INITIATED_RELIEF: i32 = -40; // user opened it → trust more
 
 /// The weight contribution of a built-in signal.  Returns `None` for
@@ -1116,6 +1128,7 @@ pub fn signal_weight(name: &str) -> Option<i32> {
         "toad_case_number_lure" => Some(W_TOAD_CASE_NUMBER),
         "wallet_connect_popup_lure" => Some(W_WALLET_CONNECT),
         "fake_browser_security_warning" => Some(W_FAKE_BROWSER_SECURITY),
+        "notification_permission_bait" => Some(W_NOTIFICATION_PERMISSION_BAIT),
         "user_initiated" => Some(W_USER_INITIATED_RELIEF),
         _ => None,
     }
@@ -1207,6 +1220,7 @@ fn is_high_fidelity(signal: &str) -> bool {
             | "toad_case_number_lure"
             | "wallet_connect_popup_lure"
             | "fake_browser_security_warning"
+            | "notification_permission_bait"
     )
 }
 
@@ -1341,6 +1355,7 @@ pub fn all_signals() -> Vec<SignalInfo> {
         "toad_case_number_lure",
         "wallet_connect_popup_lure",
         "fake_browser_security_warning",
+        "notification_permission_bait",
     ];
     NAMES
         .iter()
@@ -2533,6 +2548,17 @@ pub fn classify(w: &OverlayWindow, rules: &Ruleset) -> Verdict {
     if alert_shaped && confusables::has_fake_browser_security_warning(&normalized_title) {
         score += rules.weight_of("fake_browser_security_warning", W_FAKE_BROWSER_SECURITY);
         signals.push("fake_browser_security_warning".into());
+    }
+
+    // Fake browser-notification-permission gate (Matrix Push C2 2025-2026):
+    // "Click Allow to continue watching" — distinct from clickfix_instruction's
+    // CAPTCHA framing and from download_trap_lure's install/update vocabulary.
+    if alert_shaped && confusables::has_notification_permission_bait(&normalized_title) {
+        score += rules.weight_of(
+            "notification_permission_bait",
+            W_NOTIFICATION_PERMISSION_BAIT,
+        );
+        signals.push("notification_permission_bait".into());
     }
 
     // Remote-access-tool lure (FTC / FBI IC3 2024). Tech-support scammers
@@ -8202,7 +8228,7 @@ mod tests {
     }
 
     /// Single source of truth for the curated set of content / AND-pair and
-    /// structural-URL detection signals that `classify()` can emit (E1–E61).
+    /// structural-URL detection signals that `classify()` can emit (E1–E66).
     /// Both the registry-completeness guard and the full-wiring guard below
     /// consume this one list, so a new content signal is declared in exactly
     /// one place for the meta-tests — no second copy to drift out of sync.
@@ -8276,6 +8302,8 @@ mod tests {
         "toad_case_number_lure",
         "wallet_connect_popup_lure",
         "fake_browser_security_warning",
+        // E66
+        "notification_permission_bait",
     ];
 
     /// Registry-completeness guard (Gap B). Every content signal that
@@ -8283,7 +8311,7 @@ mod tests {
     /// enumerable via `all_signals()` — otherwise an MDM operator listing
     /// signals (the `signals` CLI subcommand) to build a blocklist would
     /// never learn the signal exists. This cross-checks the curated
-    /// `CONTENT_SIGNALS` list (every AND-pair content signal E1–E65 and the
+    /// `CONTENT_SIGNALS` list (every AND-pair content signal E1–E66 and the
     /// structural URL signals) against the registry. Adding a
     /// `signals.push("x")` in `classify()` without adding `"x"` to the NAMES
     /// array fails here.
@@ -10131,6 +10159,7 @@ mod tests {
             "remote_access_lure",
             "screen_share_lure",
             "qr_code_lure",
+            "notification_permission_bait",
         ];
         let mut missing = Vec::new();
         for s in all_signals() {
@@ -10163,6 +10192,7 @@ mod tests {
             "remote_access_lure",
             "screen_share_lure",
             "qr_code_lure",
+            "notification_permission_bait",
         ];
         let known: std::collections::HashSet<&str> =
             all_signals().into_iter().map(|s| s.name).collect();

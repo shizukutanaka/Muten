@@ -109,6 +109,8 @@ const BENIGN_TITLES: &[&str] = &[
     "NET::ERR_CERT_AUTHORITY_INVALID", // ~ fake_browser_security_warning (real cert error code, no scam CTA)
     "iCloud Storage Almost Full", // ~ cloud_quota_lure (real Apple notification title, no consequence threat)
     "Google Drive is running out of storage — Upgrade your plan", // ~ cloud_quota_lure (real Google copy, no urgency)
+    "Enable notifications to get breaking news alerts", // ~ notification_permission_bait (notify_verb, no false content-gate)
+    "Sign in to continue watching this video", // ~ notification_permission_bait (false-gate framing, no notification verb)
     // ── Japanese legitimate ──────────────────────────────────────────────
     "ご注文ありがとうございます - Amazon",
     "請求書の発行が完了しました",

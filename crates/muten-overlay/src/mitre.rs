@@ -119,6 +119,7 @@ pub fn techniques_of(signal: &str) -> &'static [&'static str] {
         | "dark_web_breach_lure"   // fake breach notification — credential phishing
         | "cloud_quota_lure"       // fake storage-full alarm — credential/payment phishing
         | "tech_support_chat_lure" // fake tech-brand live-chat — social-engineering pivot
+        | "notification_permission_bait" // fake content-gate — social-engineering into a permission grant
         => &["T1566"],
         _ => &[],
     }

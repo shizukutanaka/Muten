@@ -172,6 +172,7 @@ pub fn category_of(signal: &str) -> Option<DarkPatternCategory> {
         "toad_case_number_lure" => Some(InterfaceInterference), // fake case/ticket number establishes fraudulent legitimacy via authority framing
         "wallet_connect_popup_lure" => Some(InterfaceInterference), // fake wallet-connect prompt steers victim into approving malicious transaction
         "fake_browser_security_warning" => Some(InterfaceInterference), // fake browser security UI steers victim via misdirection
+        "notification_permission_bait" => Some(InterfaceInterference), // fake content-gate misdirects victim into granting notification permission
         // Descriptive-only signals: not a strategy on their own.
         _ => None,
     }

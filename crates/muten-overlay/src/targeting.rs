@@ -239,6 +239,7 @@ pub fn victim_profile_of(signal: &str) -> Option<VictimProfile> {
         | "screen_share_lure"           // screen share: cross-context (IT + elder)
         | "remote_access_lure"          // remote access: cross-context (IT + elder)
         | "download_trap_lure"          // fake download: any user
+        | "notification_permission_bait" // fake content-gate: any browser user
         | "gift_card_demand"            // gift card: cross-scam-type (elder + general)
         | "phone_number"                // support phone: cross-context
         | "blocklist_phone"             // known scam number: cross-context

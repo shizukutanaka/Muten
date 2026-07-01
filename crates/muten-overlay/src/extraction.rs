@@ -216,7 +216,8 @@ pub fn extraction_vectors_of(signal: &str) -> &'static [ExtractionVector] {
         | "rogue_av_process"
         | "tech_support_chat_lure"
         | "fake_browser_security_warning"
-        | "toad_case_number_lure" => &[DeviceTakeover],
+        | "toad_case_number_lure"
+        | "notification_permission_bait" => &[DeviceTakeover],
 
         // Pure lures / scare / geometry / homoglyph mechanics with no
         // determinate cash-out channel of their own.
