@@ -626,3 +626,56 @@ fn daemon_metrics_update_live_before_graceful_stop() {
          write-once-at-shutdown"
     );
 }
+
+/// Regression guard: metrics are observability, not the mission. A failed
+/// metrics write (here: the metrics path points into a directory that
+/// doesn't exist, exactly what happens on a fleet host without
+/// node_exporter installed) must never kill the protection loop — the
+/// daemon keeps sweeping and still exits 0 on a graceful stop.
+#[cfg(unix)]
+#[test]
+fn daemon_survives_unwritable_metrics_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let helper = write_fake_daemon_helper(dir.path());
+    let audit_log = dir.path().join("audit.log");
+    let stop_flag = dir.path().join("stop");
+    // Deliberately inside a directory that does not exist.
+    let metrics = dir.path().join("no-such-dir").join("metrics.prom");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_muten-overlay"))
+        .args([
+            "daemon",
+            helper.to_str().unwrap(),
+            "--audit-log",
+            audit_log.to_str().unwrap(),
+            "--interval-ms",
+            "30",
+            "--stop-flag",
+            stop_flag.to_str().unwrap(),
+            "--metrics",
+            metrics.to_str().unwrap(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn daemon");
+
+    // Let it run several sweeps — with the old `?` propagation it would
+    // have died with exit 1 on the very first sweep's metrics write.
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    std::fs::write(&stop_flag, "").unwrap();
+    let status = child.wait().expect("daemon exits");
+
+    assert_eq!(
+        status.code(),
+        Some(0),
+        "an unwritable metrics path must not kill the protection loop"
+    );
+    // And it genuinely kept protecting: the scam window was dismissed and
+    // audited across multiple sweeps despite every metrics write failing.
+    let log_text = std::fs::read_to_string(&audit_log).expect("audit log written");
+    assert!(
+        log_text.lines().count() >= 2,
+        "expected multiple sweeps' worth of audit events, got:\n{log_text}"
+    );
+}

@@ -5,6 +5,17 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–29)
 
+### Fixed — metrics write failure killed the protection loop
+- The live-metrics fix below initially propagated a failed per-sweep
+  metrics write with `?` — meaning a missing metrics directory (a fleet
+  host without node_exporter installed), a full disk, or a mid-run
+  permission change would kill the entire protection loop on that sweep.
+  Metrics are observability, not the mission: now best-effort, warning
+  once per failure streak (not every sweep at 1s intervals) and noting
+  recovery. New `cli_contract.rs` test points `--metrics` into a
+  nonexistent directory and asserts the daemon keeps sweeping (multiple
+  audit events written) and still exits 0 on graceful stop.
+
 ### Fixed — `--metrics` only updated once, at graceful shutdown
 - `daemon` computed and wrote its Prometheus textfile metrics exactly once,
   after the sweep loop exited on a stop-flag. For a daemon meant to run for
@@ -218,7 +229,7 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
   old 3-signal trigger.
 
 ### Tests
-- 1 323 unit tests + 20 `cli_contract` integration tests (up from 1 308
+- 1 323 unit tests + 21 `cli_contract` integration tests (up from 1 308
   unit-test baseline for this cycle), 0 failures, clippy-clean.
 
 ## [0.6.0] — evasion-resistant normalization (rounds 10–23)

@@ -1456,6 +1456,12 @@ fn cmd_daemon(
 
     let mut total_dismissed = 0u64;
     let mut sweeps = 0u64;
+    // Metrics are observability, not the mission: a failed write (metrics
+    // directory missing because node_exporter isn't installed on this
+    // host, disk full, permission change mid-run) must never kill the
+    // protection loop itself. Warn once per failure streak rather than
+    // spamming stderr every sweep at 1s intervals.
+    let mut metrics_write_failing = false;
     loop {
         if should_stop() {
             break;
@@ -1468,14 +1474,30 @@ fn cmd_daemon(
         // live counters the whole time it's healthy, not a file that
         // doesn't exist until the first graceful stop.
         if let Some(metrics_path) = metrics {
-            write_prometheus_metrics(
+            match write_prometheus_metrics(
                 metrics_path,
                 sweeps,
                 total_dismissed,
                 counting_sink.blocks.get(),
                 counting_sink.suspicious.get(),
                 counting_sink.scareware.get(),
-            )?;
+            ) {
+                Ok(()) => {
+                    if metrics_write_failing {
+                        eprintln!("muten-overlay daemon: metrics writes recovered");
+                        metrics_write_failing = false;
+                    }
+                }
+                Err(e) => {
+                    if !metrics_write_failing {
+                        eprintln!(
+                            "muten-overlay daemon: metrics write failed (continuing to \
+                             protect without metrics): {e}"
+                        );
+                        metrics_write_failing = true;
+                    }
+                }
+            }
         }
         let sleep_ms = if outcome.detections > 0 {
             alert_interval_ms.unwrap_or(interval_ms)
