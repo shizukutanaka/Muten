@@ -561,3 +561,68 @@ fn daemon_refuses_second_instance_on_same_audit_log_and_releases_lock_on_stop() 
         "a graceful stop must release the lock file so a later restart isn't blocked"
     );
 }
+
+/// Regression guard: `--metrics` must reflect live activity *while the
+/// daemon is still running*, not only once at graceful shutdown. A daemon
+/// is meant to run for weeks; if the metrics file only existed/updated at
+/// shutdown, node_exporter's textfile collector would see nothing the
+/// entire time the daemon is healthy — exactly when an operator most
+/// wants a live view. This polls the metrics file *before* signaling
+/// stop and asserts it already shows non-zero activity.
+#[cfg(unix)]
+#[test]
+fn daemon_metrics_update_live_before_graceful_stop() {
+    let dir = tempfile::tempdir().unwrap();
+    let helper = write_fake_daemon_helper(dir.path());
+    let audit_log = dir.path().join("audit.log");
+    let stop_flag = dir.path().join("stop");
+    let metrics = dir.path().join("metrics.prom");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_muten-overlay"))
+        .args([
+            "daemon",
+            helper.to_str().unwrap(),
+            "--audit-log",
+            audit_log.to_str().unwrap(),
+            "--interval-ms",
+            "30",
+            "--stop-flag",
+            stop_flag.to_str().unwrap(),
+            "--metrics",
+            metrics.to_str().unwrap(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn daemon");
+
+    // Poll (rather than a single fixed sleep) so this isn't flaky on a
+    // loaded CI runner — but bounded, so a real regression (metrics only
+    // written at shutdown) fails the test instead of hanging.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut saw_live_activity = false;
+    while std::time::Instant::now() < deadline {
+        if let Ok(text) = std::fs::read_to_string(&metrics) {
+            if text.contains("muten_blocks_total")
+                && !text.contains("muten_blocks_total 0")
+                && !stop_flag.exists()
+            {
+                saw_live_activity = true;
+                break;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+
+    // Clean up regardless of outcome so the spawned process never leaks.
+    std::fs::write(&stop_flag, "").unwrap();
+    let _ = child.wait();
+
+    assert!(
+        saw_live_activity,
+        "metrics must show non-zero muten_blocks_total WHILE the daemon is \
+         still running (stop-flag not yet created) — if this only becomes \
+         true after the stop-flag exists, metrics regressed to \
+         write-once-at-shutdown"
+    );
+}

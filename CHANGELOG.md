@@ -3,7 +3,34 @@
 All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Conventional Commits](https://www.conventionalcommits.org/).
 
-## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–28)
+## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–29)
+
+### Fixed — `--metrics` only updated once, at graceful shutdown
+- `daemon` computed and wrote its Prometheus textfile metrics exactly once,
+  after the sweep loop exited on a stop-flag. For a daemon meant to run for
+  weeks, this meant node_exporter's textfile collector saw *nothing* — no
+  file at all — the entire time the daemon was healthy and running, only
+  ever seeing data after the first graceful stop (which may be weeks away,
+  or may never happen if the host is simply rebooted or the process is
+  killed). This defeated the explicit "compatible with node_exporter
+  --collector.textfile" purpose of the flag for its actual intended use
+  case, even though it looked correct in every prior test (all of which
+  used short-lived runs immediately followed by a stop-flag, matching the
+  demo pattern rather than the real 24/7 production pattern).
+- Fixed with a `CountingSink` wrapper around the audit sink that tallies
+  block/suspicious/scareware counts in O(1) per event as they're emitted,
+  and rewrites the metrics file after every sweep. Deliberately O(1) per
+  event rather than re-scanning the audit log (as `cmd_monitor`'s
+  end-of-run `count_audit_kinds` still does, which is fine for its bounded
+  N-sweep demo use but would make an hourly-or-finer metrics refresh
+  increasingly expensive against a real, growing, multi-week log).
+- Verified with a real running process, not a static assertion: a new
+  `cli_contract.rs` test spawns a daemon against a helper that returns a
+  scam window every sweep, polls the metrics file *while the daemon is
+  still running* (stop-flag not yet created), and asserts it already shows
+  non-zero activity — then proved the test has teeth by temporarily
+  reverting to the old write-once-at-shutdown behavior and confirming the
+  test failed (5s timeout) before restoring the fix.
 
 ### Fixed — concurrent-instance audit-chain corruption risk
 - **No single-instance guard on `daemon`** — `ChainedFileSink::open` reads
@@ -191,7 +218,7 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
   old 3-signal trigger.
 
 ### Tests
-- 1 323 unit tests + 19 `cli_contract` integration tests (up from 1 308
+- 1 323 unit tests + 20 `cli_contract` integration tests (up from 1 308
   unit-test baseline for this cycle), 0 failures, clippy-clean.
 
 ## [0.6.0] — evasion-resistant normalization (rounds 10–23)

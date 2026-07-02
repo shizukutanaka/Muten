@@ -25,8 +25,8 @@ use muten_overlay::confusables::sanitize_for_display;
 use muten_overlay::controller::{OverlayController, SubprocessController};
 use muten_overlay::sink::merkle_root_of_log;
 use muten_overlay::{
-    all_signals, classify, enforce, verify_chain, ChainedFileSink, Decision, EnumeratedWindow,
-    MemorySink, Monitor, NullController, OverlayWindow, Ruleset, RunConfig,
+    all_signals, classify, enforce, verify_chain, AuditEvent, AuditSink, ChainedFileSink, Decision,
+    EnumeratedWindow, MemorySink, Monitor, NullController, OverlayWindow, Ruleset, RunConfig,
 };
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -1343,6 +1343,43 @@ fn acquire_daemon_lock(audit_log: &std::path::Path) -> Result<DaemonLock, String
     }
 }
 
+/// Wraps an `&dyn AuditSink`, additionally tallying `overlay_blocked` /
+/// `overlay_suspicious` / `scareware_detected` counts as events pass
+/// through — O(1) per event, so a long-running daemon can report live
+/// Prometheus counters without ever re-scanning its own (potentially
+/// weeks-old, multi-megabyte) audit log. `Cell` rather than an atomic:
+/// `Monitor::sweep` calls `emit` synchronously on the same thread as the
+/// daemon's own loop, so there is no concurrent access to guard against.
+struct CountingSink<'a> {
+    inner: &'a dyn AuditSink,
+    blocks: std::cell::Cell<u64>,
+    suspicious: std::cell::Cell<u64>,
+    scareware: std::cell::Cell<u64>,
+}
+
+impl<'a> CountingSink<'a> {
+    fn new(inner: &'a dyn AuditSink) -> Self {
+        Self {
+            inner,
+            blocks: std::cell::Cell::new(0),
+            suspicious: std::cell::Cell::new(0),
+            scareware: std::cell::Cell::new(0),
+        }
+    }
+}
+
+impl AuditSink for CountingSink<'_> {
+    fn emit(&self, ev: &AuditEvent) {
+        match ev.kind {
+            "overlay_blocked" => self.blocks.set(self.blocks.get() + 1),
+            "overlay_suspicious" => self.suspicious.set(self.suspicious.get() + 1),
+            "scareware_detected" => self.scareware.set(self.scareware.get() + 1),
+            _ => {}
+        }
+        self.inner.emit(ev);
+    }
+}
+
 /// Run the real, continuous protection loop against a live host.
 ///
 /// Unlike `cmd_monitor` (which replays a fixed window list against
@@ -1357,7 +1394,13 @@ fn acquire_daemon_lock(audit_log: &std::path::Path) -> Result<DaemonLock, String
 /// Hand-rolls the sweep loop (mirroring `Monitor::run`'s adaptive-interval
 /// logic) rather than calling `Monitor::run` directly, because `run` only
 /// returns the total dismissed count — this needs an accurate sweep count
-/// too, to report an honest `muten_sweeps_total` metric on shutdown.
+/// too, to report an honest `muten_sweeps_total` metric.
+///
+/// `--metrics`, if set, is rewritten after *every* sweep, not once at
+/// shutdown: a daemon meant to run for weeks needs node_exporter's
+/// textfile collector to see live counters the whole time it's healthy,
+/// not a file that doesn't exist until the first graceful stop (which may
+/// be weeks away, or may never happen if the host is simply rebooted).
 #[allow(clippy::too_many_arguments)]
 fn cmd_daemon(
     helper: &str,
@@ -1394,6 +1437,10 @@ fn cmd_daemon(
     let mut mon = Monitor::new(rs);
     let sink = ChainedFileSink::open(audit_log)
         .map_err(|e| format!("opening audit log {}: {e}", audit_log.display()))?;
+    // Wraps `sink`, tallying block/suspicious/scareware counts in O(1) per
+    // event so `--metrics` can be rewritten every sweep without re-scanning
+    // a potentially weeks-old, multi-megabyte audit log each time.
+    let counting_sink = CountingSink::new(&sink);
 
     let now_ms = || {
         std::time::SystemTime::now()
@@ -1413,9 +1460,23 @@ fn cmd_daemon(
         if should_stop() {
             break;
         }
-        let outcome = mon.sweep(&ctrl, &sink, now_ms(), no_proc);
+        let outcome = mon.sweep(&ctrl, &counting_sink, now_ms(), no_proc);
         total_dismissed += u64::from(outcome.dismissed);
         sweeps += 1;
+        // Rewritten every sweep, not once at shutdown: a daemon meant to
+        // run for weeks needs node_exporter's textfile collector to see
+        // live counters the whole time it's healthy, not a file that
+        // doesn't exist until the first graceful stop.
+        if let Some(metrics_path) = metrics {
+            write_prometheus_metrics(
+                metrics_path,
+                sweeps,
+                total_dismissed,
+                counting_sink.blocks.get(),
+                counting_sink.suspicious.get(),
+                counting_sink.scareware.get(),
+            )?;
+        }
         let sleep_ms = if outcome.detections > 0 {
             alert_interval_ms.unwrap_or(interval_ms)
         } else {
@@ -1426,6 +1487,9 @@ fn cmd_daemon(
         }
     }
     let total = total_dismissed;
+    if let Some(metrics_path) = metrics {
+        eprintln!("metrics: {}", metrics_path.display());
+    }
 
     let head = sink.head();
     eprintln!(
@@ -1446,19 +1510,6 @@ fn cmd_daemon(
     let (event_count, verified_head) =
         verify_chain(&text).map_err(|e| format!("written log failed verification: {e}"))?;
     eprintln!("audit log: {event_count} event(s), head={verified_head}, verified OK");
-
-    if let Some(metrics_path) = metrics {
-        let (blocks, suspicious_count, scareware_count) = count_audit_kinds(Some(audit_log))?;
-        write_prometheus_metrics(
-            metrics_path,
-            sweeps,
-            total,
-            blocks,
-            suspicious_count,
-            scareware_count,
-        )?;
-        eprintln!("metrics: {}", metrics_path.display());
-    }
 
     Ok(ExitCode::from(0))
 }
