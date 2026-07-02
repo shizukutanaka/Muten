@@ -966,9 +966,19 @@ fn parse_windows(windows: &str) -> Result<Vec<EnumeratedWindow>, String> {
             .remove("id")
             .and_then(|x| x.as_str().map(String::from))
             .unwrap_or_else(|| format!("window-{i}"));
+        // Optional owning-process name, same contract as the helper wire
+        // format's top-level "process" — lets monitor/enforce/triage demo
+        // inputs exercise the scareware `process:`-rule path too.
+        let process = obj
+            .remove("process")
+            .and_then(|x| x.as_str().map(String::from));
         let window: OverlayWindow =
             serde_json::from_value(v).map_err(|e| format!("parsing window {i}: {e}"))?;
-        enumerated.push(EnumeratedWindow { id, window });
+        enumerated.push(EnumeratedWindow {
+            id,
+            process,
+            window,
+        });
     }
     Ok(enumerated)
 }
@@ -1448,9 +1458,12 @@ fn cmd_daemon(
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0)
     };
-    // No per-OS process-list verb in the helper protocol yet (C7-style
-    // extension); rogue_av_process stays unavailable in daemon mode, same
-    // as cmd_monitor's demo loop.
+    // Process attribution rides in the helper's enumerate payload (the
+    // optional per-window "process" field on EnumeratedWindow), which
+    // Monitor::sweep consumes directly — so `rogue_av_process` and the
+    // blocklist's `process:` rules are live in daemon mode. This closure
+    // is only the out-of-band fallback for windows the helper couldn't
+    // attribute; there is no separate lookup channel, hence None.
     let no_proc = |_: &str| None;
     let should_stop = || stop_flag.is_some_and(std::path::Path::exists);
 

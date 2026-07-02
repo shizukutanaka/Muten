@@ -124,9 +124,12 @@ impl Monitor {
     /// with the dismissed-window count and the detection count
     /// (Block + Suspicious events that fired).
     ///
-    /// `process_of` maps a window id to the owning process name, if
-    /// the controller/host can attribute one (used for the rogue-AV
-    /// process check). Return `None` when unknown.
+    /// Process attribution for the rogue-AV check prefers the
+    /// [`EnumeratedWindow::process`] field the helper reported with the
+    /// window itself (atomic with the enumeration snapshot); `process_of`
+    /// maps a window id to the owning process name as a *fallback* for
+    /// controllers/hosts that attribute processes out-of-band. Return
+    /// `None` when unknown.
     pub fn sweep<F>(
         &mut self,
         controller: &dyn OverlayController,
@@ -172,7 +175,7 @@ impl Monitor {
             } else {
                 self.tracker.record(&sig, now_ms)
             };
-            let proc = process_of(&ew.id);
+            let proc = ew.process.clone().or_else(|| process_of(&ew.id));
             let sw = assess(repeats, proc.as_deref(), &self.rules);
             if sw.decision == ScarewareDecision::Scareware {
                 let sw_categories: Vec<&'static str> =
@@ -382,6 +385,7 @@ mod tests {
     fn sweep_blocks_and_audits_scam() {
         let rules = Ruleset::from_lines(&["host: win-prize-now.example"]);
         let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
             id: "scam".into(),
             window: scam(),
         }]);
@@ -397,6 +401,7 @@ mod tests {
     #[test]
     fn sweep_does_not_audit_benign() {
         let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
             id: "ok".into(),
             window: benign(),
         }]);
@@ -416,6 +421,7 @@ mod tests {
         // Same window every sweep → repeat tracker crosses threshold.
         let rules = Ruleset::default();
         let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
             id: "flood".into(),
             window: OverlayWindow {
                 // Suspicious-but-not-block so we isolate the scareware path.
@@ -446,6 +452,7 @@ mod tests {
     fn rogue_av_process_triggers_scareware_first_sweep() {
         let rules = Ruleset::from_lines(&["process: pc protector plus"]);
         let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
             id: "win42".into(),
             window: benign(), // even a benign-looking window
         }]);
@@ -457,6 +464,54 @@ mod tests {
         assert_eq!(sink.count_of("scareware_detected"), 1);
     }
 
+    /// The production path (DR-1): the helper reports the owning process
+    /// IN the enumerate payload (`EnumeratedWindow.process`), and the
+    /// daemon passes only the `None` fallback callback — the embedded
+    /// value alone must drive `rogue_av_process` / `scareware_detected`.
+    #[test]
+    fn embedded_process_field_triggers_scareware_without_callback() {
+        let rules = Ruleset::from_lines(&["process: pc protector plus"]);
+        let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: Some("PCProtectorPlus.exe".into()),
+            id: "win42".into(),
+            window: benign(),
+        }]);
+        let sink = MemorySink::new();
+        let mut mon = Monitor::new(rules);
+        mon.sweep(&ctrl, &sink, 1_000, no_proc); // daemon-mode fallback: always None
+        assert_eq!(
+            sink.count_of("scareware_detected"),
+            1,
+            "the helper-embedded process name alone must trigger the rogue-AV path"
+        );
+        let ev = &sink.events()[0];
+        assert_eq!(ev.detail["matched_process"], "pc protector plus");
+        assert!(ev.detail["signals"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s == "rogue_av_process"));
+    }
+
+    /// When both are present, the embedded (enumeration-atomic) value wins
+    /// over the out-of-band callback — pinned so a future refactor doesn't
+    /// silently invert the precedence.
+    #[test]
+    fn embedded_process_takes_precedence_over_callback() {
+        // The embedded name matches a rule; the callback returns a
+        // non-matching name. If precedence inverted, no event would fire.
+        let rules = Ruleset::from_lines(&["process: pc protector plus"]);
+        let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: Some("PCProtectorPlus.exe".into()),
+            id: "win42".into(),
+            window: benign(),
+        }]);
+        let sink = MemorySink::new();
+        let mut mon = Monitor::new(rules);
+        mon.sweep(&ctrl, &sink, 1_000, |_id| Some("innocent-editor".into()));
+        assert_eq!(sink.count_of("scareware_detected"), 1);
+    }
+
     #[test]
     fn user_initiated_window_not_flagged_as_flood() {
         // A user-opened video kept on screen across many sweeps must
@@ -464,6 +519,7 @@ mod tests {
         // the CLI smoke test. Rogue-AV floods are by definition
         // unsolicited; user-initiated repeats are benign.
         let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
             id: "video".into(),
             window: OverlayWindow {
                 title: "holiday.mp4 - vlc".into(),
@@ -493,6 +549,7 @@ mod tests {
     fn unsolicited_repeats_still_flood() {
         // The fix must not break detection of genuine floods.
         let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
             id: "flood".into(),
             window: OverlayWindow {
                 title: "critical error".into(),
@@ -518,6 +575,7 @@ mod tests {
         // Origin gates the *flood* signal, not the *process* signal.
         let rules = Ruleset::from_lines(&["process: advanced mac cleaner"]);
         let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
             id: "w".into(),
             window: OverlayWindow {
                 origin: Origin::UserInitiated,
@@ -558,6 +616,7 @@ mod tests {
     #[test]
     fn suspicious_window_audited_not_dismissed() {
         let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
             id: "s".into(),
             window: OverlayWindow {
                 title: "newsletter".into(),
@@ -583,6 +642,7 @@ mod tests {
     fn run_bounded_sweeps_executes_exactly_max() {
         let rules = Ruleset::from_lines(&["host: win-prize-now.example"]);
         let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
             id: "scam".into(),
             window: scam(),
         }]);
@@ -615,6 +675,7 @@ mod tests {
     #[test]
     fn run_stops_when_flag_set() {
         let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
             id: "ok".into(),
             window: benign(),
         }]);
@@ -644,6 +705,7 @@ mod tests {
         let p = dir.path().join("overlay-audit.log");
         let rules = Ruleset::from_lines(&["host: win-prize-now.example"]);
         let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
             id: "scam".into(),
             window: scam(),
         }]);
@@ -680,10 +742,12 @@ mod tests {
         // One Block window + one Suspicious window → detections == 2.
         let ctrl = NullController::with_windows(vec![
             EnumeratedWindow {
+                process: None,
                 id: "block".into(),
                 window: scam(), // fully triggers block
             },
             EnumeratedWindow {
+                process: None,
                 id: "sus".into(),
                 window: OverlayWindow {
                     title: "offer".into(),
@@ -707,6 +771,7 @@ mod tests {
     #[test]
     fn sweep_outcome_zero_detections_for_benign_sweep() {
         let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
             id: "ok".into(),
             window: benign(),
         }]);
@@ -724,6 +789,7 @@ mod tests {
         // config is accepted and the run terminates normally.
         let rules = Ruleset::from_lines(&["host: win-prize-now.example"]);
         let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
             id: "scam".into(),
             window: scam(),
         }]);

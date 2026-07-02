@@ -5157,10 +5157,12 @@ mod tests {
         let rules = Ruleset::from_lines(&["host: win-prize-now.example"]);
         let ctrl = NullController::with_windows(vec![
             EnumeratedWindow {
+                process: None,
                 id: "scam".into(),
                 window: scam_window(),
             },
             EnumeratedWindow {
+                process: None,
                 id: "ok".into(),
                 window: benign_window(),
             },
@@ -5194,6 +5196,7 @@ mod tests {
             age_ms: 5_000,
         };
         let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
             id: "s".into(),
             window: w,
         }]);
@@ -5250,6 +5253,7 @@ mod tests {
     fn enforce_survives_dismiss_failures_without_aborting() {
         let rules = Ruleset::from_lines(&["host: scam.example"]);
         let mk = |id: &str| EnumeratedWindow {
+            process: None,
             id: id.into(),
             window: OverlayWindow {
                 title: "you are infected".into(),

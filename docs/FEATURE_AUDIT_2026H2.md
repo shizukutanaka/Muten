@@ -51,8 +51,9 @@
 
 | # | 優先 | 項目 | 内容 |
 |---|---|---|---|
-| DR-1 | ★★★ | **helper プロトコルに process-list verb が無い** | daemon は `no_proc` 固定 → `rogue_av_process` シグナルと blocklist の `process:` ルール 49 件が**本番モードで全て無効**。scareware 検出の柱の一つが実運用で死んでいる。helper に `processes` verb を足し、`--probe`/`enumerate`/`dismiss` と同様に配線するのが次の最有力候補 |
+| ~~DR-1~~ | ✅済 | **helper のプロセス名レポート** (旧: process-list verb が無い) | 解決 (2026-07): `EnumeratedWindow` にオプショナル `process` フィールドを追加し、4 helper 全てが enumerate ペイロードで owning process を best-effort 報告 (X11: `_NET_WM_PID`→`/proc/PID/comm`、Windows: `GetWindowThreadProcessId`→`Get-Process`、macOS: System Events プロセス名、Wayland: app-id)。`Monitor::sweep` は埋め込み値優先 (`process_of` はフォールバック)。旧形式 JSON は `#[serde(default)]` でそのまま解釈。e2e テストで daemon 実行→`scareware_detected`+`rogue_av_process`+`muten_scareware_total` 非ゼロを実証済み |
 | DR-2 | ★★★ | **helper の実フィールド忠実度** | origin (unsolicited +25) / age_ms (very_new +10) / has_close_button (+25) / blocks_input (+20) が各 OS helper で保守的固定値 → 実機ではジオメトリ系シグナルの大半が発火せず、検出力が title/URL に偏る (roadmap C7-2〜5)。誤 Block 方向ではなく検出漏れ方向なので安全側だが、実力値が仕様値を大きく下回る |
+| DR-11 | ★★★ | **常駐ウィンドウが repeated_flood 誤検出** (DR-1 の e2e 検証中に発見・未修正) | `Monitor::sweep` は毎スイープ全ウィンドウに `tracker.record()` を呼ぶ — 「再ポップ (出現)」ではなく「開いたまま (存在)」を数えている。REPEAT_THRESHOLD=3 / 窓 2 分なので、**開きっぱなしの普通のウィンドウが 3 スイープ (既定 3 秒) で scareware_detected を毎スイープ発行し続ける**。user_initiated の除外はあるが、実 helper は全て origin:"unknown" を返すため本番では効かない (DR-2 と連動)。実測: 良性タイトル・coverage 20% の静的ウィンドウで 4 スイープ中 2 件の scareware_detected。修正案: 前スイープに存在しなかった signature の出現時のみ record する (presence→appearance の区別)。監査ログ汚染と metrics (muten_scareware_total) の恒常的インフレが実害 |
 | DR-3 | ★★ | **blocklist ホットリロード** | ルール更新に daemon 再起動が必要 (installer README に明記済み)。stop-flag と同じファイル監視パターンで `--rules` の mtime を毎スイープ検査すれば依存追加なしで実装可能 |
 | DR-4 | ★★ | **ログローテーション + チェーン跨ぎ検証** | 数週間運用で監査ログが単一ファイルのまま際限なく成長 (C6-8)。verify のチェーン継続検証 (`verify_chain_continued`) は既にあるので、ローテーション側の実装のみ |
 | DR-5 | ★★ | **stop-flag の応答遅延** | フラグはスイープ間でしか見ない — interval を長く設定すると停止にほぼ interval 分かかる。sleep を小刻み (例: 250ms) に分割してフラグを挟み見れば解決 |
@@ -66,6 +67,8 @@
 
 **現状サマリ**: 検出エンジン (66 シグナル / 10 レンズ / 正規化パイプライン) と
 監査基盤 (ハッシュチェーン + Merkle) は充実しており、本セッションで本番実行系
-(daemon + タイムアウト + ロック + ライブメトリクス + MDM テンプレート) の欠落を
-埋めた。残る最大の不足は **DR-1/DR-2 = helper が classify() に渡す情報の貧しさ**
-であり、シグナルの追加よりも「既存シグナルを実機で生かす」ことが次の主戦場。
+(daemon + タイムアウト + ロック + ライブメトリクス + MDM テンプレート) と
+プロセス帰属チャネル (旧 DR-1) の欠落を埋めた。残る最大の不足は
+**DR-2 = helper のジオメトリ系フィールドの忠実度** (origin / age_ms /
+blocks_input の保守的固定値) であり、シグナルの追加よりも「既存シグナルを
+実機で生かす」ことが引き続き次の主戦場。

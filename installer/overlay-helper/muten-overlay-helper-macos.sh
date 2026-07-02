@@ -76,9 +76,14 @@ APPLESCRIPT
         id="$app::$wname"
         eid=$(json_escape "$id")
         et=$(json_escape "$wname")
+        # Owning process name = the System Events process name we already
+        # iterate — reported so muten's `process:` blocklist rules and the
+        # rogue_av_process signal work on macOS (best-effort field; the
+        # daemon treats a missing value as "unknown").
+        ep=$(json_escape "$app")
         if [ "$first" -eq 1 ]; then first=0; else printf ','; fi
-        printf '{"id":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}' \
-            "$eid" "$et" "$cov"
+        printf '{"id":"%s","process":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}' \
+            "$eid" "$ep" "$et" "$cov"
     done
     printf ']\n'
 }

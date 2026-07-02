@@ -3,7 +3,51 @@
 All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Conventional Commits](https://www.conventionalcommits.org/).
 
-## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–29)
+## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–30)
+
+### Added — helper process reporting (audit DR-1: rogue-AV detection live in daemon mode)
+- **`EnumeratedWindow.process`** (optional, `#[serde(default)]`) — the
+  owning process / application name, reported by the helper *in* its
+  `enumerate` payload (atomic with the window snapshot; a separate
+  `processes` verb was rejected: it would double the subprocess spawns per
+  sweep and introduce a TOCTOU between the window list and process list).
+  `Monitor::sweep` prefers the embedded value and keeps the `process_of`
+  callback as the out-of-band fallback. Until now `cmd_daemon` hard-wired
+  `process_of` to `None` ("no process-list verb in the helper protocol"),
+  so the `rogue_av_process` signal and all 49 shipped `process:` blocklist
+  rules were dead in production daemon mode — detection-side code
+  (`assess`/`match_process`) was complete; only the attribution channel
+  was missing.
+- All four helpers now report it best-effort (field omitted when unknown;
+  old-format helper JSON keeps parsing unchanged): Windows adds a
+  `GetWindowThreadProcessId` P/Invoke + `Get-Process` name lookup;
+  Linux/X11 reads EWMH `_NET_WM_PID` → `/proc/PID/comm`; macOS emits the
+  System Events process name it already iterates; Wayland emits the
+  foreign-toplevel `app-id` (PIDs are not exposed to foreign clients —
+  `match_process`'s squash semantics let `org.mozilla.firefox` match a
+  rule written `firefox`). `parse_windows` also accepts a top-level
+  `"process"` key so `monitor`/`enforce`/`triage` demo inputs can exercise
+  the path.
+- Verified end-to-end, not just at the unit level: a new `cli_contract.rs`
+  test runs the real daemon against a helper reporting a blocklisted
+  process on a *benign-titled* window (so only the `process:` rule can be
+  responsible) and asserts `scareware_detected` + `rogue_av_process` +
+  `matched_process` land in the audit log and `muten_scareware_total` goes
+  non-zero. Manual runs confirmed both the new format and the old
+  (process-less) format against the compiled binary. New unit tests pin
+  embedded-value precedence over the callback and old-JSON back-compat.
+- SPECIFICATION.md gained the `{id, process?, window}` wire table (and
+  caught up on `ControllerError::Timeout` and the full 9-subcommand list);
+  OVERLAY_BLOCKING.md documents the per-OS process source.
+- **Known issue found during e2e verification (not yet fixed, audit
+  DR-11)**: `Monitor::sweep` records a repeat-tracker "appearance" for
+  every enumerated window every sweep, so a long-lived, perfectly normal
+  window crosses `REPEAT_THRESHOLD=3` after 3 sweeps and emits
+  `scareware_detected` (repeated_flood) continuously — presence is being
+  conflated with re-popping, and the `user_initiated` carve-out never
+  applies on real hosts because helpers report `origin:"unknown"`.
+  Documented in `docs/FEATURE_AUDIT_2026H2.md` as the new top remaining
+  deficiency alongside DR-2.
 
 ### Fixed — metrics write failure killed the protection loop
 - The live-metrics fix below initially propagated a failed per-sweep
@@ -229,7 +273,7 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
   old 3-signal trigger.
 
 ### Tests
-- 1 323 unit tests + 21 `cli_contract` integration tests (up from 1 308
+- 1 326 unit tests + 22 `cli_contract` integration tests (up from 1 308
   unit-test baseline for this cycle), 0 failures, clippy-clean.
 
 ## [0.6.0] — evasion-resistant normalization (rounds 10–23)

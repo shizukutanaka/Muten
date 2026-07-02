@@ -679,3 +679,85 @@ fn daemon_survives_unwritable_metrics_path() {
         "expected multiple sweeps' worth of audit events, got:\n{log_text}"
     );
 }
+
+/// End-to-end proof that DR-1 is closed: a helper that reports the owning
+/// process name in its enumerate payload drives the rogue-AV path in real
+/// daemon mode — `scareware_detected` lands in the audit log and
+/// `muten_scareware_total` in the metrics — with a benign window title, so
+/// only the `process:` blocklist rule (not any title heuristic) can be
+/// responsible for the detection.
+#[cfg(unix)]
+#[test]
+fn daemon_process_reporting_drives_rogue_av_detection_end_to_end() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+
+    // Helper: benign-looking window, but owned by a blocklisted rogue-AV
+    // process. Old-format helpers omit "process"; this one reports it.
+    let helper = dir.path().join("helper.sh");
+    let json = r#"[{"id":"w1","process":"SystemGuard 2026","window":{"title":"scan complete","coverage_percent":40,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}]"#;
+    std::fs::write(
+        &helper,
+        format!(
+            "#!/bin/sh\ncase \"$1\" in\n--probe) exit 0 ;;\nenumerate) echo '{json}' ;;\ndismiss) exit 0 ;;\n*) exit 1 ;;\nesac\n"
+        ),
+    )
+    .unwrap();
+    let mut perms = std::fs::metadata(&helper).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&helper, perms).unwrap();
+
+    let rules = dir.path().join("rules.txt");
+    std::fs::write(&rules, "process: systemguard2026\n").unwrap();
+
+    let audit_log = dir.path().join("audit.log");
+    let stop_flag = dir.path().join("stop");
+    let metrics = dir.path().join("metrics.prom");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_muten-overlay"))
+        .args([
+            "daemon",
+            helper.to_str().unwrap(),
+            "--rules",
+            rules.to_str().unwrap(),
+            "--audit-log",
+            audit_log.to_str().unwrap(),
+            "--interval-ms",
+            "50",
+            "--stop-flag",
+            stop_flag.to_str().unwrap(),
+            "--metrics",
+            metrics.to_str().unwrap(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn daemon");
+
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    std::fs::write(&stop_flag, "").unwrap();
+    let status = child.wait().expect("daemon exits");
+    assert_eq!(status.code(), Some(0));
+
+    let log_text = std::fs::read_to_string(&audit_log).expect("audit log written");
+    let scareware_line = log_text
+        .lines()
+        .find(|l| l.contains("scareware_detected"))
+        .unwrap_or_else(|| {
+            panic!("no scareware_detected event — process reporting is not reaching assess():\n{log_text}")
+        });
+    let ev: serde_json::Value = serde_json::from_str(scareware_line).unwrap();
+    assert_eq!(ev["detail"]["matched_process"], "systemguard2026");
+    assert!(ev["detail"]["signals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|s| s == "rogue_av_process"));
+
+    let metrics_text = std::fs::read_to_string(&metrics).expect("metrics written");
+    assert!(
+        metrics_text.contains("muten_scareware_total")
+            && !metrics_text.contains("muten_scareware_total 0"),
+        "muten_scareware_total must be non-zero: {metrics_text}"
+    );
+}

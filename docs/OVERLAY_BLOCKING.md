@@ -275,10 +275,23 @@ The helper is invoked with one of:
 | Invocation | Behaviour |
 |---|---|
 | `<helper> --probe` | exit 0 if usable on this host, non-zero otherwise |
-| `<helper> enumerate` | print a JSON array of `{id, window}` (each an `EnumeratedWindow`) to stdout, exit 0 |
+| `<helper> enumerate` | print a JSON array of `{id, process?, window}` (each an `EnumeratedWindow`) to stdout, exit 0 |
 | `<helper> dismiss <id>` | exit 0 = acted, exit 2 = window already gone, any other = failure (stderr = reason) |
 
 Override the helper path with `$MUTEN_OVERLAY_HELPER`.
+
+The optional top-level `process` field carries the window's owning
+process / application name, best-effort — a helper that cannot attribute
+one for a window omits the field. It feeds the scareware `rogue_av_process`
+check (blocklist `process:` rules, `match_process` squash semantics), which
+is how those rules work in real `daemon` mode. Per-OS source:
+
+- Windows: `GetWindowThreadProcessId` → `Get-Process` `.ProcessName`.
+- Linux/X11: EWMH `_NET_WM_PID` → `/proc/PID/comm`.
+- macOS: the System Events process name (already iterated for the id).
+- Wayland: the foreign-toplevel `app-id` (e.g. `org.mozilla.firefox` —
+  PIDs are not exposed to foreign clients; squash matching still hits a
+  rule written as plain `firefox`).
 
 A reference Linux/X11 helper using `wmctrl` + `xprop` ships at
 `installer/overlay-helper/muten-overlay-helper-linux.sh`. It closes

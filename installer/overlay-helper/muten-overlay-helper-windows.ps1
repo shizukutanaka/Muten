@@ -44,6 +44,7 @@ public class MutenWin {
     [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int i);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr SendMessageTimeout(IntPtr h, uint msg, IntPtr wp, IntPtr lp, uint flags, uint timeout, out IntPtr res);
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
     public struct RECT { public int Left, Top, Right, Bottom; }
     public const int GWL_EXSTYLE = -20;
     public const int GWL_STYLE = -16;
@@ -105,8 +106,25 @@ function Do-Enumerate {
         $style = [MutenWin]::GetWindowLong($h, [MutenWin]::GWL_STYLE)
         $hasClose = (($style -band [MutenWin]::WS_SYSMENU) -ne 0)
 
+        # Owning process name (best-effort): HWND -> PID -> ProcessName.
+        # Lets muten's `process:` blocklist rules and the rogue_av_process
+        # signal work on Windows. Get-Process can race a just-exited PID,
+        # so failures simply omit the field (the daemon treats a missing
+        # value as "unknown").
+        $procName = ""
+        $procId = [uint32]0
+        [void][MutenWin]::GetWindowThreadProcessId($h, [ref]$procId)
+        if ($procId -gt 0) {
+            $p = Get-Process -Id $procId -ErrorAction SilentlyContinue
+            if ($null -ne $p) { $procName = $p.ProcessName }
+        }
+
         $et = Json-Escape $title
-        $obj = '{"id":"' + ([int64]$h) + '","window":{"title":"' + $et + '","url":null,"coverage_percent":' + $cov + ',"topmost":' + ($topmost.ToString().ToLower()) + ',"has_close_button":' + ($hasClose.ToString().ToLower()) + ',"blocks_input":false,"origin":"unknown","age_ms":0}}'
+        $procPart = ""
+        if (-not [string]::IsNullOrWhiteSpace($procName)) {
+            $procPart = '"process":"' + (Json-Escape $procName) + '",'
+        }
+        $obj = '{"id":"' + ([int64]$h) + '",' + $procPart + '"window":{"title":"' + $et + '","url":null,"coverage_percent":' + $cov + ',"topmost":' + ($topmost.ToString().ToLower()) + ',"has_close_button":' + ($hasClose.ToString().ToLower()) + ',"blocks_input":false,"origin":"unknown","age_ms":0}}'
         [void]$items.Add($obj)
         return $true
     }

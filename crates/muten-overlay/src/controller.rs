@@ -74,6 +74,15 @@ pub type WindowId = String;
 pub struct EnumeratedWindow {
     /// The controller's opaque, stable handle for this window.
     pub id: WindowId,
+    /// Owning process / application name, if the helper can attribute one
+    /// cheaply (best-effort; `None` = unknown). Matched against blocklist
+    /// `process:` rules via `Ruleset::match_process`'s squash semantics
+    /// (case-, space-, and separator-insensitive substring), so a Wayland
+    /// app-id like `org.mozilla.firefox` still matches a rule written as
+    /// `firefox`. `#[serde(default)]` keeps helpers that predate this
+    /// field (and omit it) parsing unchanged.
+    #[serde(default)]
+    pub process: Option<String>,
     /// The observed window metadata.
     pub window: OverlayWindow,
 }
@@ -335,6 +344,7 @@ mod tests {
 
     fn win(id: &str, title: &str) -> EnumeratedWindow {
         EnumeratedWindow {
+            process: None,
             id: id.into(),
             window: OverlayWindow {
                 title: title.into(),
@@ -408,7 +418,7 @@ mod tests {
     fn fake_helper(dir: &std::path::Path) -> String {
         use std::io::Write;
         let path = dir.join("helper.sh");
-        let json = r#"[{"id":"w1","window":{"title":"your computer is infected","url":"http://scam.example/x","coverage_percent":100,"topmost":true,"has_close_button":false,"blocks_input":true,"origin":"unsolicited","age_ms":200}}]"#;
+        let json = r#"[{"id":"w1","process":"PC Protector Plus","window":{"title":"your computer is infected","url":"http://scam.example/x","coverage_percent":100,"topmost":true,"has_close_button":false,"blocks_input":true,"origin":"unsolicited","age_ms":200}}]"#;
         let script = format!(
             "#!/bin/sh\n\
              case \"$1\" in\n\
@@ -462,8 +472,20 @@ mod tests {
         let windows = c.enumerate().unwrap();
         assert_eq!(windows.len(), 1);
         assert_eq!(windows[0].id, "w1");
+        assert_eq!(windows[0].process.as_deref(), Some("PC Protector Plus"));
         assert_eq!(windows[0].window.title, "your computer is infected");
         assert!(windows[0].window.blocks_input);
+    }
+
+    /// Backwards compatibility: a helper that predates the `process` field
+    /// (and therefore omits it) must keep parsing — the field is
+    /// `#[serde(default)]`, so it simply comes back as `None`.
+    #[test]
+    fn enumerated_window_parses_without_process_field() {
+        let old_format = r#"{"id":"w1","window":{"title":"t","coverage_percent":10,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}"#;
+        let ew: EnumeratedWindow = serde_json::from_str(old_format)
+            .expect("pre-process-field helper JSON must keep parsing");
+        assert_eq!(ew.process, None);
     }
 
     #[cfg(unix)]

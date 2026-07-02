@@ -77,11 +77,28 @@ enumerate() {
             has_close=false
         fi
 
+        # Owning process name (best-effort): EWMH _NET_WM_PID → the
+        # kernel's /proc/PID/comm. Lets muten's `process:` blocklist
+        # rules and the rogue_av_process signal work on X11. Not every
+        # client sets _NET_WM_PID, and comm may be unreadable — omit the
+        # field then (the daemon treats a missing value as "unknown").
+        procname=""
+        pid=$(xprop -id "$id" _NET_WM_PID 2>/dev/null | awk -F' = ' '{print $2}' | tr -cd '0-9')
+        if [ -n "$pid" ] && [ -r "/proc/$pid/comm" ]; then
+            procname=$(cat "/proc/$pid/comm" 2>/dev/null || echo "")
+        fi
+
         et=$(json_escape "$title")
 
         if [ "$first" -eq 1 ]; then first=0; else printf ','; fi
-        printf '{"id":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":%s,"has_close_button":%s,"blocks_input":false,"origin":"unknown","age_ms":0}}' \
-            "$id" "$et" "$cov" "$topmost" "$has_close"
+        if [ -n "$procname" ]; then
+            ep=$(json_escape "$procname")
+            printf '{"id":"%s","process":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":%s,"has_close_button":%s,"blocks_input":false,"origin":"unknown","age_ms":0}}' \
+                "$id" "$ep" "$et" "$cov" "$topmost" "$has_close"
+        else
+            printf '{"id":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":%s,"has_close_button":%s,"blocks_input":false,"origin":"unknown","age_ms":0}}' \
+                "$id" "$et" "$cov" "$topmost" "$has_close"
+        fi
     done
     printf ']\n'
 }

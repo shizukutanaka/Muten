@@ -14,24 +14,25 @@
 use muten_overlay::{classify, Decision, EnumeratedWindow, Origin, Ruleset};
 
 /// The Linux/X11 helper (wmctrl) emits this per window.
-const LINUX_HELPER_LINE: &str = r#"{"id":"0x04000007","window":{"title":"your computer is infected","url":null,"coverage_percent":100,"topmost":true,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}"#;
+const LINUX_HELPER_LINE: &str = r#"{"id":"0x04000007","process":"badav","window":{"title":"your computer is infected","url":null,"coverage_percent":100,"topmost":true,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}"#;
 
 /// The Windows helper (Win32 P/Invoke) emits this shape (id is an
 /// int64 HWND; topmost from WS_EX_TOPMOST).
-const WINDOWS_HELPER_LINE: &str = r#"{"id":"67174407","window":{"title":"critical error - call support","url":null,"coverage_percent":98,"topmost":true,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}"#;
+const WINDOWS_HELPER_LINE: &str = r#"{"id":"67174407","process":"PCProtectorPlus","window":{"title":"critical error - call support","url":null,"coverage_percent":98,"topmost":true,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}"#;
 
 /// The macOS helper (osascript) emits this shape (id is app::window).
-const MACOS_HELPER_LINE: &str = r#"{"id":"Safari::Verify you are human","window":{"title":"Verify you are human","url":null,"coverage_percent":75,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}"#;
+const MACOS_HELPER_LINE: &str = r#"{"id":"Safari::Verify you are human","process":"Safari","window":{"title":"Verify you are human","url":null,"coverage_percent":75,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}"#;
 
 /// The Wayland helper (wlroots foreign-toplevel) emits this shape: id
 /// is "app-id::title", geometry/stacking unavailable on Wayland so
 /// coverage=0, topmost=false. Title blocklist is the detection path.
-const WAYLAND_HELPER_LINE: &str = r#"{"id":"firefox::your computer is infected","window":{"title":"your computer is infected","url":null,"coverage_percent":0,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}"#;
+const WAYLAND_HELPER_LINE: &str = r#"{"id":"firefox::your computer is infected","process":"firefox","window":{"title":"your computer is infected","url":null,"coverage_percent":0,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}"#;
 
 #[test]
 fn linux_helper_line_deserializes() {
     let ew: EnumeratedWindow = serde_json::from_str(LINUX_HELPER_LINE).unwrap();
     assert_eq!(ew.id, "0x04000007");
+    assert_eq!(ew.process.as_deref(), Some("badav"));
     assert_eq!(ew.window.coverage_percent, 100);
     assert!(ew.window.topmost);
     assert_eq!(ew.window.origin, Origin::Unknown);
@@ -42,6 +43,7 @@ fn linux_helper_line_deserializes() {
 fn windows_helper_line_deserializes() {
     let ew: EnumeratedWindow = serde_json::from_str(WINDOWS_HELPER_LINE).unwrap();
     assert_eq!(ew.id, "67174407");
+    assert_eq!(ew.process.as_deref(), Some("PCProtectorPlus"));
     assert_eq!(ew.window.coverage_percent, 98);
 }
 
@@ -49,6 +51,7 @@ fn windows_helper_line_deserializes() {
 fn macos_helper_line_deserializes() {
     let ew: EnumeratedWindow = serde_json::from_str(MACOS_HELPER_LINE).unwrap();
     assert_eq!(ew.id, "Safari::Verify you are human");
+    assert_eq!(ew.process.as_deref(), Some("Safari"));
     assert!(!ew.window.topmost);
 }
 
@@ -56,9 +59,22 @@ fn macos_helper_line_deserializes() {
 fn wayland_helper_line_deserializes() {
     let ew: EnumeratedWindow = serde_json::from_str(WAYLAND_HELPER_LINE).unwrap();
     assert_eq!(ew.id, "firefox::your computer is infected");
+    assert_eq!(ew.process.as_deref(), Some("firefox"));
     assert_eq!(ew.window.coverage_percent, 0);
     assert!(!ew.window.topmost);
     assert_eq!(ew.window.origin, Origin::Unknown);
+}
+
+/// Helpers that predate the optional `process` field — or that couldn't
+/// attribute a process for a given window and therefore omitted the field
+/// (the documented best-effort contract) — must keep parsing, with the
+/// process coming back as `None`.
+#[test]
+fn helper_line_without_process_field_still_deserializes() {
+    let old = r#"{"id":"0x04000007","window":{"title":"your computer is infected","url":null,"coverage_percent":100,"topmost":true,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}"#;
+    let ew: EnumeratedWindow =
+        serde_json::from_str(old).expect("process-less helper output must keep parsing");
+    assert_eq!(ew.process, None);
 }
 
 #[test]

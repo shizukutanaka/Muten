@@ -304,12 +304,32 @@ overrides accordingly.
 dismiss(&WindowId) -> Result<bool> }`. `dismiss` MUST be called only for
 `Block`. `NullController` is the dry-run default (records, touches no real
 window). `SubprocessController` spawns a per-OS helper that emits the
-window JSON (so partial JSON per §2.2 MUST parse). `ControllerError` ∈
-`Enumerate | Dismiss | Unsupported`.
+window JSON (so partial JSON per §2.2 MUST parse). Every helper call is
+bounded by a per-call timeout (default 5 s; `daemon --helper-timeout-ms`);
+a helper that does not exit in time is killed and surfaced as
+`ControllerError::Timeout`. `ControllerError` ∈
+`Enumerate | Dismiss | Unsupported | Timeout`.
+
+Each `EnumeratedWindow` on the wire is `{id, process?, window}`:
+
+| field | type | meaning / spec |
+|---|---|---|
+| `id` | String | the controller's opaque, stable window handle (HWND, X11 id, `app::title`, …), passed back to `dismiss` |
+| `process` | Option\<String\> | owning process / application name, **best-effort**; a helper that cannot attribute one for a window MUST omit the field (deserializes as `None` = unknown). Matched against blocklist `process:` rules via `match_process`'s squash semantics (case-, space-, separator-insensitive substring), so a Wayland app-id `org.mozilla.firefox` matches a rule written `firefox`. Feeds `assess()`'s `rogue_av_process` signal; the daemon prefers this enumeration-atomic value over any out-of-band `process_of` lookup |
+| `window` | OverlayWindow | the observed metadata per §2.2 |
+
+Per-OS `process` source: X11 `_NET_WM_PID` → `/proc/PID/comm`; Windows
+`GetWindowThreadProcessId` → `Get-Process .ProcessName`; macOS the System
+Events process name; Wayland the foreign-toplevel `app-id` (PIDs are not
+exposed to foreign clients).
 
 ## 10. CLI contract
 
-Subcommands: `classify`, `rules`, `scareware`, `enforce`, `monitor`.
+Subcommands: `classify`, `rules`, `scareware`, `enforce`, `triage`,
+`monitor`, `daemon`, `verify`, `signals`. (`enforce`/`monitor` are
+dry-run/demo over a static window list; `daemon` is the real continuous
+loop via `SubprocessController` — see its `--help` for the stop-flag,
+single-instance lock, and metrics contracts.)
 All decision subcommands accept `--json`: `classify`/`scareware` emit a
 verdict object (the `classify` JSON additionally carries `explanation`,
 `confidence`, `score_breakdown`, `mitre_techniques`);

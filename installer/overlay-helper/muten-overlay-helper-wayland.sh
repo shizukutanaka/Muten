@@ -62,12 +62,24 @@ json_escape() {
     printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr '\t\r\n' '   '
 }
 
-# Emit one EnumeratedWindow object. $1=id $2=title
+# Emit one EnumeratedWindow object. $1=id $2=title $3=app-id (may be empty).
+#
+# The Wayland app-id (e.g. "org.mozilla.firefox") stands in for the owning
+# process name — foreign clients cannot see PIDs on Wayland, and muten's
+# `process:` rule matching is separator-insensitive substring, so an app-id
+# still matches a rule written as plain "firefox". Omitted when unknown
+# (the daemon treats a missing "process" as "unknown").
 emit_window() {
     eid=$(json_escape "$1")
     et=$(json_escape "$2")
-    printf '{"id":"%s","window":{"title":"%s","url":null,"coverage_percent":0,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}' \
-        "$eid" "$et"
+    if [ -n "$3" ]; then
+        ep=$(json_escape "$3")
+        printf '{"id":"%s","process":"%s","window":{"title":"%s","url":null,"coverage_percent":0,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}' \
+            "$eid" "$ep" "$et"
+    else
+        printf '{"id":"%s","window":{"title":"%s","url":null,"coverage_percent":0,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}' \
+            "$eid" "$et"
+    fi
 }
 
 enumerate() {
@@ -88,7 +100,7 @@ enumerate() {
                 "") # blank line = end of a toplevel block
                     if [ -n "$title" ] || [ -n "$appid" ]; then
                         if [ "$first" -eq 1 ]; then first=0; else printf ','; fi
-                        emit_window "${appid}::${title}" "$title"
+                        emit_window "${appid}::${title}" "$title" "$appid"
                         title=""; appid=""
                     fi
                     ;;
@@ -102,7 +114,7 @@ enumerate() {
             title=${line#*: }
             [ -z "$line" ] && continue
             if [ "$first" -eq 1 ]; then first=0; else printf ','; fi
-            emit_window "${appid}::${title}" "$title"
+            emit_window "${appid}::${title}" "$title" "$appid"
         done
     fi
     printf ']\n'

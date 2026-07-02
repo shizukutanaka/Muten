@@ -51,7 +51,7 @@ prop_compose! {
         windows
             .into_iter()
             .enumerate()
-            .map(|(i, w)| EnumeratedWindow { id: format!("w{i}"), window: w })
+            .map(|(i, w)| EnumeratedWindow { process: None, id: format!("w{i}"), window: w })
             .collect()
     }
 }
@@ -105,6 +105,7 @@ proptest! {
             age_ms: 5_000,
         };
         let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
             id: "u".into(),
             window: w,
         }]);
@@ -131,6 +132,7 @@ proptest! {
             age_ms: 1_000,
         };
         let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
             id: "f".into(),
             window: w,
         }]);
