@@ -5,6 +5,28 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Fixed — stop-flag response latency on long `--interval-ms` (audit DR-5)
+- `cmd_daemon`'s sweep loop checked the `--stop-flag` file only once per
+  sweep, then slept for the *entire* configured interval in one unbroken
+  `thread::sleep` call. A daemon tuned for a large fleet (a long interval
+  to keep idle CPU near zero) could take up to that whole interval —
+  potentially many seconds — to actually stop after a service manager's
+  `ExecStop` touched the flag file, even though nothing else in the loop
+  was doing any work during that time.
+- Fixed by splitting the sleep into 250ms chunks, re-checking the stop
+  flag between each chunk and breaking out early the moment it appears —
+  the same file-check pattern the loop already used between sweeps, just
+  applied more often. No new dependency, no new CLI flag: 250ms is a fixed
+  granularity fine-grained enough to feel instant to an operator while
+  still being cheap for a daemon that may run for weeks.
+- Added `daemon_stop_flag_takes_effect_promptly_on_a_long_interval`
+  (`cli_contract.rs`): runs the real compiled binary with `--interval-ms
+  5000`, requests a stop after 200ms, and asserts the process exits in
+  under 2s rather than waiting out the full 5s interval. Proved it has
+  teeth by reverting to the single unbroken sleep first: the unfixed
+  binary took 4.87s to exit under the same test, confirming the assertion
+  actually distinguishes the two behaviors.
+
 ### Added — `age_ms` inference for the `very_new` signal (audit DR-2, `age_ms` slice)
 - All four real OS helpers unconditionally report `age_ms: 0` ("unknown" —
   see `OverlayWindow::age_ms`'s documented contract), which silently

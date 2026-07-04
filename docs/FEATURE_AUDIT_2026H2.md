@@ -113,6 +113,7 @@ into one `const`.
 | ~~DR-1~~ | Helper process-name reporting missing | `cmd_daemon` hard-wired `process_of` to `None` — the `rogue_av_process` signal and all 49 shipped `process:` blocklist rules were dead in production `daemon` mode. | `EnumeratedWindow.process` (optional, `#[serde(default)]`) reported best-effort by all 4 helpers (X11: `_NET_WM_PID`→`/proc/PID/comm`; Windows: `GetWindowThreadProcessId`→`Get-Process`; macOS: System Events process name; Wayland: foreign-toplevel app-id). `Monitor::sweep` prefers the embedded value over the `process_of` fallback. e2e-verified: a benign-titled window with a blocklisted process name produces `scareware_detected` + `rogue_av_process` + a non-zero `muten_scareware_total`. |
 | ~~DR-11~~ | **Long-lived benign windows falsely flagged as repeat-flood** | `Monitor::sweep` (src/monitor.rs) called `tracker.record()` for **every** enumerated window on **every** sweep — conflating "still present" with "just appeared." `signature()` (`src/lib.rs`) is content-only (`title\|host`), so a static window produces the same signature every sweep; `REPEAT_THRESHOLD=3` (`src/scareware.rs`) meant any long-lived window fired `scareware_detected` continuously from its 3rd sweep onward. The `Origin::UserInitiated` carve-out never helped in practice because every real helper reports `origin:"unknown"`. Found and reproduced (2 spurious events / 4 sweeps) during D-1's e2e verification; deliberately deferred to its own fix. | `Monitor` gained `present_last_sweep: HashSet<Signature>` (the prior sweep's signature set, replaced wholesale each sweep — bounded memory). A signature already in that set is probed (`count`, non-incrementing); a signature absent from it (first sight, or a genuine re-appearance after disappearing) is recorded (`record`, incrementing) — this is exactly the presence-vs-appearance distinction the bug lacked. Verified in both directions with a real running daemon binary: a static benign window produced 0 `scareware_detected` across 6 sweeps; an appear/disappear/appear helper (genuine re-pop) still produced 3 `scareware_detected` events across 10 sweeps. 3 pre-existing tests that had baked in "same static controller swept repeatedly = a flood" were rewritten to alternate present/gone controllers, matching real re-pop behavior instead of the bug. |
 | ~~DR-2a~~ | **`age_ms` always 0 → `very_new` signal dead on every real host** | All 4 helpers unconditionally report `age_ms:0` ("unknown"), so the `very_new` (+10) signal and `sudden_fullscreen_takeover` composite (both gated on `age_ms > 0 && age_ms < 1000`) never fired on a real machine, even though the classifier logic for both was already correct and tested. Split out of DR-2 as the one sub-piece fixable without any helper changes. | `Monitor` infers `age_ms` from how long *it* has tracked a window (`first_seen_ms: HashMap<WindowId, u64>`, pruned to present ids each sweep) whenever the helper reports 0. First draft had a real bug (caught before any test run, not by a test): gating the `first_seen_ms` *insert* on "not the first sweep" meant a window present since sweep 1 got no entry during sweep 1, so on sweep 2 it looked brand-new and was scored `very_new` a few sweeps later anyway — the exact false positive the fix was meant to prevent, just delayed by one sweep. Corrected: `first_seen_ms` is now recorded unconditionally every sweep including the first; a separate `untrusted_from_startup: HashSet<WindowId>` marks every id present during the daemon's very first sweep, and only ids *not* in that set get their inferred age trusted; the set is pruned to present-ids each sweep, so a startup-cohort window that is ever absent even once permanently regains trust on any later reappearance. 3 new unit tests + 1 real-binary/real-wall-clock `cli_contract.rs` e2e test; proved the unit test and the e2e test both have teeth by reverting to the flawed design and confirming both failed (the e2e test caught the real daemon firing `overlay_suspicious` with `very_new` on every sweep after the first) before restoring the fix. |
+| ~~DR-5~~ | **Stop-flag response latency on long `--interval-ms`** | `cmd_daemon`'s loop checked the stop flag once per sweep, then slept the *entire* configured interval in one unbroken `thread::sleep` — a daemon tuned with a long interval to keep idle CPU near zero could take up to that whole interval to actually stop after a service manager's `ExecStop` touched the flag file. | Sleep is now chunked into 250ms slices with a stop-flag check between each; breaks out the moment the flag appears instead of waiting for the chunked sleep to run out naturally. No new dependency or CLI flag. e2e-verified: `daemon_stop_flag_takes_effect_promptly_on_a_long_interval` runs the real binary with `--interval-ms 5000`, requests a stop after 200ms, and asserts exit within 2s; proved it has teeth by reverting to the single unbroken sleep first and confirming the unfixed binary took 4.87s to exit under the identical test. |
 
 ## 5. Deficiency (不足) — OPEN, priority order
 
@@ -142,12 +143,6 @@ The audit log is a single ever-growing file. `verify_chain_continued` (in
 `src/sink.rs`) already supports verifying a chain that spans a rotation
 boundary — only the rotation mechanism itself (when/how to cut a new
 file) is missing.
-
-### [OPEN ★★] DR-5: Stop-flag response latency
-The flag is only checked between sweeps — a long `--interval-ms` means a
-graceful stop can take nearly a full interval to take effect. Splitting
-the inter-sweep sleep into short chunks (e.g. 250ms) with a flag-check
-between each chunk would fix this without new dependencies.
 
 ### [OPEN ★★] DR-6: Merkle-root external anchoring is manual
 Root computation and HMAC signing (`src/sink.rs`) are implemented; the
@@ -180,7 +175,7 @@ previously as roadmap C10-1 and the remainder of category C3).
 ## Current State Summary (as of this audit's last commit)
 
 - **Version**: `muten-overlay` v0.6.0.
-- **Tests**: 1331 unit tests + 24 `cli_contract` integration tests + 5
+- **Tests**: 1331 unit tests + 25 `cli_contract` integration tests + 5
   other integration suites (helper_contract, monitor_properties,
   scoring_scenarios, benign_corpus, composed_evasion, scareware_properties)
   — all green. `cargo clippy --all-targets -- -D warnings` clean.
@@ -188,14 +183,16 @@ previously as roadmap C10-1 and the remainder of category C3).
   entire audit cycle. MSRV 1.75 preserved throughout.
 - **What changed this cycle**: production readiness (D-1..D-9), the
   process-attribution gap (DR-1), the repeat-flood false-positive
-  (DR-11), and the `age_ms`/`very_new` dead-signal gap (DR-2a) are all
-  closed. The detection engine (66 signals / 10 lenses /
-  confusable-normalization pipeline) and the audit-integrity
-  infrastructure (hash chain + Merkle proofs) were already mature before
-  this cycle began.
+  (DR-11), the `age_ms`/`very_new` dead-signal gap (DR-2a), and the
+  stop-flag response latency (DR-5) are all closed. The detection engine
+  (66 signals / 10 lenses / confusable-normalization pipeline) and the
+  audit-integrity infrastructure (hash chain + Merkle proofs) were already
+  mature before this cycle began.
 - **Recommended next action**: the remainder of DR-2 (helper-reported
   `origin`, `has_close_button`, `blocks_input` fidelity — `age_ms` itself
   is done, see DR-2a) is the clear next priority — it is the largest
   remaining gap between the classifier's designed detection power and
   what it actually achieves on a real host, but is scoped as its own
-  multi-platform session rather than a quick fix.
+  multi-platform session rather than a quick fix. Next after that: DR-3
+  (blocklist hot-reload) or DR-4 (log rotation), both ★★ and each a
+  self-contained single-session fix.

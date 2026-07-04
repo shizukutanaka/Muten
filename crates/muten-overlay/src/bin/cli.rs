@@ -1517,8 +1517,19 @@ fn cmd_daemon(
         } else {
             interval_ms
         };
-        if sleep_ms > 0 {
-            std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
+        // Sleep in short chunks rather than one unbroken sleep_ms sleep, so
+        // a stop-flag write is noticed within STOP_CHECK_INTERVAL_MS
+        // instead of taking up to a full (potentially long, operator-
+        // configured) interval to take effect (audit DR-5).
+        const STOP_CHECK_INTERVAL_MS: u64 = 250;
+        let mut remaining_ms = sleep_ms;
+        while remaining_ms > 0 {
+            let chunk_ms = remaining_ms.min(STOP_CHECK_INTERVAL_MS);
+            std::thread::sleep(std::time::Duration::from_millis(chunk_ms));
+            remaining_ms -= chunk_ms;
+            if should_stop() {
+                break;
+            }
         }
     }
     let total = total_dismissed;

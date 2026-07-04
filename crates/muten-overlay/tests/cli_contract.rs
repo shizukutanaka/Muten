@@ -363,6 +363,56 @@ fn daemon_runs_sweeps_and_stops_gracefully_on_stop_flag() {
     );
 }
 
+/// Regression guard for DR-5 (stop-flag response latency): before the fix,
+/// the daemon slept for the *entire* configured `--interval-ms` in one
+/// unbroken `thread::sleep` between sweeps, only checking the stop flag
+/// once per sweep — so a large, operator-configured interval (a daemon
+/// left mostly idle to save CPU on a large fleet) meant a graceful stop
+/// could take up to that whole interval to take effect. Uses an interval
+/// (5s) far longer than the fix's 250ms stop-check granularity: the daemon
+/// must exit well before the interval elapses, proving the stop flag is
+/// checked in short chunks rather than only between sweeps.
+#[cfg(unix)]
+#[test]
+fn daemon_stop_flag_takes_effect_promptly_on_a_long_interval() {
+    let dir = tempfile::tempdir().unwrap();
+    let helper = write_fake_daemon_helper(dir.path());
+    let audit_log = dir.path().join("audit.log");
+    let stop_flag = dir.path().join("stop");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_muten-overlay"))
+        .args([
+            "daemon",
+            helper.to_str().unwrap(),
+            "--audit-log",
+            audit_log.to_str().unwrap(),
+            "--interval-ms",
+            "5000",
+            "--stop-flag",
+            stop_flag.to_str().unwrap(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn daemon");
+
+    // Let the first sweep complete and the loop enter its long sleep, then
+    // request a stop almost immediately — well inside the 5s interval.
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    std::fs::write(&stop_flag, "").unwrap();
+
+    let start = std::time::Instant::now();
+    let status = child.wait().expect("daemon exits");
+    let elapsed = start.elapsed();
+
+    assert_eq!(status.code(), Some(0), "graceful stop must exit 0");
+    assert!(
+        elapsed < std::time::Duration::from_millis(2000),
+        "stop flag should take effect within a couple of 250ms check \
+         intervals, not the full 5s --interval-ms; took {elapsed:?}"
+    );
+}
+
 /// Regression guard: `ChainedFileSink` creates its file lazily on the
 /// first `emit()`. A helper that only ever enumerates an empty desktop
 /// fires zero audit events, so the audit-log file may genuinely never be
