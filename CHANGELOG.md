@@ -5,6 +5,52 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — `age_ms` inference for the `very_new` signal (audit DR-2, `age_ms` slice)
+- All four real OS helpers unconditionally report `age_ms: 0` ("unknown" —
+  see `OverlayWindow::age_ms`'s documented contract), which silently
+  disabled the `very_new` (+10) signal and the `sudden_fullscreen_takeover`
+  composite (both gated on `age_ms > 0 && age_ms < 1000`) on every real
+  host, even though the classifier logic for both was already correct and
+  tested. Fixing this properly per-helper (4 platforms × OS-specific
+  window-creation-time APIs) is a larger undertaking left as the
+  remaining, still-`OPEN` part of DR-2; this round closes the
+  `age_ms`-specific gap without touching any helper, by having `Monitor`
+  infer age from how long *it* has been tracking a window whenever the
+  helper reports `0`.
+- `Monitor` gained `first_seen_ms: HashMap<WindowId, u64>` (first sweep
+  timestamp a window id was observed, pruned each sweep to only
+  currently-present ids) and infers `age_ms = now_ms - first_seen_ms` for
+  `sweep()`'s classification pass whenever the helper's reported age is 0.
+- Caught and fixed a subtler bug in my own first draft of this fix before
+  it ever reached a test run: gating the *entire* `first_seen_ms` insert
+  on "not the daemon's first sweep" (to protect against treating
+  already-open-for-hours startup windows as newly-aged) meant a window
+  present continuously since sweep 1 never got a `first_seen_ms` entry
+  during sweep 1 — so on sweep 2 it looked like a brand-new id, got
+  inserted fresh, and was scored `very_new` starting a few sweeps later
+  anyway. The same false-positive class the fix was meant to prevent,
+  just delayed by one sweep instead of eliminated.
+- Corrected design: `first_seen_ms` is now recorded unconditionally on
+  every sweep including the first, and a separate
+  `untrusted_from_startup: HashSet<WindowId>` marks every window id
+  present during the daemon's very first sweep. Age inference is only
+  trusted (used) for an id *not* in that set. The set is pruned to only
+  currently-present ids at the end of every sweep, so the moment a
+  startup-cohort window is ever absent even once, it permanently loses
+  its untrusted status — a later reappearance is a genuinely fresh
+  observation (the OS could easily reuse the id for an unrelated window)
+  and gets a trustworthy inferred age like any other window from then on.
+- Added 3 new unit tests in `monitor.rs`
+  (`startup_cohort_window_never_gets_inferred_age_while_continuously_present`,
+  `window_appearing_after_first_sweep_gets_trusted_inferred_age`,
+  `startup_cohort_window_becomes_trusted_again_after_disappearing_and_reappearing`)
+  and 1 `cli_contract.rs` end-to-end test against the real compiled binary
+  and real wall-clock time (`daemon_startup_cohort_window_never_treated_as_very_new`).
+  Proved the first unit test and the e2e test both have teeth: reverted
+  to the flawed `!was_first_sweep`-gated-insert design and confirmed both
+  failed (the e2e test caught the real daemon firing `overlay_suspicious`
+  with `very_new` on every sweep after the first), then restored the fix.
+
 ### Fixed — long-lived benign windows falsely flagged as a repeat-flood (audit DR-11)
 - `Monitor::sweep` recorded a repeat-tracker "appearance" for **every**
   enumerated window on **every** sweep, conflating presence (still on

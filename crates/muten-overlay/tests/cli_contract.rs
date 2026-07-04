@@ -832,3 +832,72 @@ fn daemon_long_lived_benign_window_never_triggers_repeated_flood() {
         );
     }
 }
+
+/// End-to-end regression guard for the DR-2 `age_ms` inference fix: a
+/// window present since the daemon's very first sweep reports `age_ms: 0`
+/// ("unknown") forever, since every real OS helper never reports a
+/// nonzero age. `Monitor::sweep` infers an age from how long it has
+/// tracked the window itself when the helper doesn't know — but a window
+/// that was already open before the daemon started must never have that
+/// inferred age trusted, or it would look freshly-popped (`very_new`,
+/// which the scorer only awards for a real nonzero age under 1s) for a
+/// few sweeps right after every daemon restart. This window's score
+/// (`unsolicited` 25 + `topmost` 15 = 40) sits just below
+/// `SUSPICIOUS_THRESHOLD` (50) without `very_new`, and would cross it
+/// (50) with `very_new`'s +10 if the age were (wrongly) trusted — so any
+/// `overlay_suspicious` event here proves the regression.
+#[cfg(unix)]
+#[test]
+fn daemon_startup_cohort_window_never_treated_as_very_new() {
+    let dir = tempfile::tempdir().unwrap();
+    let helper = dir.path().join("startup-helper.sh");
+    let json = r#"[{"id":"w1","window":{"title":"quarterly report viewer","coverage_percent":0,"topmost":true,"has_close_button":true,"blocks_input":false,"origin":"unsolicited","age_ms":0}}]"#;
+    std::fs::write(
+        &helper,
+        format!(
+            "#!/bin/sh\ncase \"$1\" in\n--probe) exit 0 ;;\nenumerate) echo '{json}' ;;\ndismiss) exit 2 ;;\n*) exit 1 ;;\nesac\n"
+        ),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&helper).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&helper, perms).unwrap();
+    }
+
+    let audit_log = dir.path().join("audit.log");
+    let stop_flag = dir.path().join("stop");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_muten-overlay"))
+        .args([
+            "daemon",
+            helper.to_str().unwrap(),
+            "--audit-log",
+            audit_log.to_str().unwrap(),
+            "--interval-ms",
+            "40",
+            "--stop-flag",
+            stop_flag.to_str().unwrap(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn daemon");
+
+    // Many closely-spaced sweeps of the same never-absent window — if its
+    // age were (wrongly) inferred from first-seen time, most of these
+    // sweeps would compute an age well under 1000ms and trip very_new.
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    std::fs::write(&stop_flag, "").unwrap();
+    let status = child.wait().expect("daemon exits");
+    assert_eq!(status.code(), Some(0));
+
+    if audit_log.exists() {
+        let log_text = std::fs::read_to_string(&audit_log).unwrap();
+        assert!(
+            !log_text.contains("overlay_suspicious"),
+            "a window present since the daemon's first sweep must never be scored as very_new: {log_text}"
+        );
+    }
+}

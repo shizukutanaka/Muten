@@ -108,6 +108,31 @@ pub struct Monitor {
     /// many windows are on screen at once — no unbounded growth over a
     /// long-running daemon.
     present_last_sweep: std::collections::HashSet<crate::scareware::Signature>,
+    /// First sweep timestamp at which each window id was observed, for
+    /// inferring `age_ms` when the helper reports `0` ("unknown" — see
+    /// [`crate::OverlayWindow::age_ms`]'s documented contract). Real OS
+    /// helpers on all four platforms currently always report `age_ms:
+    /// 0`, which means the `very_new` (+10) signal and the
+    /// `sudden_fullscreen_takeover` composite (both gated on `age_ms > 0
+    /// && age_ms < 1000`) never fire on a real host (audit DR-2). Pruned
+    /// each sweep to just the currently-present ids, so memory is
+    /// bounded by on-screen window count, not uptime.
+    first_seen_ms: std::collections::HashMap<crate::WindowId, u64>,
+    /// `true` once at least one sweep has completed. Used to identify the
+    /// daemon's very first sweep, whose windows seed
+    /// `untrusted_from_startup` below.
+    has_swept_before: bool,
+    /// Window ids present during the daemon's very *first* sweep. Such a
+    /// window might have been open for hours before the daemon started —
+    /// we have no way to know — so its inferred age must never be trusted
+    /// (which would make it look `very_new` for one brief window right
+    /// after daemon startup, a false positive) for as long as it stays
+    /// continuously present. The moment a startup-cohort window is ever
+    /// absent from a sweep, it's dropped from this set (see the pruning
+    /// at the end of [`Self::sweep`]); a later reappearance is a genuine,
+    /// freshly-observed appearance and gets a trustworthy inferred age
+    /// like any other window.
+    untrusted_from_startup: std::collections::HashSet<crate::WindowId>,
 }
 
 impl Monitor {
@@ -118,6 +143,9 @@ impl Monitor {
             rules,
             tracker: RepeatTracker::default(),
             present_last_sweep: std::collections::HashSet::new(),
+            first_seen_ms: std::collections::HashMap::new(),
+            has_swept_before: false,
+            untrusted_from_startup: std::collections::HashSet::new(),
         }
     }
 
@@ -128,6 +156,9 @@ impl Monitor {
             rules,
             tracker,
             present_last_sweep: std::collections::HashSet::new(),
+            first_seen_ms: std::collections::HashMap::new(),
+            has_swept_before: false,
+            untrusted_from_startup: std::collections::HashSet::new(),
         }
     }
 
@@ -169,8 +200,43 @@ impl Monitor {
         let mut dismissed_count = 0u32;
         let mut detection_count = 0u32;
         let mut present_this_sweep = std::collections::HashSet::with_capacity(windows.len());
+        let mut ids_this_sweep = std::collections::HashSet::with_capacity(windows.len());
+        // Skip inference entirely on the daemon's very first sweep — see
+        // `has_swept_before`'s doc comment for why.
+        let was_first_sweep = !self.has_swept_before;
         for ew in &windows {
-            let verdict = classify(&ew.window, &self.rules);
+            ids_this_sweep.insert(ew.id.clone());
+
+            // Record first-seen time unconditionally (including on the
+            // very first sweep) so a window's age can be inferred once it
+            // becomes trustworthy to do so (see `untrusted_from_startup`).
+            let first_seen = *self.first_seen_ms.entry(ew.id.clone()).or_insert(now_ms);
+            if was_first_sweep {
+                self.untrusted_from_startup.insert(ew.id.clone());
+            }
+            let trusted = !self.untrusted_from_startup.contains(&ew.id);
+
+            // Infer age_ms when the helper couldn't determine it (reports
+            // 0 = "unknown") and the inference is trustworthy. A window
+            // whose id we haven't seen before is a genuinely new
+            // appearance since the daemon started watching, so `now_ms -
+            // first_seen_ms` is a real age; a startup-cohort window's true
+            // age is unknowable until it's been seen absent at least once.
+            let effective_window = if ew.window.age_ms == 0 && trusted {
+                let inferred = now_ms.saturating_sub(first_seen);
+                if inferred == ew.window.age_ms {
+                    None // still 0 this sweep (just-inserted) — no override needed
+                } else {
+                    Some(crate::OverlayWindow {
+                        age_ms: inferred,
+                        ..ew.window.clone()
+                    })
+                }
+            } else {
+                None
+            };
+            let window_for_classify = effective_window.as_ref().unwrap_or(&ew.window);
+            let verdict = classify(window_for_classify, &self.rules);
 
             // Scareware: a rogue-AV *process* match fires regardless of
             // origin, but the repeated-*flood* signal must only count
@@ -274,6 +340,17 @@ impl Monitor {
         // Replace wholesale: only this sweep's presence matters for
         // classifying *next* sweep's appearances as new-vs-continuing.
         self.present_last_sweep = present_this_sweep;
+        // Drop first-seen timestamps for ids no longer present — bounds
+        // memory, and correctly restarts age inference from zero if the
+        // OS ever reuses the same id for an unrelated later window.
+        self.first_seen_ms
+            .retain(|id, _| ids_this_sweep.contains(id));
+        // A startup-cohort window absent this sweep loses its "untrusted"
+        // status permanently — if it reappears later, that's a genuine
+        // fresh appearance and its inferred age becomes trustworthy.
+        self.untrusted_from_startup
+            .retain(|id| ids_this_sweep.contains(id));
+        self.has_swept_before = true;
         SweepOutcome {
             dismissed: dismissed_count,
             detections: detection_count,
@@ -712,6 +789,117 @@ mod tests {
         let mut mon = Monitor::new(rules);
         mon.sweep(&ctrl, &sink, 1_000, |_| Some("AdvancedMacCleaner".into()));
         assert_eq!(sink.count_of("scareware_detected"), 1);
+    }
+
+    /// A window scoring exactly `SUSPICIOUS_THRESHOLD - W_VERY_NEW` (i.e.
+    /// `Decision::Allow` without `very_new`, `Decision::Suspicious` with
+    /// it) so the `very_new` signal's effect on the decision is directly
+    /// observable through the audit sink (`Allow` windows are never
+    /// audited, so we can't inspect their signals directly).
+    fn borderline_window(age_ms: u64) -> OverlayWindow {
+        OverlayWindow {
+            title: "quarterly report viewer".into(),
+            url: None,
+            coverage_percent: 0,
+            topmost: true, // +15
+            has_close_button: true,
+            blocks_input: false,
+            origin: Origin::Unsolicited, // +25 => 40, below the 50 threshold
+            age_ms,
+        }
+    }
+
+    /// DR-2 (age_ms inference): a window present since the daemon's very
+    /// first sweep might have been open for hours before the daemon
+    /// started, so its true age is unknowable. Even though it never
+    /// disappears across many closely-spaced sweeps (which, for a
+    /// genuinely new window, would make the inferred age small enough to
+    /// trip `very_new`), it must never be trusted enough to get an
+    /// inferred age at all — else a benign long-running app would
+    /// spuriously look `very_new` right after the daemon starts.
+    #[test]
+    fn startup_cohort_window_never_gets_inferred_age_while_continuously_present() {
+        let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
+            id: "steady".into(),
+            window: borderline_window(0), // helper reports "unknown"
+        }]);
+        let sink = MemorySink::new();
+        let mut mon = Monitor::new(Ruleset::default());
+        // Closely spaced sweeps: if this window's age were (wrongly)
+        // inferred, every one after the first would compute an age well
+        // under 1000ms and trip `very_new`.
+        for ms in [1_000, 1_200, 1_400, 1_600, 1_800, 2_000] {
+            mon.sweep(&ctrl, &sink, ms, no_proc);
+        }
+        assert_eq!(
+            sink.count_of("overlay_suspicious"),
+            0,
+            "a window present since the daemon's first sweep must never be treated as very_new; events={:?}",
+            sink.events()
+        );
+    }
+
+    /// Companion: a window that genuinely first appears *after* the
+    /// daemon has already completed at least one sweep gets a
+    /// trustworthy inferred age, and `very_new` correctly fires while
+    /// that inferred age is still under 1s.
+    #[test]
+    fn window_appearing_after_first_sweep_gets_trusted_inferred_age() {
+        let ctrl_empty = NullController::new();
+        let ctrl_present = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
+            id: "fresh".into(),
+            window: borderline_window(0),
+        }]);
+        let sink = MemorySink::new();
+        let mut mon = Monitor::new(Ruleset::default());
+        mon.sweep(&ctrl_empty, &sink, 1_000, no_proc); // sweep 1: nothing present
+        mon.sweep(&ctrl_present, &sink, 2_000, no_proc); // sweep 2: genuinely new appearance, inferred age 0
+        assert_eq!(
+            sink.count_of("overlay_suspicious"),
+            0,
+            "a freshly-appeared window's first sweep must not yet be very_new (inferred age 0)"
+        );
+        mon.sweep(&ctrl_present, &sink, 2_500, no_proc); // sweep 3: inferred age 500ms < 1000ms
+        assert_eq!(
+            sink.count_of("overlay_suspicious"),
+            1,
+            "a window seen for the first time mid-run should get a trustworthy inferred age and trip very_new while under 1s old; events={:?}",
+            sink.events()
+        );
+    }
+
+    /// A startup-cohort window that is ever absent for even one sweep
+    /// loses its "untrusted" status permanently: a later reappearance is
+    /// legitimately fresh information (the OS could easily have reused
+    /// the id for an unrelated window), so it should be treated exactly
+    /// like any other genuinely-new appearance from that point on.
+    #[test]
+    fn startup_cohort_window_becomes_trusted_again_after_disappearing_and_reappearing() {
+        let ctrl_empty = NullController::new();
+        let ctrl_present = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
+            id: "steady".into(),
+            window: borderline_window(0),
+        }]);
+        let sink = MemorySink::new();
+        let mut mon = Monitor::new(Ruleset::default());
+        mon.sweep(&ctrl_present, &sink, 1_000, no_proc); // sweep 1: startup cohort, untrusted
+        mon.sweep(&ctrl_empty, &sink, 1_500, no_proc); // sweep 2: gone — untrusted status cleared
+        mon.sweep(&ctrl_present, &sink, 2_000, no_proc); // sweep 3: reappears, treated as new (inferred age 0)
+        assert_eq!(
+            sink.count_of("overlay_suspicious"),
+            0,
+            "the reappearance sweep itself must not yet be very_new (inferred age 0)"
+        );
+        mon.sweep(&ctrl_present, &sink, 2_500, no_proc); // sweep 4: inferred age 500ms < 1000ms — now trusted
+        assert_eq!(
+            sink.count_of("overlay_suspicious"),
+            1,
+            "after disappearing once, the window's reappearance should be trusted and trip very_new; events={:?}",
+            sink.events()
+        );
     }
 
     #[test]
