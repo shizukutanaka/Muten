@@ -1475,9 +1475,61 @@ fn cmd_daemon(
     // protection loop itself. Warn once per failure streak rather than
     // spamming stderr every sweep at 1s intervals.
     let mut metrics_write_failing = false;
+    // Blocklist hot-reload (DR-3): remember the rules file's mtime as of
+    // the load that fed the running `mon`, so each sweep can cheaply
+    // detect an edit (one stat call) without re-parsing on every sweep.
+    let mut rules_mtime = rules.and_then(|p| std::fs::metadata(p).ok()?.modified().ok());
+    let mut rules_reload_failing = false;
     loop {
         if should_stop() {
             break;
+        }
+        // An operator can edit `--rules` in place (e.g. to add a newly
+        // discovered scam host) without restarting the daemon. Detected
+        // by mtime, not a content hash: cheap, and false negatives (an
+        // edit that doesn't bump mtime) are no worse than the pre-DR-3
+        // behavior of never reloading at all.
+        if let Some(rules_path) = rules {
+            if let Ok(mtime) = std::fs::metadata(rules_path).and_then(|m| m.modified()) {
+                if Some(mtime) != rules_mtime {
+                    match std::fs::read_to_string(rules_path) {
+                        Ok(text) => {
+                            let new_rules = Ruleset::parse(&text);
+                            let count = new_rules.host_count()
+                                + new_rules.title_count()
+                                + new_rules.glob_count()
+                                + new_rules.process_count()
+                                + new_rules.phone_count()
+                                + new_rules.composite_count();
+                            mon.set_rules(new_rules);
+                            rules_mtime = Some(mtime);
+                            if rules_reload_failing {
+                                eprintln!("muten-overlay daemon: rules reload recovered");
+                                rules_reload_failing = false;
+                            }
+                            eprintln!(
+                                "muten-overlay daemon: reloaded rules from {} ({count} entries)",
+                                rules_path.display()
+                            );
+                        }
+                        Err(e) => {
+                            // Best-effort, like the metrics writer: a
+                            // transient read failure (mid-write, briefly
+                            // unreadable) must not kill protection, which
+                            // keeps running on the last-good ruleset.
+                            // `rules_mtime` deliberately stays unchanged
+                            // so the next sweep retries automatically.
+                            if !rules_reload_failing {
+                                eprintln!(
+                                    "muten-overlay daemon: rules reload failed (continuing \
+                                     with the previously loaded ruleset): {e}"
+                                );
+                                rules_reload_failing = true;
+                            }
+                        }
+                    }
+                }
+            }
         }
         let outcome = mon.sweep(&ctrl, &counting_sink, now_ms(), no_proc);
         total_dismissed += u64::from(outcome.dismissed);

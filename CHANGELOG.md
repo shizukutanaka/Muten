@@ -5,6 +5,34 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — blocklist hot-reload for `daemon` (audit DR-3)
+- `--rules` was previously only ever read once at startup: pushing an
+  updated blocklist (a newly discovered scam host, a bad process name) to
+  a fleet running `daemon` required stopping and restarting every
+  instance — a real availability gap, since the whole point of a
+  long-running daemon is to not need a restart for routine policy
+  updates.
+- `Monitor` gained `set_rules(&mut self, rules: Ruleset)`, replacing the
+  active blocklist from the next `sweep()` onward without touching any of
+  its repeat/age/presence tracking state (a rules change has no bearing
+  on which windows have already been observed).
+- `cmd_daemon`'s loop now stats the `--rules` file once per sweep (a
+  single cheap `metadata()` call) and, if its mtime has advanced since
+  the last successful load, re-reads and re-parses it and calls
+  `set_rules`. A transient read failure (file mid-write, briefly
+  unreadable) is best-effort — same pattern already used for the metrics
+  writer: warn once per failure streak, keep protecting on the
+  last-good ruleset, and retry automatically next sweep since the
+  failed attempt doesn't advance the tracked mtime.
+- Added `daemon_reloads_rules_file_edited_while_running` (`cli_contract.rs`):
+  runs the real binary against a window that only a `host:` rule can ever
+  flag, starts with a non-matching rules file, edits it in place mid-run
+  to add the matching host, and asserts an `overlay_blocked` event with
+  the right `matched_rule` appears afterward. Proved it has teeth by
+  reverting to the original load-once behavior and confirming the test
+  failed (no audit log was ever created — the edit was never picked up)
+  before restoring the fix.
+
 ### Fixed — stop-flag response latency on long `--interval-ms` (audit DR-5)
 - `cmd_daemon`'s sweep loop checked the `--stop-flag` file only once per
   sweep, then slept for the *entire* configured interval in one unbroken

@@ -413,6 +413,95 @@ fn daemon_stop_flag_takes_effect_promptly_on_a_long_interval() {
     );
 }
 
+/// End-to-end regression guard for DR-3 (blocklist hot-reload): editing
+/// `--rules` in place must take effect on the running daemon within a few
+/// sweeps, with no restart. Before the fix, `--rules` was only ever read
+/// once at startup — an operator adding a newly discovered scam host had
+/// no way to apply it without stopping and restarting the whole daemon
+/// (a real availability gap on a fleet where a rules push shouldn't
+/// require a coordinated restart).
+#[cfg(unix)]
+#[test]
+fn daemon_reloads_rules_file_edited_while_running() {
+    let dir = tempfile::tempdir().unwrap();
+    let helper = dir.path().join("host-window-helper.sh");
+    // A window that is completely benign under the built-in heuristics
+    // (no fullscreen/topmost/no-close/blocks-input/unsolicited signals) —
+    // the ONLY way it can ever be flagged is a `host:` blocklist hit.
+    let json = r#"[{"id":"w1","window":{"title":"quarterly report","url":"http://internal-portal.example/view","coverage_percent":0,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}]"#;
+    std::fs::write(
+        &helper,
+        format!(
+            "#!/bin/sh\ncase \"$1\" in\n--probe) exit 0 ;;\nenumerate) echo '{json}' ;;\ndismiss) exit 0 ;;\n*) exit 1 ;;\nesac\n"
+        ),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&helper).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&helper, perms).unwrap();
+    }
+
+    let rules_path = dir.path().join("rules.txt");
+    std::fs::write(&rules_path, "host: unrelated-domain.example\n").unwrap();
+    let audit_log = dir.path().join("audit.log");
+    let stop_flag = dir.path().join("stop");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_muten-overlay"))
+        .args([
+            "daemon",
+            helper.to_str().unwrap(),
+            "--rules",
+            rules_path.to_str().unwrap(),
+            "--audit-log",
+            audit_log.to_str().unwrap(),
+            "--interval-ms",
+            "40",
+            "--stop-flag",
+            stop_flag.to_str().unwrap(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn daemon");
+
+    // A handful of sweeps against a rules file that does NOT match this
+    // window's host — must produce zero detections.
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert!(
+        !audit_log.exists()
+            || !std::fs::read_to_string(&audit_log)
+                .unwrap()
+                .contains("overlay_blocked"),
+        "the window's host must not match the original rules file"
+    );
+
+    // Edit the rules file in place, as an operator pushing an update
+    // would (e.g. via MDM), while the daemon keeps running.
+    std::fs::write(&rules_path, "host: internal-portal.example\n").unwrap();
+
+    // Enough further sweeps (40ms interval) for the reload to be picked
+    // up and for the now-matching window to be classified and dismissed.
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    std::fs::write(&stop_flag, "").unwrap();
+    let status = child.wait().expect("daemon exits");
+    assert_eq!(status.code(), Some(0));
+
+    let log_text = std::fs::read_to_string(&audit_log)
+        .expect("audit log written once the reloaded rule starts matching");
+    let blocked_line = log_text
+        .lines()
+        .find(|l| l.contains("overlay_blocked"))
+        .unwrap_or_else(|| {
+            panic!(
+                "no overlay_blocked event — the edited rules file was never reloaded:\n{log_text}"
+            )
+        });
+    let ev: serde_json::Value = serde_json::from_str(blocked_line).unwrap();
+    assert_eq!(ev["detail"]["matched_rule"], "internal-portal.example");
+}
+
 /// Regression guard: `ChainedFileSink` creates its file lazily on the
 /// first `emit()`. A helper that only ever enumerates an empty desktop
 /// fires zero audit events, so the audit-log file may genuinely never be

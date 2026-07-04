@@ -162,6 +162,15 @@ impl Monitor {
         }
     }
 
+    /// Replace the active blocklist, taking effect from the next
+    /// [`Self::sweep`] call onward. Lets a long-running daemon pick up an
+    /// edited `--rules` file without a full restart (audit DR-3); leaves
+    /// all repeat/age/presence tracking state untouched, since a rules
+    /// change has no bearing on which windows have already been observed.
+    pub fn set_rules(&mut self, rules: Ruleset) {
+        self.rules = rules;
+    }
+
     /// Run a single sweep at logical time `now_ms`. Enumerates,
     /// classifies, dismisses Block windows, folds in scareware
     /// detection, and emits audit events. Returns a [`SweepOutcome`]
