@@ -100,6 +100,14 @@ impl AuditSink for MemorySink {
 pub struct Monitor {
     rules: Ruleset,
     tracker: RepeatTracker,
+    /// Signatures ([`signature`]) seen in the *immediately prior* sweep,
+    /// so [`Self::sweep`] can tell a genuine new appearance (the window
+    /// was gone last sweep, now it's back — a real re-pop) from mere
+    /// continued presence (the same static window, still on screen).
+    /// Replaced wholesale each sweep, so its size is bounded by however
+    /// many windows are on screen at once — no unbounded growth over a
+    /// long-running daemon.
+    present_last_sweep: std::collections::HashSet<crate::scareware::Signature>,
 }
 
 impl Monitor {
@@ -109,13 +117,18 @@ impl Monitor {
         Self {
             rules,
             tracker: RepeatTracker::default(),
+            present_last_sweep: std::collections::HashSet::new(),
         }
     }
 
     /// Construct with a custom repeat window.
     #[must_use]
     pub fn with_tracker(rules: Ruleset, tracker: RepeatTracker) -> Self {
-        Self { rules, tracker }
+        Self {
+            rules,
+            tracker,
+            present_last_sweep: std::collections::HashSet::new(),
+        }
     }
 
     /// Run a single sweep at logical time `now_ms`. Enumerates,
@@ -155,18 +168,35 @@ impl Monitor {
 
         let mut dismissed_count = 0u32;
         let mut detection_count = 0u32;
+        let mut present_this_sweep = std::collections::HashSet::with_capacity(windows.len());
         for ew in &windows {
             let verdict = classify(&ew.window, &self.rules);
 
             // Scareware: a rogue-AV *process* match fires regardless of
             // origin, but the repeated-*flood* signal must only count
-            // UNSOLICITED appearances. A user-initiated window kept on
-            // screen across sweeps (e.g. a video) is not a flood — that
-            // was a real false positive. We therefore only record an
-            // appearance toward the repeat tracker when the window is
-            // not user-initiated.
+            // genuine NEW appearances — a window that re-pops after being
+            // gone (real rogue-AV flood behavior), not a window that is
+            // merely still on screen from the previous sweep. Without this
+            // distinction, ANY long-lived window (a real one left open for
+            // multiple sweeps) would cross REPEAT_THRESHOLD after a few
+            // sweeps and fire scareware_detected forever — this was a
+            // real, reproduced false positive (docs/FEATURE_AUDIT_2026H2.md
+            // DR-11): `signature()` is content-only (title|host), so the
+            // same static window yields the same signature every sweep,
+            // and every real OS helper reports `Origin::Unknown` (never
+            // `UserInitiated`), so the pre-existing UserInitiated carve-out
+            // never actually applied on a real host.
+            //
+            // `present_last_sweep` is the previous sweep's signature set;
+            // a signature already in it means "still here," not "just
+            // appeared," so we only probe (`count`) rather than record.
+            // The `UserInitiated` carve-out is preserved as an additional,
+            // independent reason to probe-only (e.g. a user's own window
+            // that just so happens to share a signature with a scam
+            // template on its very first sweep).
             let sig = signature(&ew.window);
-            let repeats = if ew.window.origin == crate::Origin::UserInitiated {
+            let seen_last_sweep = self.present_last_sweep.contains(&sig);
+            let repeats = if ew.window.origin == crate::Origin::UserInitiated || seen_last_sweep {
                 // Probe the existing count without adding to it, so a
                 // genuine unsolicited flood already in progress isn't
                 // masked by an interleaved user window with the same
@@ -175,6 +205,7 @@ impl Monitor {
             } else {
                 self.tracker.record(&sig, now_ms)
             };
+            present_this_sweep.insert(sig.clone());
             let proc = ew.process.clone().or_else(|| process_of(&ew.id));
             let sw = assess(repeats, proc.as_deref(), &self.rules);
             if sw.decision == ScarewareDecision::Scareware {
@@ -240,6 +271,9 @@ impl Monitor {
 
         // Keep tracker memory bounded over long uptimes.
         self.tracker.prune(now_ms);
+        // Replace wholesale: only this sweep's presence matters for
+        // classifying *next* sweep's appearances as new-vs-continuing.
+        self.present_last_sweep = present_this_sweep;
         SweepOutcome {
             dismissed: dismissed_count,
             detections: detection_count,
@@ -418,9 +452,14 @@ mod tests {
 
     #[test]
     fn repeated_scam_triggers_scareware_event() {
-        // Same window every sweep → repeat tracker crosses threshold.
+        // Genuine re-pop flood: the window appears, disappears, appears
+        // again — not merely "the same static window left open" (that
+        // presence-only case is the DR-11 false positive this monitor
+        // must NOT flag; see present_last_sweep in `sweep`). Real rogue-AV
+        // floods pop the alert, and it comes back after being dismissed
+        // or briefly closed, which is what this models.
         let rules = Ruleset::default();
-        let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+        let window = EnumeratedWindow {
             process: None,
             id: "flood".into(),
             window: OverlayWindow {
@@ -434,16 +473,20 @@ mod tests {
                 origin: Origin::Unsolicited,
                 age_ms: 1_000,
             },
-        }]);
+        };
+        let ctrl_present = NullController::with_windows(vec![window]);
+        let ctrl_gone = NullController::new();
         let sink = MemorySink::new();
         let mut mon = Monitor::new(rules);
-        // Three sweeps of the same signature within the window.
-        mon.sweep(&ctrl, &sink, 1_000, no_proc);
-        mon.sweep(&ctrl, &sink, 2_000, no_proc);
-        mon.sweep(&ctrl, &sink, 3_000, no_proc);
+        // appear, gone, appear, gone, appear — 3 genuine appearances.
+        mon.sweep(&ctrl_present, &sink, 1_000, no_proc);
+        mon.sweep(&ctrl_gone, &sink, 1_500, no_proc);
+        mon.sweep(&ctrl_present, &sink, 2_000, no_proc);
+        mon.sweep(&ctrl_gone, &sink, 2_500, no_proc);
+        mon.sweep(&ctrl_present, &sink, 3_000, no_proc);
         assert!(
             sink.count_of("scareware_detected") >= 1,
-            "3 identical appearances should trigger scareware_detected; events={:?}",
+            "3 genuine re-pop appearances should trigger scareware_detected; events={:?}",
             sink.events()
         );
     }
@@ -547,8 +590,10 @@ mod tests {
 
     #[test]
     fn unsolicited_repeats_still_flood() {
-        // The fix must not break detection of genuine floods.
-        let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+        // The fix must not break detection of genuine floods: appear,
+        // gone, appear, gone, appear — real re-pop behavior, not mere
+        // continued presence (see present_last_sweep in `sweep`).
+        let window = EnumeratedWindow {
             process: None,
             id: "flood".into(),
             window: OverlayWindow {
@@ -561,13 +606,94 @@ mod tests {
                 origin: Origin::Unsolicited,
                 age_ms: 500,
             },
+        };
+        let ctrl_present = NullController::with_windows(vec![window]);
+        let ctrl_gone = NullController::new();
+        let sink = MemorySink::new();
+        let mut mon = Monitor::new(Ruleset::default());
+        for ms in [1_000, 1_500, 2_000, 2_500, 3_000] {
+            let ctrl: &dyn OverlayController = if ms % 1_000 == 0 {
+                &ctrl_present
+            } else {
+                &ctrl_gone
+            };
+            mon.sweep(ctrl, &sink, ms, no_proc);
+        }
+        assert!(sink.count_of("scareware_detected") >= 1);
+    }
+
+    /// Direct regression test for DR-11: a long-lived, perfectly benign
+    /// window that never disappears must NOT accumulate repeat-flood
+    /// hits just for existing across sweeps. Before the fix, this fired
+    /// scareware_detected from the 3rd sweep onward, forever.
+    #[test]
+    fn long_lived_benign_window_does_not_trigger_repeated_flood() {
+        let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+            process: None,
+            id: "steady".into(),
+            window: OverlayWindow {
+                title: "my ordinary app".into(),
+                url: None,
+                coverage_percent: 20,
+                topmost: false,
+                has_close_button: true,
+                blocks_input: false,
+                // Every real OS helper reports Unknown, never
+                // UserInitiated — this is deliberately NOT UserInitiated
+                // so the test exercises the presence-tracking fix itself,
+                // not the pre-existing (real-host-inapplicable) carve-out.
+                origin: Origin::Unknown,
+                age_ms: 0,
+            },
         }]);
         let sink = MemorySink::new();
         let mut mon = Monitor::new(Ruleset::default());
-        for ms in [1_000, 2_000, 3_000] {
+        for ms in [1_000, 2_000, 3_000, 4_000, 5_000] {
             mon.sweep(&ctrl, &sink, ms, no_proc);
         }
-        assert!(sink.count_of("scareware_detected") >= 1);
+        assert_eq!(
+            sink.count_of("scareware_detected"),
+            0,
+            "a static, ever-present benign window must never be flagged as a repeat flood; events={:?}",
+            sink.events()
+        );
+    }
+
+    /// Companion to the above: a window that genuinely re-pops (appears,
+    /// disappears, appears again) across a sequence including gaps must
+    /// still be detected — proving the fix distinguishes presence from
+    /// appearance rather than just suppressing the signal outright.
+    #[test]
+    fn genuine_repop_flood_still_detected_across_gaps() {
+        let window = EnumeratedWindow {
+            process: None,
+            id: "repop".into(),
+            window: OverlayWindow {
+                title: "you have won a prize".into(),
+                url: None,
+                coverage_percent: 90,
+                topmost: true,
+                has_close_button: false,
+                blocks_input: true,
+                origin: Origin::Unknown,
+                age_ms: 0,
+            },
+        };
+        let ctrl_present = NullController::with_windows(vec![window]);
+        let ctrl_gone = NullController::new();
+        let sink = MemorySink::new();
+        let mut mon = Monitor::new(Ruleset::default());
+        // present, gone, present, gone, present: 3 genuine appearances.
+        mon.sweep(&ctrl_present, &sink, 1_000, no_proc);
+        mon.sweep(&ctrl_gone, &sink, 2_000, no_proc);
+        mon.sweep(&ctrl_present, &sink, 3_000, no_proc);
+        mon.sweep(&ctrl_gone, &sink, 4_000, no_proc);
+        mon.sweep(&ctrl_present, &sink, 5_000, no_proc);
+        assert!(
+            sink.count_of("scareware_detected") >= 1,
+            "a genuinely re-popping window must still be detected as a flood; events={:?}",
+            sink.events()
+        );
     }
 
     #[test]

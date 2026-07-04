@@ -761,3 +761,74 @@ fn daemon_process_reporting_drives_rogue_av_detection_end_to_end() {
         "muten_scareware_total must be non-zero: {metrics_text}"
     );
 }
+
+/// End-to-end regression guard for DR-11: a helper that reports the SAME
+/// static, benign window every sweep (never disappearing) must never
+/// trigger `scareware_detected`. Before the fix, `Monitor::sweep` recorded
+/// a repeat-tracker "appearance" for every enumerated window every sweep
+/// regardless of whether it was new or just still on screen, so any
+/// long-lived window crossed REPEAT_THRESHOLD=3 after 3 sweeps and fired
+/// scareware_detected forever — a real, reproduced false positive
+/// (docs/FEATURE_AUDIT_2026H2.md DR-11) that would have flagged nearly
+/// every normal window left open on a real host, since every OS helper
+/// reports `origin:"unknown"` (never `user_initiated`), so the pre-
+/// existing UserInitiated carve-out never applied on a real machine.
+#[cfg(unix)]
+#[test]
+fn daemon_long_lived_benign_window_never_triggers_repeated_flood() {
+    let dir = tempfile::tempdir().unwrap();
+    let helper = dir.path().join("steady-helper.sh");
+    let json = r#"[{"id":"w1","window":{"title":"my ordinary steady app","coverage_percent":15,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}]"#;
+    std::fs::write(
+        &helper,
+        format!(
+            "#!/bin/sh\ncase \"$1\" in\n--probe) exit 0 ;;\nenumerate) echo '{json}' ;;\ndismiss) exit 2 ;;\n*) exit 1 ;;\nesac\n"
+        ),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&helper).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&helper, perms).unwrap();
+    }
+
+    let audit_log = dir.path().join("audit.log");
+    let stop_flag = dir.path().join("stop");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_muten-overlay"))
+        .args([
+            "daemon",
+            helper.to_str().unwrap(),
+            "--audit-log",
+            audit_log.to_str().unwrap(),
+            "--interval-ms",
+            "40",
+            "--stop-flag",
+            stop_flag.to_str().unwrap(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn daemon");
+
+    // Comfortably more than REPEAT_THRESHOLD (3) sweeps' worth of time —
+    // the bug fired continuously from the 3rd sweep onward, so this
+    // window is generous enough to catch a regression reliably.
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    std::fs::write(&stop_flag, "").unwrap();
+    let status = child.wait().expect("daemon exits");
+    assert_eq!(status.code(), Some(0));
+
+    // ChainedFileSink creates its file lazily on first emit(); zero
+    // scareware/block/suspicious events across many sweeps of a benign
+    // window means the file legitimately never gets created at all —
+    // itself a strong pass signal, and consistent with the DR-4 fix.
+    if audit_log.exists() {
+        let log_text = std::fs::read_to_string(&audit_log).unwrap();
+        assert!(
+            !log_text.contains("scareware_detected"),
+            "a long-lived benign window must never trigger scareware_detected: {log_text}"
+        );
+    }
+}

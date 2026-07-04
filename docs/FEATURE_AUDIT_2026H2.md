@@ -1,74 +1,201 @@
-# muten-overlay 機能過不足監査 (2026-07)
+# muten-overlay Feature Excess/Deficiency Audit (2026-07)
 
-> ソクラテス式問答法による監査の集約。各項目は推測ではなく、コード・テスト・
-> 実バイナリの実行で**検証済み**。「過剰」= 実害または保守負荷のある余剰、
-> 「適正」= 監査の結果、健全と確認されたもの、「不足」= 製品の掲げる目的
-> (managed fleet での scam overlay の検出と排除) に対して欠けているもの。
-> 修正済み項目は本ブランチ (claude/deepresearch-ultrathink-improvement-yp5Y2)
-> のコミットで対応済み。
-
----
-
-## 1. 過剰 — 検出し、修正済み
-
-| # | 項目 | 実害 | 対応 |
-|---|---|---|---|
-| E-1 | `crypto_drain_lure` の `wallet_coerce` が裸の "connect" + wallet 語で発火 | "Connect Wallet" は全正規 Web3 dApp (Uniswap/OpenSea/MetaMask 本体) の標準 CTA — 確実な誤検出 | "connect" を coercion 動詞から除外。実ドレイナは wallet_alarm / wallet_connect_popup_lure が引き続き捕捉 |
-| E-2 | `cloud_quota_lure` の汎用容量語彙 ("storage is full" / "storage almost full") | Apple「iCloud Storage Almost Full」・Google の実通知文言と一言一句同一 — 正規 OS 通知に発火 | 2段階設計に再構築: 明示的削除脅迫は単独発火、汎用容量語は sign-in/緊急圧力との AND 必須 |
-| E-3 | `IMPROVEMENT_ROADMAP.md` の陳腐化 (実装済み6項目が「未実装」表示) | 将来の計画セッションが実装済み機能を再調査・再実装する誤誘導 | deny(missing_docs) / Merkle / stdin streaming / fuzzing / docs.rs / non_exhaustive を ✓DONE に更新 |
-
-## 2. 過剰 — 残存候補 (要判断、未対応)
-
-| # | 項目 | 内容 | 推奨 |
-|---|---|---|---|
-| EC-1 | `enforce` と `monitor` の機能重複 | 両者とも NullController + 静的 JSON リストの dry-run。monitor は enforce のほぼ上位互換 (sweeps/audit-log/metrics 追加)。差分は exit code 契約 (enforce: block 時 6) のみ | 統合候補。ただし既存スクリプト互換のため deprecation 告知を先行させる |
-| EC-2 | 調査系ドキュメント4本の内容重複 | IMPROVEMENT_ROADMAP / RESEARCH_IMPROVEMENTS_2026H1 / IMPROVEMENT_CATALOG_2026H2 / GAP_ANALYSIS_2026H2 が相互に重なる項目を別々の進捗表記で保持 — 陳腐化が構造的に再発する | 「現行 = ROADMAP、他は日付付きアーカイブ」と冒頭に明記 |
-| EC-3 | `MECHANIC_EXEMPT` 定数の二重定義 | lib.rs 内の2テストが同一リストを別々に持つ — 片方だけ更新するとすり抜け | 軽微。単一 const に統合 |
-
-## 3. 適正 — 監査の結果、健全と確認
-
-- **孤児検出関数ゼロ**: confusables.rs の全 `has_*` が classify() に配線済み (差集合検査で確認)。
-- **OverlayWindow 全フィールド参照済み**: 8フィールド全てが classify() で消費される。
-- **10レンズ全露出**: categories / MITRE / persuasion / extraction / lifecycle / targeting / magnitude / fingerprint / triage / impersonation の全てが text 出力と `--json` の両方に現れる (実行して確認)。
-- **ヘルパー4種は実体あり**: Windows/macOS/X11/Wayland とも 100–137 行の動作実装 (スタブではない)。
-- **カバレッジガード群が機能**: CONTENT_SIGNALS を単一の真実源とする 5 つのメタテストが、新シグナル追加時の配線漏れを実際に検出する (E66 追加時に実証)。
-
-## 4. 不足 — 検出し、実装済み (本セッション)
-
-| # | 項目 | 欠落の内容 | 対応 |
-|---|---|---|---|
-| D-1 | **本番エントリポイント不在** | SubprocessController と Monitor::run は完備・テスト済みなのに、バイナリはどこにも実配線せず (enforce/monitor は NullController 固定)。実機で保護を動かす手段が存在しなかった | `daemon` サブコマンド新設 (probe→実スイープ→停止フラグ→検証付き監査ログ) |
-| D-2 | **ヘルパーのハング対策なし** | `Command::output()` が無期限ブロック — 固まった helper 1回でデーモン全体 (停止フラグ検査含む) が永久凍結 | spawn+poll+kill のタイムアウト (既定5s、`--helper-timeout-ms`)、`ControllerError::Timeout` 新設。pipe-buffer デッドロックも回避 |
-| D-3 | **多重起動ガードなし** | 同一 audit-log への2プロセス並走でハッシュチェーンが破損 (改竄検出の根拠が壊れる) | `<audit-log>.lock` (O_EXCL) + Drop 解放。サービステンプレート3種は supervisor 起動時のみ自動クリア |
-| D-4 | **ゼロイベント時クラッシュ** | ChainedFileSink は遅延生成 — 健全なゼロ検出運用で monitor/daemon が exit 1 | 3箇所 (cmd_monitor / cmd_daemon / count_audit_kinds) で「ファイル無し=空チェーン」扱いに |
-| D-5 | **メトリクスが停止時のみ書き出し** | 数週間連続運用中、node_exporter は一切データを見られない (ファイル自体が無い) | CountingSink (イベント毎 O(1) 集計) + 毎スイープ書き換え |
-| D-6 | **メトリクス書き込み失敗で保護ループ死亡** | metrics ディレクトリ不在 (node_exporter 未導入ホスト) で初回スイープ即 exit 1 | best-effort 化 (失敗ストリークにつき1回警告、保護は継続) |
-| D-7 | **MDM 配布物ゼロ** | docs は「MDM で配布」と謳うが systemd/launchd/Task Scheduler 用の成果物が無い | unit / plist / task.xml + Intune/Jamf/GPO/Ansible 手順の README 新設 |
-| D-8 | **通知許可詐欺 (Matrix Push C2 型) 未検出** | 「Click Allow to continue watching」は clickfix (CAPTCHA 語彙必須) にも download_trap (install 語彙必須) にも掛からない | `notification_permission_bait` (E66) を 10 レンズ完全配線で追加 |
-| D-9 | **`--helper-timeout-ms` の CLI 配線が無テスト** | ライブラリ側のみテスト済み — リファクタで既定値に黙って退行しても検出不能 | 2秒閾値の回帰テスト追加 (妨害注入で失敗することを確認済み) |
-
-## 5. 不足 — 残存 (優先度順)
-
-| # | 優先 | 項目 | 内容 |
-|---|---|---|---|
-| ~~DR-1~~ | ✅済 | **helper のプロセス名レポート** (旧: process-list verb が無い) | 解決 (2026-07): `EnumeratedWindow` にオプショナル `process` フィールドを追加し、4 helper 全てが enumerate ペイロードで owning process を best-effort 報告 (X11: `_NET_WM_PID`→`/proc/PID/comm`、Windows: `GetWindowThreadProcessId`→`Get-Process`、macOS: System Events プロセス名、Wayland: app-id)。`Monitor::sweep` は埋め込み値優先 (`process_of` はフォールバック)。旧形式 JSON は `#[serde(default)]` でそのまま解釈。e2e テストで daemon 実行→`scareware_detected`+`rogue_av_process`+`muten_scareware_total` 非ゼロを実証済み |
-| DR-2 | ★★★ | **helper の実フィールド忠実度** | origin (unsolicited +25) / age_ms (very_new +10) / has_close_button (+25) / blocks_input (+20) が各 OS helper で保守的固定値 → 実機ではジオメトリ系シグナルの大半が発火せず、検出力が title/URL に偏る (roadmap C7-2〜5)。誤 Block 方向ではなく検出漏れ方向なので安全側だが、実力値が仕様値を大きく下回る |
-| DR-11 | ★★★ | **常駐ウィンドウが repeated_flood 誤検出** (DR-1 の e2e 検証中に発見・未修正) | `Monitor::sweep` は毎スイープ全ウィンドウに `tracker.record()` を呼ぶ — 「再ポップ (出現)」ではなく「開いたまま (存在)」を数えている。REPEAT_THRESHOLD=3 / 窓 2 分なので、**開きっぱなしの普通のウィンドウが 3 スイープ (既定 3 秒) で scareware_detected を毎スイープ発行し続ける**。user_initiated の除外はあるが、実 helper は全て origin:"unknown" を返すため本番では効かない (DR-2 と連動)。実測: 良性タイトル・coverage 20% の静的ウィンドウで 4 スイープ中 2 件の scareware_detected。修正案: 前スイープに存在しなかった signature の出現時のみ record する (presence→appearance の区別)。監査ログ汚染と metrics (muten_scareware_total) の恒常的インフレが実害 |
-| DR-3 | ★★ | **blocklist ホットリロード** | ルール更新に daemon 再起動が必要 (installer README に明記済み)。stop-flag と同じファイル監視パターンで `--rules` の mtime を毎スイープ検査すれば依存追加なしで実装可能 |
-| DR-4 | ★★ | **ログローテーション + チェーン跨ぎ検証** | 数週間運用で監査ログが単一ファイルのまま際限なく成長 (C6-8)。verify のチェーン継続検証 (`verify_chain_continued`) は既にあるので、ローテーション側の実装のみ |
-| DR-5 | ★★ | **stop-flag の応答遅延** | フラグはスイープ間でしか見ない — interval を長く設定すると停止にほぼ interval 分かかる。sleep を小刻み (例: 250ms) に分割してフラグを挟み見れば解決 |
-| DR-6 | ★★ | **Merkle root の外部アンカー自動化** | root の計算と HMAC 署名は実装済みだが、out-of-band への定期公開 (syslog / 不変ストレージ) は手動 (C6-2/5) |
-| DR-7 | ★ | **設定ファイル** | `~/.config/muten/overlay.toml` 等が無く毎回フラグ指定 (C4-9)。サービステンプレートがフラグを固定するため daemon 運用では低優先 |
-| DR-8 | ★ | **EN/JP 以外の言語** | フィッシングは 22 言語に分散 (arXiv:2306.05816)。現行検出語彙は EN+JP のみ |
-| DR-9 | ★ | **BITB (Browser-in-the-Browser) 検出** | OverlayWindow (title+url) では原理的に不可。helper プロトコルに DOM 由来情報を足す拡張が前提 |
-| DR-10 | ★ | **署名ビルド / semver-checks / ベンチマーク** | C10-1 (Authenticode/Sigstore)、cargo-semver-checks、criterion (C3 残) |
+> **How to read this document** (for any Claude instance picking this up
+> cold, with no prior conversation context): this is a running audit of
+> `muten-overlay` (a pure, offline, `forbid(unsafe_code)` scam-overlay /
+> scareware classifier for managed Windows/macOS/Linux fleets, in
+> `/home/user/Muten`, crate at `crates/muten-overlay`). Every item below
+> was **verified against actual code, tests, or a real compiled-binary
+> run** — none are speculation. Each item has one of four STATUS values:
+> `RESOLVED` (fixed, in a specific commit — see `git log` on branch
+> `claude/deepresearch-ultrathink-improvement-yp5Y2`), `OPEN` (confirmed
+> real, not yet fixed — this is your TODO list, ordered by priority stars
+> `★★★` > `★★` > `★`), `VERIFIED-HEALTHY` (checked and found NOT to be a
+> problem — do not re-investigate without new evidence), or `WONTFIX`
+> (deliberately out of scope, with the reason given). Japanese prose
+> below explains context for a human reader; identifiers, file paths,
+> and code snippets are the load-bearing, language-neutral part — trust
+> those over any paraphrase. "過剰" (excess) = code/docs that cost more
+> than they're worth (bug, duplication, staleness). "不足" (deficiency)
+> = something the product's own stated purpose (detect and dismiss scam
+> overlays on a real managed fleet) needs but lacks.
 
 ---
 
-**現状サマリ**: 検出エンジン (66 シグナル / 10 レンズ / 正規化パイプライン) と
-監査基盤 (ハッシュチェーン + Merkle) は充実しており、本セッションで本番実行系
-(daemon + タイムアウト + ロック + ライブメトリクス + MDM テンプレート) と
-プロセス帰属チャネル (旧 DR-1) の欠落を埋めた。残る最大の不足は
-**DR-2 = helper のジオメトリ系フィールドの忠実度** (origin / age_ms /
-blocks_input の保守的固定値) であり、シグナルの追加よりも「既存シグナルを
-実機で生かす」ことが引き続き次の主戦場。
+## 1. Excess (過剰) — RESOLVED
+
+### [RESOLVED] E-1: `crypto_drain_lure` false-positive on bare "Connect Wallet"
+- **Evidence**: `has_crypto_drain_lure`'s `wallet_coerce` sub-pattern fired
+  on bare `"connect"` + any wallet-brand word (wallet/metamask/coinbase/
+  web3/defi/nft), with no alarm or reward context required.
+- **実害**: "Connect Wallet" is the universal, always-benign primary CTA
+  on every legitimate Web3 dApp (Uniswap, OpenSea, MetaMask itself) —
+  guaranteed false positive, caught by the `benign_corpus` adversarial
+  test harness.
+- **Fix**: removed `"connect"` from the coercion-verb list in
+  `src/confusables.rs`. Real wallet-drainer patterns remain caught by
+  `wallet_alarm` (connect + alarm word) and the newer
+  `wallet_connect_popup_lure` signal (connect + reward hook).
+
+### [RESOLVED] E-2: `cloud_quota_lure` false-positive on real Apple/Google notification text
+- **Evidence**: generic capacity vocabulary ("storage is full" /
+  "storage almost full") was word-for-word identical to Apple's actual
+  "iCloud Storage Almost Full" notification and Google's real quota
+  notice.
+- **Fix**: redesigned as a two-tier AND-pair in `src/confusables.rs`: an
+  explicit deletion-threat phrase fires alone; generic capacity language
+  now additionally requires sign-in/urgency pressure a passive OS
+  notification never applies.
+
+### [RESOLVED] E-3: `docs/IMPROVEMENT_ROADMAP.md` staleness
+- **Evidence**: 6 items marked "not implemented" were already shipped
+  (`#![deny(missing_docs)]`, Merkle tree anchoring, stdin streaming,
+  fuzzing, docs.rs metadata, `#[non_exhaustive]`).
+- **実害**: a future planning session could re-research or re-implement
+  already-shipped work.
+- **Fix**: markers updated to `✓DONE` with a one-line verification note
+  each.
+
+## 2. Excess (過剰) — OPEN, low priority, needs a human judgment call
+
+These are not bugs; they're candidates for future cleanup that trade off
+against backward compatibility or documentation churn. Not blocking.
+
+### [OPEN ★] EC-1: `enforce` / `monitor` subcommand overlap
+`enforce` and `monitor` are both dry-run demo tools over `NullController`
++ a static JSON window list; `monitor` is nearly a superset (adds
+`--sweeps`/`--audit-log`/`--metrics`). Only real difference: `enforce`'s
+exit-code contract (6 on any Block). Merging would need a deprecation
+notice for scripts depending on `enforce` specifically.
+
+### [OPEN ★] EC-2: 4 overlapping research/survey docs
+`IMPROVEMENT_ROADMAP.md`, `RESEARCH_IMPROVEMENTS_2026H1.md`,
+`IMPROVEMENT_CATALOG_2026H2.md`, `GAP_ANALYSIS_2026H2.md` track
+overlapping items with separate progress markers — structurally prone to
+re-staleness (see E-3). Recommend a one-line header on each: "current =
+ROADMAP; the others are dated point-in-time archives, do not update."
+
+### [OPEN ★] EC-3: `MECHANIC_EXEMPT` duplicated in two tests in `lib.rs`
+Two tests independently hardcode the same signal-name list; updating one
+without the other silently desyncs. Low-risk, low-effort: consolidate
+into one `const`.
+
+## 3. Verified Healthy (適正) — checked, confirmed NOT a problem
+
+- **Zero orphaned detector functions**: every `has_*` function in
+  `confusables.rs` is wired into `classify()` (confirmed via diff of
+  defined-vs-called function names).
+- **Every `OverlayWindow` field is consulted**: all 8 fields feed
+  `classify()`.
+- **All 10 analysis lenses surface in both text and `--json` CLI
+  output**: categories / MITRE / persuasion / extraction / lifecycle /
+  targeting / magnitude / fingerprint / triage / impersonation — verified
+  by running `cargo run -- classify` against a real crafted window.
+- **All 4 platform helpers are real, substantial implementations**
+  (100–180 lines each), not stubs.
+- **The coverage-guard meta-tests actually catch wiring gaps**: proven
+  when adding signal E66 (`notification_permission_bait`) — the guards
+  failed loudly until every lens was wired.
+
+## 4. Deficiency (不足) — RESOLVED this audit cycle
+
+| ID | Title | What was missing | Fix |
+|---|---|---|---|
+| D-1 | No production entry point | `SubprocessController` + `Monitor::run` were complete and tested, but the compiled binary never wired them together — `enforce`/`monitor` only ever used `NullController`. No way to run real protection on a real machine. | Added `daemon` subcommand: probe → real sweep loop → stop-flag → verified audit log. |
+| D-2 | No helper hang protection | `Command::output()` blocks forever; one hung helper call freezes the entire daemon, including its own stop-flag check. | spawn+poll+kill with a timeout (default 5s, `--helper-timeout-ms`); new `ControllerError::Timeout`; also avoids a pipe-buffer deadlock. |
+| D-3 | No single-instance guard | Two daemon processes on the same `--audit-log` would race and corrupt the tamper-evident hash chain. | `<audit-log>.lock` (`create_new`/`O_EXCL`) + `Drop`-based release; 3 service-manager templates auto-clear it only in their own supervisor-guaranteed startup step. |
+| D-4 | Crash on zero-event runs | `ChainedFileSink` creates its file lazily; an all-benign run made `monitor`/`daemon` exit 1 instead of 0. | 3 call sites now treat "file doesn't exist" as "empty, valid chain." |
+| D-5 | Metrics only written at shutdown | A daemon running for weeks would show `node_exporter` **nothing** until its first graceful stop (which might never happen). | `CountingSink` wrapper tallies counts in O(1) per event; metrics file rewritten every sweep. |
+| D-6 | Metrics-write failure killed the loop | A missing metrics directory made the very first sweep's `?`-propagated error exit the whole daemon. | Best-effort: warn once per failure streak, keep protecting. |
+| D-7 | Zero MDM deployment artifacts | Docs claimed "pushed via MDM" but no systemd/launchd/Task Scheduler files existed. | Added `installer/overlay-helper/{muten-overlay.service, com.muten.overlay.plist, muten-overlay-task.xml}` + a README covering Intune/Jamf/GPO/Ansible. |
+| D-8 | Notification-permission-bait scams undetected | "Click Allow to continue watching" (Matrix Push C2-style) matched neither `clickfix_instruction` (needs CAPTCHA vocabulary) nor `download_trap_lure` (needs install vocabulary). | New signal `notification_permission_bait` (E66), fully wired across all 10 lenses. |
+| D-9 | `--helper-timeout-ms` CLI flag untested | Only the underlying library call was tested; a refactor could silently drop the CLI wiring back to the library default with nothing noticing. | Regression test with a threshold tight enough to distinguish "flag worked" from "flag silently ignored"; verified by deliberately breaking the wiring and watching the test fail. |
+| ~~DR-1~~ | Helper process-name reporting missing | `cmd_daemon` hard-wired `process_of` to `None` — the `rogue_av_process` signal and all 49 shipped `process:` blocklist rules were dead in production `daemon` mode. | `EnumeratedWindow.process` (optional, `#[serde(default)]`) reported best-effort by all 4 helpers (X11: `_NET_WM_PID`→`/proc/PID/comm`; Windows: `GetWindowThreadProcessId`→`Get-Process`; macOS: System Events process name; Wayland: foreign-toplevel app-id). `Monitor::sweep` prefers the embedded value over the `process_of` fallback. e2e-verified: a benign-titled window with a blocklisted process name produces `scareware_detected` + `rogue_av_process` + a non-zero `muten_scareware_total`. |
+| ~~DR-11~~ | **Long-lived benign windows falsely flagged as repeat-flood** | `Monitor::sweep` (src/monitor.rs) called `tracker.record()` for **every** enumerated window on **every** sweep — conflating "still present" with "just appeared." `signature()` (`src/lib.rs`) is content-only (`title\|host`), so a static window produces the same signature every sweep; `REPEAT_THRESHOLD=3` (`src/scareware.rs`) meant any long-lived window fired `scareware_detected` continuously from its 3rd sweep onward. The `Origin::UserInitiated` carve-out never helped in practice because every real helper reports `origin:"unknown"`. Found and reproduced (2 spurious events / 4 sweeps) during D-1's e2e verification; deliberately deferred to its own fix. | `Monitor` gained `present_last_sweep: HashSet<Signature>` (the prior sweep's signature set, replaced wholesale each sweep — bounded memory). A signature already in that set is probed (`count`, non-incrementing); a signature absent from it (first sight, or a genuine re-appearance after disappearing) is recorded (`record`, incrementing) — this is exactly the presence-vs-appearance distinction the bug lacked. Verified in both directions with a real running daemon binary: a static benign window produced 0 `scareware_detected` across 6 sweeps; an appear/disappear/appear helper (genuine re-pop) still produced 3 `scareware_detected` events across 10 sweeps. 3 pre-existing tests that had baked in "same static controller swept repeatedly = a flood" were rewritten to alternate present/gone controllers, matching real re-pop behavior instead of the bug. |
+
+## 5. Deficiency (不足) — OPEN, priority order
+
+### [OPEN ★★★] DR-2: Helper geometry-field fidelity is low
+`origin` (feeds `unsolicited` +25), `age_ms` (feeds `very_new` +10),
+`has_close_button` (+25 when absent), `blocks_input` (+20) are hard-coded
+conservative defaults in the OS helpers (X11/macOS/Wayland report
+`origin:"unknown"`, `age_ms:0` unconditionally; Wayland additionally
+hard-codes `coverage_percent:0`). Real-host detection is biased almost
+entirely onto title/URL matching, missing most of the geometry-based
+scoring the classifier is designed around. This fails safe (under-detects
+rather than false-blocks), but the real detection power falls well short
+of the design's intent. **This is now the single largest remaining gap**
+after D-1..D-9 and DR-1/DR-11 closed the production-readiness and
+false-positive gaps. Fixing this requires helper-side work across all 4
+platforms (X11: track window-create timestamps + `_NET_WM_STATE_FOCUSED`
+history for origin inference; Windows: `GetTickCount`-based age +
+foreground-change tracking; similar per-platform effort for macOS/
+Wayland) — a larger, multi-file undertaking better scoped as its own
+session, one platform at a time.
+
+### [OPEN ★★] DR-3: No blocklist hot-reload
+Updating `--rules` requires a full daemon restart (documented in
+`installer/overlay-helper/README.md`). Same file-watch pattern already
+used for the stop-flag (check `--rules`'s mtime once per sweep) would
+close this with no new dependency.
+
+### [OPEN ★★] DR-4: No log rotation across a multi-week run
+The audit log is a single ever-growing file. `verify_chain_continued` (in
+`src/sink.rs`) already supports verifying a chain that spans a rotation
+boundary — only the rotation mechanism itself (when/how to cut a new
+file) is missing.
+
+### [OPEN ★★] DR-5: Stop-flag response latency
+The flag is only checked between sweeps — a long `--interval-ms` means a
+graceful stop can take nearly a full interval to take effect. Splitting
+the inter-sweep sleep into short chunks (e.g. 250ms) with a flag-check
+between each chunk would fix this without new dependencies.
+
+### [OPEN ★★] DR-6: Merkle-root external anchoring is manual
+Root computation and HMAC signing (`src/sink.rs`) are implemented; the
+periodic out-of-band publication step (syslog, immutable storage) is a
+manual operator task, not automated.
+
+### [OPEN ★] DR-7: No config file
+No `~/.config/muten/overlay.toml` — every invocation needs explicit
+flags. Lower priority for `daemon` specifically since the service-manager
+templates (systemd/launchd/Task Scheduler) already pin the flags in one
+place per deployment.
+
+### [OPEN ★] DR-8: Detection vocabulary is EN + JP only
+Published phishing corpora show lures spread across ~22 languages
+(arXiv:2306.05816); this product currently detects English and Japanese
+only.
+
+### [OPEN ★] DR-9: No Browser-in-the-Browser (BITB) detection
+`OverlayWindow` (title + url only) cannot represent BITB attacks by
+construction — would need the helper protocol extended with DOM-derived
+signals, a larger scope change.
+
+### [OPEN ★] DR-10: No signed builds / semver-checks / benchmarks
+Authenticode/Sigstore signing, `cargo-semver-checks` CI gate, and
+`criterion` throughput benchmarks are all unimplemented (tracked
+previously as roadmap C10-1 and the remainder of category C3).
+
+---
+
+## Current State Summary (as of this audit's last commit)
+
+- **Version**: `muten-overlay` v0.6.0.
+- **Tests**: 1328 unit tests + 23 `cli_contract` integration tests + 5
+  other integration suites (helper_contract, monitor_properties,
+  scoring_scenarios, benign_corpus, composed_evasion, scareware_properties)
+  — all green. `cargo clippy --all-targets -- -D warnings` clean.
+  `cargo fmt --check` clean. Zero new dependencies added across this
+  entire audit cycle. MSRV 1.75 preserved throughout.
+- **What changed this cycle**: production readiness (D-1..D-9), the
+  process-attribution gap (DR-1), and the repeat-flood false-positive
+  (DR-11) are all closed. The detection engine (66 signals / 10 lenses /
+  confusable-normalization pipeline) and the audit-integrity
+  infrastructure (hash chain + Merkle proofs) were already mature before
+  this cycle began.
+- **Recommended next action**: DR-2 (helper geometry-field fidelity) is
+  the clear next priority — it is the largest remaining gap between the
+  classifier's designed detection power and what it actually achieves on
+  a real host, but is scoped as its own multi-platform session rather
+  than a quick fix.

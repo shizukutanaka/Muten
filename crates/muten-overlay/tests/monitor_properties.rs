@@ -117,8 +117,14 @@ proptest! {
         prop_assert_eq!(sink.count_of("scareware_detected"), 0);
     }
 
-    /// An unsolicited window repeated >= 3 times within the window
-    /// always eventually produces at least one scareware_detected.
+    /// An unsolicited window that genuinely re-pops (appears, disappears,
+    /// appears again) >= 3 times always eventually produces at least one
+    /// scareware_detected. Alternates between a controller that reports
+    /// the window and one that reports nothing, modeling a real re-pop
+    /// flood rather than mere continued presence — `Monitor::sweep` must
+    /// NOT flag a window that simply stays on screen (see DR-11 /
+    /// `long_lived_benign_window_does_not_trigger_repeated_flood` in
+    /// monitor.rs), only genuine repeated appearances.
     #[test]
     fn unsolicited_repeats_always_flood(reps in 3u32..10) {
         let w = OverlayWindow {
@@ -131,15 +137,23 @@ proptest! {
             origin: Origin::Unsolicited,
             age_ms: 1_000,
         };
-        let ctrl = NullController::with_windows(vec![EnumeratedWindow {
+        let ctrl_present = NullController::with_windows(vec![EnumeratedWindow {
             process: None,
             id: "f".into(),
             window: w,
         }]);
+        let ctrl_gone = NullController::new();
         let sink = MemorySink::new();
         let mut mon = Monitor::new(Ruleset::default());
+        // Exactly `reps` genuine appearances, each preceded by a "gone"
+        // sweep (except the first) so every one registers as a new
+        // appearance under the presence-vs-appearance fix, not a single
+        // continued presence.
         for i in 0..reps {
-            mon.sweep(&ctrl, &sink, u64::from(i) * 1_000, |_| None);
+            mon.sweep(&ctrl_present, &sink, u64::from(i) * 2_000, |_| None);
+            if i + 1 < reps {
+                mon.sweep(&ctrl_gone, &sink, u64::from(i) * 2_000 + 1_000, |_| None);
+            }
         }
         prop_assert!(sink.count_of("scareware_detected") >= 1);
     }

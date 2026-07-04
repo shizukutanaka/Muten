@@ -3,7 +3,53 @@
 All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Conventional Commits](https://www.conventionalcommits.org/).
 
-## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–30)
+## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
+
+### Fixed — long-lived benign windows falsely flagged as a repeat-flood (audit DR-11)
+- `Monitor::sweep` recorded a repeat-tracker "appearance" for **every**
+  enumerated window on **every** sweep, conflating presence (still on
+  screen) with appearance (just popped up). `signature()` is content-only
+  (`title|host`), so a perfectly ordinary window left open produced the
+  identical signature every sweep; combined with `REPEAT_THRESHOLD=3`,
+  any such window crossed the threshold after 3 sweeps and then fired
+  `scareware_detected` (repeated_flood) **continuously** for as long as
+  it stayed open. The pre-existing `Origin::UserInitiated` carve-out
+  never helped in practice: every real OS helper (all four platforms)
+  reports `origin:"unknown"`, never `user_initiated`, so on a real host
+  this bug would have flagged nearly any long-lived window. Found and
+  reproduced during e2e verification of the DR-1 process-reporting work
+  in the prior round (2 spurious `scareware_detected` events across 4
+  sweeps of one static benign window), and deliberately left unfixed
+  there pending its own scoped fix.
+- Fixed by giving `Monitor` a `present_last_sweep: HashSet<Signature>`
+  of the *immediately prior* sweep's signatures (replaced wholesale each
+  sweep, so memory stays bounded by on-screen window count — no growth
+  over a long-running daemon). A signature already in that set means
+  "still here," so the tracker is only probed (`count`, non-incrementing)
+  rather than recorded; a signature absent from it — first sight, or
+  reappearing after having genuinely disappeared — is treated as a real
+  new appearance (`record`, incrementing), preserving detection of an
+  actual rogue-AV re-pop flood (alert closes, reappears moments later).
+- Every pre-existing test that modeled "a flood" as *the same static
+  controller swept repeatedly* (which is exactly the presence-only
+  pattern the fix now correctly excludes) was rewritten to alternate
+  between a controller reporting the window and one reporting nothing,
+  matching real re-pop behavior instead of baking in the bug:
+  `repeated_scam_triggers_scareware_event` and
+  `unsolicited_repeats_still_flood` (`monitor.rs`), and the
+  `unsolicited_repeats_always_flood` property test
+  (`monitor_properties.rs`, corrected to generate exactly `reps` genuine
+  appearances rather than `reps` sweeps of unbroken presence).
+- Added 2 new direct unit tests pinning both directions
+  (`long_lived_benign_window_does_not_trigger_repeated_flood`,
+  `genuine_repop_flood_still_detected_across_gaps`) and 1 `cli_contract.rs`
+  end-to-end test against the real compiled binary
+  (`daemon_long_lived_benign_window_never_triggers_repeated_flood`).
+  Manually re-verified both directions against the running daemon with
+  fake helpers: a static benign window produced 0 `scareware_detected`
+  across 6 sweeps (previously would have fired from sweep 3 onward); an
+  alternating appear/disappear helper modeling a genuine re-pop still
+  produced 3 `scareware_detected` events across 10 sweeps.
 
 ### Added — helper process reporting (audit DR-1: rogue-AV detection live in daemon mode)
 - **`EnumeratedWindow.process`** (optional, `#[serde(default)]`) — the
@@ -273,7 +319,7 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
   old 3-signal trigger.
 
 ### Tests
-- 1 326 unit tests + 22 `cli_contract` integration tests (up from 1 308
+- 1 328 unit tests + 23 `cli_contract` integration tests (up from 1 308
   unit-test baseline for this cycle), 0 failures, clippy-clean.
 
 ## [0.6.0] — evasion-resistant normalization (rounds 10–23)
