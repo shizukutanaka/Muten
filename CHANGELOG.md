@@ -5,6 +5,14 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — `docs/MODEL_PLAYBOOK.md`
+- A personal reference mapping which Claude model (Haiku/Sonnet/Opus/
+  Fable 5) and which skill fits which kind of work on this repo, grounded
+  in what this session's DR-1 → DR-11 → DR-2a → DR-5 → DR-3 loop actually
+  needed at each step (e.g. self-review of a not-yet-tested design catching
+  a false-positive class before any test ran, vs. mechanical struct-literal
+  edits across ~25 call sites).
+
 ### Added — blocklist hot-reload for `daemon` (audit DR-3)
 - `--rules` was previously only ever read once at startup: pushing an
   updated blocklist (a newly discovered scam host, a bad process name) to

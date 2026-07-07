@@ -84,6 +84,9 @@ produces these.
 - [`docs/GAP_ANALYSIS_2026H2.md`](docs/GAP_ANALYSIS_2026H2.md) — fine-grained,
   sub-system-level (14 areas A–N) audit of the actual code surface, with
   concrete per-module improvement points and live status.
+- [`docs/MODEL_PLAYBOOK.md`](docs/MODEL_PLAYBOOK.md) — which Claude model
+  (Haiku/Sonnet/Opus/Fable 5) and which skill to use for which kind of
+  work on this repo, grounded in actual session history.
 
 ## Status
 
