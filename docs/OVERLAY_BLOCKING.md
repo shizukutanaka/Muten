@@ -388,14 +388,19 @@ documented and locked by `known_limitation_*` tests.
 
 **Fix.** `has_close_button` was hard-coded `true` by the helpers,
 silently suppressing the `no_close_button` (+25) signal — the single
-strongest behavioural tell of a scam overlay. The Linux and Windows
-helpers now *detect* it:
+strongest behavioural tell of a scam overlay. Linux, Windows, and (as of
+audit DR-2, this cycle) macOS now *detect* it:
 
 - Windows: `WS_SYSMENU` window-style bit (no system menu ⇒ no close).
 - Linux/X11: EWMH `_NET_WM_ALLOWED_ACTIONS` lacking
   `_NET_WM_ACTION_CLOSE`.
+- macOS: whether the window's `button 1` UI element exists in System
+  Events — the same accessor `dismiss()` already relies on to click the
+  close button, so "no `button 1`" and "`dismiss()` can't gracefully
+  close this window" are kept consistent by construction. Wayland still
+  hard-codes `true` (no foreign-toplevel signal for this exists yet).
 
-Both default to `true` only when the property is genuinely absent, to
+All default to `true` only when the property is genuinely absent, to
 avoid over-flagging legitimate windows. With a real `has_close_button:
 false` from a borderless scam, the heuristic gains the +25 it needs to
 reach Suspicious without any blocklist entry.

@@ -16,7 +16,11 @@
 # window's close button); we never kill the app (CLAUDE.md I9).
 #
 # Fields macOS can't cheaply determine default conservatively so the
-# classifier biases toward Suspicious over Block.
+# classifier biases toward Suspicious over Block. `has_close_button` is
+# the exception (audit DR-2): it's derived from whether the window's
+# `button 1` UI element exists — the same accessor `dismiss()` below
+# already relies on to close a window, so "no button 1" and "dismiss
+# can't gracefully close this window" are kept consistent by construction.
 
 set -eu
 cmd="${1:-}"
@@ -51,7 +55,11 @@ tell application "System Events"
                 set sz to size of w
                 set ww to item 1 of sz
                 set wh to item 2 of sz
-                set out to out & pn & tab & wn & tab & ww & tab & wh & linefeed
+                set hasClose to "true"
+                try
+                    if not (exists (button 1 of w)) then set hasClose to "false"
+                end try
+                set out to out & pn & tab & wn & tab & ww & tab & wh & tab & hasClose & linefeed
             end repeat
         end try
     end repeat
@@ -62,7 +70,7 @@ APPLESCRIPT
 
     printf '['
     first=1
-    printf '%s\n' "$raw" | while IFS=$(printf '\t') read -r app wname ww wh; do
+    printf '%s\n' "$raw" | while IFS=$(printf '\t') read -r app wname ww wh hasclose; do
         [ -z "$app" ] && continue
         [ -z "$ww" ] && ww=0
         [ -z "$wh" ] && wh=0
@@ -73,6 +81,12 @@ APPLESCRIPT
         fi
         [ "$cov" -gt 100 ] && cov=100
 
+        # Default to true (matches the X11/Windows helpers' convention)
+        # when the AppleScript side didn't emit a recognizable value —
+        # only a confirmed "false" should suppress the close button.
+        has_close=true
+        [ "$hasclose" = "false" ] && has_close=false
+
         id="$app::$wname"
         eid=$(json_escape "$id")
         et=$(json_escape "$wname")
@@ -82,8 +96,8 @@ APPLESCRIPT
         # daemon treats a missing value as "unknown").
         ep=$(json_escape "$app")
         if [ "$first" -eq 1 ]; then first=0; else printf ','; fi
-        printf '{"id":"%s","process":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}' \
-            "$eid" "$ep" "$et" "$cov"
+        printf '{"id":"%s","process":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":false,"has_close_button":%s,"blocks_input":false,"origin":"unknown","age_ms":0}}' \
+            "$eid" "$ep" "$et" "$cov" "$has_close"
     done
     printf ']\n'
 }

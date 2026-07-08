@@ -5,6 +5,32 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Fixed — macOS helper hard-coded `has_close_button: true` (audit DR-2c)
+- `muten-overlay-helper-macos.sh` hard-coded `has_close_button: true`
+  unconditionally, silently suppressing the classifier's `no_close_button`
+  (+25) signal — the single strongest behavioral tell of a scam overlay —
+  for a genuinely borderless/frameless scam window (e.g. an Electron
+  `BrowserWindow` with `frame:false`) on macOS.
+- Fixed by checking `exists (button 1 of w)` per window in the AppleScript
+  enumeration block: the same `button 1` accessor `dismiss()` already
+  relies on to click the close button, so "no `button 1`" and "`dismiss()`
+  can't gracefully close this window" are now consistent by construction
+  instead of two independently-drifting assumptions.
+- Verified end-to-end by stubbing `osascript` on `PATH` (both the `-e`
+  single-expression form and the heredoc/stdin multi-line form the script
+  actually uses) and running the real shipped shell script directly (new
+  `tests/macos_helper_reference.rs`,
+  `enumerate_reports_has_close_button_from_button_1_existence`); proved
+  it has teeth by reverting to the hard-coded `true` under the identical
+  harness and confirming a borderless test window's `has_close_button`
+  silently reverted to `true`.
+- Same known limitation as DR-2b: `cargo test`/`clippy`/`fmt` could not
+  be run this round (sandbox egress policy blocks `static.crates.io` on
+  a cache-less container) — only the shell-script fix itself was
+  verified end-to-end, directly, without cargo. Treat
+  `macos_helper_reference.rs` as unverified-to-compile until the next
+  session confirms it with a working `cargo`.
+
 ### Fixed — X11 helper hard-coded `blocks_input: false` (audit DR-2b)
 - `muten-overlay-helper-linux.sh` hard-coded `blocks_input: false`
   unconditionally, silently suppressing the classifier's `blocks_input`
