@@ -5,6 +5,37 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Fixed — macOS helper hard-coded `blocks_input: false` (audit DR-2d)
+- `muten-overlay-helper-macos.sh` hard-coded `blocks_input: false`
+  unconditionally, silently suppressing the classifier's `blocks_input`
+  (+20) signal for a genuinely modal scam dialog on macOS.
+- Fixed by checking the window's accessibility `subrole` via System
+  Events and treating `"AXDialog"`/`"AXSystemDialog"` as modal — the
+  standard macOS Accessibility API signal for a dialog window. Confirmed
+  via web search against 3 independent sources (Apple Developer Forums,
+  MacScripter, a dedicated AppleScript-modal-detection writeup) before
+  implementing, since this session has no macOS host to test against
+  directly.
+- Verified end-to-end the same way as DR-2c: stubbed `osascript` on
+  `PATH`, ran the actual shipped shell script, and confirmed a modal
+  test window reports `blocks_input: true` while an ordinary window
+  reports `false` (new test
+  `enumerate_reports_blocks_input_from_axdialog_subrole` in
+  `tests/macos_helper_reference.rs`). Proved it has teeth by reverting
+  to the hard-coded `false` and confirming the modal window's
+  `blocks_input` silently reverted under the identical harness.
+- Same known limitation as DR-2b/DR-2c: `cargo test`/`clippy`/`fmt`
+  could not be run this round (sandbox egress policy blocks
+  `static.crates.io`), so this test file addition is verified at the
+  shell-script level only, not confirmed to compile.
+- Also investigated, but deliberately did NOT change, the equivalent
+  Wayland gap: only a single secondary source (a search-result summary,
+  not the primary manpage or protocol spec, both of which 403'd on
+  fetch) suggested a usable signal exists, which isn't solid enough
+  ground to touch a shipped parser. Recorded in
+  `docs/FEATURE_AUDIT_2026H2.md`'s DR-2 section for a future session
+  with real `lswt`/Wayland access to verify directly.
+
 ### Fixed — macOS helper hard-coded `has_close_button: true` (audit DR-2c)
 - `muten-overlay-helper-macos.sh` hard-coded `has_close_button: true`
   unconditionally, silently suppressing the classifier's `no_close_button`

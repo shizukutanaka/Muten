@@ -16,11 +16,17 @@
 # window's close button); we never kill the app (CLAUDE.md I9).
 #
 # Fields macOS can't cheaply determine default conservatively so the
-# classifier biases toward Suspicious over Block. `has_close_button` is
-# the exception (audit DR-2): it's derived from whether the window's
-# `button 1` UI element exists — the same accessor `dismiss()` below
-# already relies on to close a window, so "no button 1" and "dismiss
-# can't gracefully close this window" are kept consistent by construction.
+# classifier biases toward Suspicious over Block. `has_close_button` and
+# `blocks_input` are exceptions (audit DR-2): `has_close_button` is
+# derived from whether the window's `button 1` UI element exists — the
+# same accessor `dismiss()` below already relies on to close a window,
+# so "no button 1" and "dismiss can't gracefully close this window" are
+# kept consistent by construction. `blocks_input` is derived from the
+# window's accessibility `subrole` — "AXDialog"/"AXSystemDialog" is the
+# standard macOS signal for a modal dialog window (the same Accessibility
+# API concept AppleScript UI-scripting tools use to detect modals),
+# analogous to X11's `_NET_WM_STATE_MODAL` (see `muten-overlay-helper-
+# linux.sh`).
 
 set -eu
 cmd="${1:-}"
@@ -59,7 +65,12 @@ tell application "System Events"
                 try
                     if not (exists (button 1 of w)) then set hasClose to "false"
                 end try
-                set out to out & pn & tab & wn & tab & ww & tab & wh & tab & hasClose & linefeed
+                set isModal to "false"
+                try
+                    set sub to subrole of w
+                    if sub is "AXDialog" or sub is "AXSystemDialog" then set isModal to "true"
+                end try
+                set out to out & pn & tab & wn & tab & ww & tab & wh & tab & hasClose & tab & isModal & linefeed
             end repeat
         end try
     end repeat
@@ -70,7 +81,7 @@ APPLESCRIPT
 
     printf '['
     first=1
-    printf '%s\n' "$raw" | while IFS=$(printf '\t') read -r app wname ww wh hasclose; do
+    printf '%s\n' "$raw" | while IFS=$(printf '\t') read -r app wname ww wh hasclose ismodal; do
         [ -z "$app" ] && continue
         [ -z "$ww" ] && ww=0
         [ -z "$wh" ] && wh=0
@@ -87,6 +98,11 @@ APPLESCRIPT
         has_close=true
         [ "$hasclose" = "false" ] && has_close=false
 
+        # Default to false (unmodified classifier behavior) unless the
+        # subrole check positively confirmed a modal dialog.
+        blocks_input=false
+        [ "$ismodal" = "true" ] && blocks_input=true
+
         id="$app::$wname"
         eid=$(json_escape "$id")
         et=$(json_escape "$wname")
@@ -96,8 +112,8 @@ APPLESCRIPT
         # daemon treats a missing value as "unknown").
         ep=$(json_escape "$app")
         if [ "$first" -eq 1 ]; then first=0; else printf ','; fi
-        printf '{"id":"%s","process":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":false,"has_close_button":%s,"blocks_input":false,"origin":"unknown","age_ms":0}}' \
-            "$eid" "$ep" "$et" "$cov" "$has_close"
+        printf '{"id":"%s","process":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":false,"has_close_button":%s,"blocks_input":%s,"origin":"unknown","age_ms":0}}' \
+            "$eid" "$ep" "$et" "$cov" "$has_close" "$blocks_input"
     done
     printf ']\n'
 }

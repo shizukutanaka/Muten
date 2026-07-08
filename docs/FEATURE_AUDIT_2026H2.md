@@ -117,17 +117,18 @@ into one `const`.
 | ~~DR-3~~ | **No blocklist hot-reload** | `--rules` was only ever read once at startup — pushing an updated blocklist to a fleet running `daemon` required a coordinated restart of every instance, a real availability gap for routine policy updates (e.g. adding a newly discovered scam host). | `Monitor::set_rules(&mut self, rules: Ruleset)` swaps the active blocklist without disturbing repeat/age/presence tracking state. `cmd_daemon` stats `--rules`'s mtime once per sweep (one cheap syscall) and re-reads/re-parses/`set_rules`s it when the mtime advances; a transient read failure is best-effort (warn once per failure streak, keep protecting on the last-good ruleset, auto-retry next sweep) — the same pattern already used for the metrics writer. e2e-verified: `daemon_reloads_rules_file_edited_while_running` edits `--rules` in place on a running daemon and confirms a previously-non-matching window is `overlay_blocked` afterward; proved it has teeth by reverting to load-once behavior and confirming the test failed first (no audit log was ever created). |
 | ~~DR-2b~~ | **`blocks_input` hard-coded `false` on X11** | Every helper hard-coded `blocks_input: false` unconditionally, silently suppressing the `blocks_input` (+20) signal for a genuinely modal scam dialog on every platform. Also corrected a stale claim in this doc's own previous DR-2 text: `has_close_button` was NOT hard-coded on X11/Windows — both already derive it from real EWMH/`WS_SYSMENU` signals (see `docs/OVERLAY_BLOCKING.md`'s "Fix" section, predates this audit cycle). Only macOS and Wayland still hard-code `has_close_button: true`. | X11/`muten-overlay-helper-linux.sh` now derives `blocks_input` from `_NET_WM_STATE_MODAL`, reusing the same `_NET_WM_STATE` fetch already done for `topmost` (one X11 round-trip covers both — no extra `xprop` call). Verified end-to-end by stubbing `xprop`/`wmctrl`/`xdotool` on `PATH` and running the real shipped shell script (`tests/linux_helper_reference.rs`, `enumerate_reports_blocks_input_from_net_wm_state_modal`); proved it has teeth by reverting to the hard-coded `false` and confirming a modal test window's `blocks_input` silently reverted to `false` under the identical harness. **Caveat**: `cargo test`/`clippy`/`fmt` could not be run this round — the sandbox's egress policy blocked `static.crates.io` crate downloads on a cache-less container, so this Rust test file's compilation is unverified pending the next session with a working `cargo` (the shell-script change itself was fully verified directly, independent of cargo). |
 | ~~DR-2c~~ | **`has_close_button` hard-coded `true` on macOS** | The macOS helper hard-coded `has_close_button: true` unconditionally, silently suppressing the `no_close_button` (+25) signal for a genuinely borderless/frameless scam window (e.g. an Electron `BrowserWindow` with `frame:false`) on macOS. | `muten-overlay-helper-macos.sh`'s AppleScript now checks `exists (button 1 of w)` per window — the same `button 1` accessor `dismiss()` already relies on to click the close button, so "no `button 1`" and "`dismiss()` can't gracefully close this window" are consistent by construction, not two independently-drifting assumptions. Verified end-to-end by stubbing `osascript` on `PATH` (both the `-e` single-expression form and the heredoc/stdin multi-line form the script uses) and running the real shipped shell script (`tests/macos_helper_reference.rs`, `enumerate_reports_has_close_button_from_button_1_existence`); proved it has teeth by reverting to the hard-coded `true` and confirming a borderless test window's `has_close_button` silently reverted to `true` under the identical harness. Same `cargo` caveat as DR-2b: the new Rust test file's compilation is unverified this round. |
+| ~~DR-2d~~ | **`blocks_input` hard-coded `false` on macOS** | The macOS helper hard-coded `blocks_input: false` unconditionally, silently suppressing the `blocks_input` (+20) signal for a genuinely modal scam dialog on macOS. | `muten-overlay-helper-macos.sh`'s AppleScript now checks `subrole of w` per window and treats `"AXDialog"`/`"AXSystemDialog"` as modal — the standard macOS Accessibility API signal for a dialog window, corroborated by 3 independent sources (Apple Developer Forums, MacScripter, a dedicated AppleScript-modal-detection writeup) found via web search before implementing, unlike the Wayland `lswt` investigation below where only a single secondary source was available and the change was deliberately NOT made. Verified end-to-end the same way as DR-2c (stubbed `osascript`, real shipped script, `tests/macos_helper_reference.rs`'s `enumerate_reports_blocks_input_from_axdialog_subrole`); proved it has teeth by reverting to the hard-coded `false` and confirming a modal test window's `blocks_input` silently reverted to `false`. Same `cargo`-unverified caveat as DR-2b/DR-2c. |
 
 ## 5. Deficiency (不足) — OPEN, priority order
 
-### [OPEN ★★★] DR-2: Helper geometry-field fidelity — `origin` (all 4 platforms), `blocks_input` (macOS/Wayland/Windows), `has_close_button` (Wayland only)
+### [OPEN ★★★] DR-2: Helper geometry-field fidelity — `origin` (all 4 platforms), `blocks_input` (Wayland/Windows), `has_close_button` (Wayland only)
 Per-field, per-platform status as of this cycle (✅ = computed from a
 real signal, ✗ = hard-coded default):
 
 | Field | X11/Linux | macOS | Wayland | Windows |
 |---|---|---|---|---|
 | `has_close_button` | ✅ `_NET_WM_ALLOWED_ACTIONS` | ✅ `button 1` existence (DR-2c, this cycle) | ✗ always `true` | ✅ `WS_SYSMENU` |
-| `blocks_input` | ✅ `_NET_WM_STATE_MODAL` (DR-2b, this cycle) | ✗ always `false` | ✗ always `false` | ✗ always `false` |
+| `blocks_input` | ✅ `_NET_WM_STATE_MODAL` (DR-2b, this cycle) | ✅ `AXDialog`/`AXSystemDialog` subrole (DR-2d, this cycle) | ✗ always `false` | ✗ always `false` |
 | `origin` | ✗ always `unknown` | ✗ always `unknown` | ✗ always `unknown` | ✗ always `unknown` |
 | `age_ms` | n/a — inferred Monitor-side for all platforms uniformly, see DR-2a | | | |
 | `topmost` | ✅ `_NET_WM_STATE_ABOVE` | ✗ always `false` | ✗ always `false` | ✅ `WS_EX_TOPMOST` |
@@ -140,9 +141,9 @@ blocklist matching. This fails safe (under-detects rather than
 false-blocks). Fixing `origin` requires focus-history tracking across
 helper invocations (the helper is currently a stateless per-call
 subprocess) on every platform — genuinely the largest remaining piece.
-The remaining single-field gaps (`blocks_input` on macOS/Wayland/
-Windows, `has_close_button` on Wayland only now) are comparatively
-small, single-platform patches (same shape as DR-2b/DR-2c) and are the
+The remaining single-field gaps (`blocks_input` on Wayland/Windows,
+`has_close_button` on Wayland only now) are comparatively small,
+single-platform patches (same shape as DR-2b/DR-2c/DR-2d) and are the
 better next increments; `origin` is the multi-file, cross-call
 state-tracking undertaking that still warrants its own dedicated
 session.
@@ -215,28 +216,32 @@ previously as roadmap C10-1 and the remainder of category C3).
   macos_helper_reference, monitor_properties, scoring_scenarios,
   benign_corpus, composed_evasion, scareware_properties). All previously
   green as of commit `549df29`; the two new `*_helper_reference` suites
-  (DR-2b, DR-2c) are each verified end-to-end at the shell-script level
-  but their Rust compilation is **unverified** this round — see the
-  DR-2b/DR-2c caveats above. Zero new dependencies added across this
-  entire audit cycle. MSRV 1.75 preserved throughout.
+  (DR-2b/DR-2d in `linux_helper_reference.rs` and
+  `macos_helper_reference.rs`) are each verified end-to-end at the
+  shell-script level but their Rust compilation is **unverified** this
+  round — see the DR-2b/DR-2c/DR-2d caveats above. Zero new dependencies
+  added across this entire audit cycle. MSRV 1.75 preserved throughout.
 - **What changed this cycle**: production readiness (D-1..D-9), the
   process-attribution gap (DR-1), the repeat-flood false-positive
   (DR-11), the `age_ms`/`very_new` dead-signal gap (DR-2a), the stop-flag
   response latency (DR-5), blocklist hot-reload (DR-3), the X11
-  `blocks_input` gap (DR-2b), and the macOS `has_close_button` gap
-  (DR-2c) are all closed. The detection engine (66 signals / 10 lenses /
-  confusable-normalization pipeline) and the audit-integrity
-  infrastructure (hash chain + Merkle proofs) were already mature before
-  this cycle began.
+  `blocks_input` gap (DR-2b), the macOS `has_close_button` gap (DR-2c),
+  and the macOS `blocks_input` gap (DR-2d) are all closed. The detection
+  engine (66 signals / 10 lenses / confusable-normalization pipeline) and
+  the audit-integrity infrastructure (hash chain + Merkle proofs) were
+  already mature before this cycle began.
 - **Recommended next action**: run `cargo test`/`clippy`/`fmt` on
   `tests/linux_helper_reference.rs` and `tests/macos_helper_reference.rs`
   at the start of the next session (the sandbox's egress policy blocked
-  crate downloads this round — see the DR-2b/DR-2c caveats) before
+  crate downloads this round — see the DR-2b/DR-2c/DR-2d caveats) before
   trusting either as a green regression guard. After that, the DR-2
   per-field table above shows the next-smallest increment is
-  `has_close_button` or `blocks_input` on Wayland (same single-platform,
-  single-field shape as DR-2b/DR-2c just closed); `origin` on any
-  platform is the largest remaining piece (needs cross-invocation
-  focus-history state) and still warrants its own dedicated session.
-  DR-4 (log rotation) remains a ★★ self-contained single-session fix if
+  `has_close_button` or `blocks_input` on Wayland — but see the Wayland
+  investigation note above first (uncertain `lswt` output format);
+  Windows `blocks_input` is untested territory since no `pwsh` is
+  available in this sandbox to verify a `.ps1` change end-to-end.
+  `origin` on any platform is the largest remaining piece (needs
+  cross-invocation focus-history state) and still warrants its own
+  dedicated session. DR-4 (log rotation) remains a ★★ self-contained
+  single-session fix if
   preferred instead.

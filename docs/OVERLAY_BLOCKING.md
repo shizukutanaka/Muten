@@ -408,12 +408,22 @@ reach Suspicious without any blocklist entry.
 **Fix (audit DR-2, `blocks_input` slice).** `blocks_input` was
 hard-coded `false` on every platform, silently suppressing the
 `blocks_input` (+20) signal for any scam overlay that genuinely traps
-input as a modal dialog. The Linux/X11 helper now derives it from the
-same EWMH `_NET_WM_STATE` property already fetched for `topmost` (one
-X11 round-trip covers both): presence of `_NET_WM_STATE_MODAL` sets
-`blocks_input: true`. macOS, Wayland, and Windows still hard-code
-`false` — closing those is the remaining scope of DR-2, one platform at
-a time.
+input as a modal dialog. Linux/X11 and (as of audit DR-2d, this cycle)
+macOS now *detect* it:
+
+- Linux/X11: the same EWMH `_NET_WM_STATE` property already fetched for
+  `topmost` (one X11 round-trip covers both) — presence of
+  `_NET_WM_STATE_MODAL` sets `blocks_input: true`.
+- macOS: whether the window's accessibility `subrole` is `"AXDialog"` or
+  `"AXSystemDialog"` — the standard macOS Accessibility API signal for a
+  modal dialog window, the same concept AppleScript UI-scripting tools
+  use to detect modals.
+
+Wayland and Windows still hard-code `false` — closing those is the
+remaining scope of DR-2, one platform at a time (the Wayland side has an
+open investigation note in `docs/FEATURE_AUDIT_2026H2.md` about whether
+the `wlr-foreign-toplevel-management` protocol even carries a usable
+signal for this).
 
 ## Wayland support (v0.4.0 update 6)
 
