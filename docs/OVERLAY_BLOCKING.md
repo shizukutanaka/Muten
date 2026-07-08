@@ -400,6 +400,16 @@ avoid over-flagging legitimate windows. With a real `has_close_button:
 false` from a borderless scam, the heuristic gains the +25 it needs to
 reach Suspicious without any blocklist entry.
 
+**Fix (audit DR-2, `blocks_input` slice).** `blocks_input` was
+hard-coded `false` on every platform, silently suppressing the
+`blocks_input` (+20) signal for any scam overlay that genuinely traps
+input as a modal dialog. The Linux/X11 helper now derives it from the
+same EWMH `_NET_WM_STATE` property already fetched for `topmost` (one
+X11 round-trip covers both): presence of `_NET_WM_STATE_MODAL` sets
+`blocks_input: true`. macOS, Wayland, and Windows still hard-code
+`false` — closing those is the remaining scope of DR-2, one platform at
+a time.
+
 ## Wayland support (v0.4.0 update 6)
 
 A fourth reference helper,

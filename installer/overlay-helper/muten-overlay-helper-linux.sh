@@ -14,11 +14,13 @@
 # (e.g. via the compositor's IPC) or replace with a signed binary in
 # locked-down fleets.
 #
-# NOTE: enumeration here is best-effort. X11 does not expose
-# "unsolicited vs user-initiated" or "has close button" directly, so
-# those fields are conservatively defaulted; muten's classifier treats
-# unknown origin as neutral, which biases toward Suspicious (review)
-# rather than Block (dismiss) — the safe direction.
+# NOTE: enumeration here is best-effort. `has_close_button` and
+# `blocks_input` are derived from real EWMH window-manager properties
+# (see enumerate() below); `origin` ("unsolicited vs user-initiated")
+# has no X11 equivalent and is conservatively defaulted to "unknown" —
+# muten's classifier treats unknown origin as neutral, which biases
+# toward Suspicious (review) rather than Block (dismiss), the safe
+# direction (audit DR-2).
 
 set -eu
 
@@ -60,10 +62,25 @@ enumerate() {
         fi
         [ "$cov" -gt 100 ] && cov=100
 
+        # Fetch _NET_WM_STATE once and derive both signals from it —
+        # topmost and blocks_input are two independent atoms in the same
+        # EWMH property, so one xprop round-trip covers both.
+        wm_state=$(xprop -id "$id" _NET_WM_STATE 2>/dev/null || echo "")
+
         # topmost: does the window have _NET_WM_STATE_ABOVE?
         topmost=false
-        if xprop -id "$id" _NET_WM_STATE 2>/dev/null | grep -q "_NET_WM_STATE_ABOVE"; then
+        if echo "$wm_state" | grep -q "_NET_WM_STATE_ABOVE"; then
             topmost=true
+        fi
+
+        # blocks_input: _NET_WM_STATE_MODAL is the standard EWMH signal
+        # for a modal window that captures input ahead of the rest of the
+        # desktop — a genuine per-window property, not a heuristic, and
+        # the closest real X11 analogue of a scam overlay's forced-focus
+        # behavior (audit DR-2).
+        blocks_input=false
+        if echo "$wm_state" | grep -q "_NET_WM_STATE_MODAL"; then
+            blocks_input=true
         fi
 
         # close button: EWMH _NET_WM_ALLOWED_ACTIONS lists what the WM
@@ -93,11 +110,11 @@ enumerate() {
         if [ "$first" -eq 1 ]; then first=0; else printf ','; fi
         if [ -n "$procname" ]; then
             ep=$(json_escape "$procname")
-            printf '{"id":"%s","process":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":%s,"has_close_button":%s,"blocks_input":false,"origin":"unknown","age_ms":0}}' \
-                "$id" "$ep" "$et" "$cov" "$topmost" "$has_close"
+            printf '{"id":"%s","process":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":%s,"has_close_button":%s,"blocks_input":%s,"origin":"unknown","age_ms":0}}' \
+                "$id" "$ep" "$et" "$cov" "$topmost" "$has_close" "$blocks_input"
         else
-            printf '{"id":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":%s,"has_close_button":%s,"blocks_input":false,"origin":"unknown","age_ms":0}}' \
-                "$id" "$et" "$cov" "$topmost" "$has_close"
+            printf '{"id":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":%s,"has_close_button":%s,"blocks_input":%s,"origin":"unknown","age_ms":0}}' \
+                "$id" "$et" "$cov" "$topmost" "$has_close" "$blocks_input"
         fi
     done
     printf ']\n'

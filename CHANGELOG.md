@@ -5,6 +5,33 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Fixed — X11 helper hard-coded `blocks_input: false` (audit DR-2b)
+- `muten-overlay-helper-linux.sh` hard-coded `blocks_input: false`
+  unconditionally, silently suppressing the classifier's `blocks_input`
+  (+20) signal for a genuinely modal scam dialog on X11. Also corrected a
+  stale claim in `docs/FEATURE_AUDIT_2026H2.md`'s own prior DR-2 write-up:
+  `has_close_button` was NOT actually hard-coded on X11/Windows (both
+  already derive it from real EWMH/`WS_SYSMENU` signals, predating this
+  audit cycle) — only macOS and Wayland still hard-code it.
+- Fixed by deriving `blocks_input` from the standard EWMH
+  `_NET_WM_STATE_MODAL` atom, reusing the same `_NET_WM_STATE` `xprop`
+  fetch already made for `topmost` — one X11 round-trip now covers both
+  signals instead of hard-coding one of them.
+- Verified end-to-end by stubbing `xprop`/`wmctrl`/`xdotool` on `PATH`
+  and running the actual shipped shell script directly (new
+  `tests/linux_helper_reference.rs`,
+  `enumerate_reports_blocks_input_from_net_wm_state_modal`); proved it
+  has teeth by reverting to the hard-coded `false` under the identical
+  harness and confirming a modal test window's `blocks_input` silently
+  went back to `false`.
+- **Known limitation of this round**: the sandbox's egress policy
+  blocked `static.crates.io` crate downloads on an otherwise cache-less
+  container, so `cargo test`/`clippy`/`fmt` could not be run against the
+  new Rust test file — only the shell-script fix itself was verified
+  end-to-end (directly, without cargo). Treat `linux_helper_reference.rs`
+  as unverified-to-compile until the next session confirms it with a
+  working `cargo`.
+
 ### Added — `docs/MODEL_PLAYBOOK.md`
 - A personal reference mapping which Claude model (Haiku/Sonnet/Opus/
   Fable 5) and which skill fits which kind of work on this repo, grounded

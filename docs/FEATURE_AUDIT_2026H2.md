@@ -115,23 +115,35 @@ into one `const`.
 | ~~DR-2a~~ | **`age_ms` always 0 → `very_new` signal dead on every real host** | All 4 helpers unconditionally report `age_ms:0` ("unknown"), so the `very_new` (+10) signal and `sudden_fullscreen_takeover` composite (both gated on `age_ms > 0 && age_ms < 1000`) never fired on a real machine, even though the classifier logic for both was already correct and tested. Split out of DR-2 as the one sub-piece fixable without any helper changes. | `Monitor` infers `age_ms` from how long *it* has tracked a window (`first_seen_ms: HashMap<WindowId, u64>`, pruned to present ids each sweep) whenever the helper reports 0. First draft had a real bug (caught before any test run, not by a test): gating the `first_seen_ms` *insert* on "not the first sweep" meant a window present since sweep 1 got no entry during sweep 1, so on sweep 2 it looked brand-new and was scored `very_new` a few sweeps later anyway — the exact false positive the fix was meant to prevent, just delayed by one sweep. Corrected: `first_seen_ms` is now recorded unconditionally every sweep including the first; a separate `untrusted_from_startup: HashSet<WindowId>` marks every id present during the daemon's very first sweep, and only ids *not* in that set get their inferred age trusted; the set is pruned to present-ids each sweep, so a startup-cohort window that is ever absent even once permanently regains trust on any later reappearance. 3 new unit tests + 1 real-binary/real-wall-clock `cli_contract.rs` e2e test; proved the unit test and the e2e test both have teeth by reverting to the flawed design and confirming both failed (the e2e test caught the real daemon firing `overlay_suspicious` with `very_new` on every sweep after the first) before restoring the fix. |
 | ~~DR-5~~ | **Stop-flag response latency on long `--interval-ms`** | `cmd_daemon`'s loop checked the stop flag once per sweep, then slept the *entire* configured interval in one unbroken `thread::sleep` — a daemon tuned with a long interval to keep idle CPU near zero could take up to that whole interval to actually stop after a service manager's `ExecStop` touched the flag file. | Sleep is now chunked into 250ms slices with a stop-flag check between each; breaks out the moment the flag appears instead of waiting for the chunked sleep to run out naturally. No new dependency or CLI flag. e2e-verified: `daemon_stop_flag_takes_effect_promptly_on_a_long_interval` runs the real binary with `--interval-ms 5000`, requests a stop after 200ms, and asserts exit within 2s; proved it has teeth by reverting to the single unbroken sleep first and confirming the unfixed binary took 4.87s to exit under the identical test. |
 | ~~DR-3~~ | **No blocklist hot-reload** | `--rules` was only ever read once at startup — pushing an updated blocklist to a fleet running `daemon` required a coordinated restart of every instance, a real availability gap for routine policy updates (e.g. adding a newly discovered scam host). | `Monitor::set_rules(&mut self, rules: Ruleset)` swaps the active blocklist without disturbing repeat/age/presence tracking state. `cmd_daemon` stats `--rules`'s mtime once per sweep (one cheap syscall) and re-reads/re-parses/`set_rules`s it when the mtime advances; a transient read failure is best-effort (warn once per failure streak, keep protecting on the last-good ruleset, auto-retry next sweep) — the same pattern already used for the metrics writer. e2e-verified: `daemon_reloads_rules_file_edited_while_running` edits `--rules` in place on a running daemon and confirms a previously-non-matching window is `overlay_blocked` afterward; proved it has teeth by reverting to load-once behavior and confirming the test failed first (no audit log was ever created). |
+| ~~DR-2b~~ | **`blocks_input` hard-coded `false` on X11** | Every helper hard-coded `blocks_input: false` unconditionally, silently suppressing the `blocks_input` (+20) signal for a genuinely modal scam dialog on every platform. Also corrected a stale claim in this doc's own previous DR-2 text: `has_close_button` was NOT hard-coded on X11/Windows — both already derive it from real EWMH/`WS_SYSMENU` signals (see `docs/OVERLAY_BLOCKING.md`'s "Fix" section, predates this audit cycle). Only macOS and Wayland still hard-code `has_close_button: true`. | X11/`muten-overlay-helper-linux.sh` now derives `blocks_input` from `_NET_WM_STATE_MODAL`, reusing the same `_NET_WM_STATE` fetch already done for `topmost` (one X11 round-trip covers both — no extra `xprop` call). Verified end-to-end by stubbing `xprop`/`wmctrl`/`xdotool` on `PATH` and running the real shipped shell script (`tests/linux_helper_reference.rs`, `enumerate_reports_blocks_input_from_net_wm_state_modal`); proved it has teeth by reverting to the hard-coded `false` and confirming a modal test window's `blocks_input` silently reverted to `false` under the identical harness. **Caveat**: `cargo test`/`clippy`/`fmt` could not be run this round — the sandbox's egress policy blocked `static.crates.io` crate downloads on a cache-less container, so this Rust test file's compilation is unverified pending the next session with a working `cargo` (the shell-script change itself was fully verified directly, independent of cargo). |
 
 ## 5. Deficiency (不足) — OPEN, priority order
 
-### [OPEN ★★★] DR-2: Helper geometry-field fidelity — `origin`, `has_close_button`, `blocks_input` still low (age_ms closed, see DR-2a above)
-`origin` (feeds `unsolicited` +25), `has_close_button` (+25 when absent),
-`blocks_input` (+20) are hard-coded conservative defaults in the OS
-helpers (X11/macOS/Wayland report `origin:"unknown"` unconditionally;
-Wayland additionally hard-codes `coverage_percent:0`). `age_ms` is no
-longer part of this gap — see DR-2a, resolved this cycle by Monitor-side
-inference, no helper changes needed. Real-host detection is still biased
-more heavily onto title/URL matching than the classifier's design
-intends, for the fields that remain. This fails safe (under-detects
-rather than false-blocks). Fixing the remaining fields requires
-helper-side work across all 4 platforms (X11: `_NET_WM_STATE_FOCUSED`
-history for origin inference; Windows: foreground-change tracking;
-similar per-platform effort for macOS/Wayland) — a larger, multi-file
-undertaking better scoped as its own session, one platform at a time.
+### [OPEN ★★★] DR-2: Helper geometry-field fidelity — `origin` (all 4 platforms), `blocks_input` (macOS/Wayland/Windows), `has_close_button` (macOS/Wayland)
+Per-field, per-platform status as of this cycle (✅ = computed from a
+real signal, ✗ = hard-coded default):
+
+| Field | X11/Linux | macOS | Wayland | Windows |
+|---|---|---|---|---|
+| `has_close_button` | ✅ `_NET_WM_ALLOWED_ACTIONS` | ✗ always `true` | ✗ always `true` | ✅ `WS_SYSMENU` |
+| `blocks_input` | ✅ `_NET_WM_STATE_MODAL` (DR-2b, this cycle) | ✗ always `false` | ✗ always `false` | ✗ always `false` |
+| `origin` | ✗ always `unknown` | ✗ always `unknown` | ✗ always `unknown` | ✗ always `unknown` |
+| `age_ms` | n/a — inferred Monitor-side for all platforms uniformly, see DR-2a | | | |
+| `topmost` | ✅ `_NET_WM_STATE_ABOVE` | ✗ always `false` | ✗ always `false` | ✅ `WS_EX_TOPMOST` |
+| `coverage_percent` | ✅ geometry vs. root window | ✅ geometry vs. desktop bounds | ✗ always `0` | ✅ geometry vs. screen |
+
+`origin` has no real signal on any platform today (all four hard-code
+`unknown`) — real-host detection for a window whose only tell would be
+"appeared with no user action" still relies entirely on title/URL
+blocklist matching. This fails safe (under-detects rather than
+false-blocks). Fixing `origin` requires focus-history tracking across
+helper invocations (the helper is currently a stateless per-call
+subprocess) on every platform — genuinely the largest remaining piece.
+`blocks_input`/`has_close_button` on macOS/Wayland are comparatively
+small, single-platform, single-field patches (same shape as DR-2b) and
+are the better next increments; `origin` is the multi-file, cross-call
+state-tracking undertaking that still warrants its own dedicated
+session.
 
 ### [OPEN ★★] DR-4: No log rotation across a multi-week run
 The audit log is a single ever-growing file. `verify_chain_continued` (in
@@ -170,24 +182,30 @@ previously as roadmap C10-1 and the remainder of category C3).
 ## Current State Summary (as of this audit's last commit)
 
 - **Version**: `muten-overlay` v0.6.0.
-- **Tests**: 1331 unit tests + 26 `cli_contract` integration tests + 5
-  other integration suites (helper_contract, monitor_properties,
-  scoring_scenarios, benign_corpus, composed_evasion, scareware_properties)
-  — all green. `cargo clippy --all-targets -- -D warnings` clean.
-  `cargo fmt --check` clean. Zero new dependencies added across this
-  entire audit cycle. MSRV 1.75 preserved throughout.
+- **Tests**: 1331 unit tests + 26 `cli_contract` integration tests + 6
+  other integration suites (helper_contract, linux_helper_reference,
+  monitor_properties, scoring_scenarios, benign_corpus, composed_evasion,
+  scareware_properties). All previously green as of commit `549df29`;
+  the new `linux_helper_reference` suite (DR-2b) is verified end-to-end
+  at the shell-script level but its Rust compilation is **unverified**
+  this round — see the DR-2b caveat above. Zero new dependencies added
+  across this entire audit cycle. MSRV 1.75 preserved throughout.
 - **What changed this cycle**: production readiness (D-1..D-9), the
   process-attribution gap (DR-1), the repeat-flood false-positive
   (DR-11), the `age_ms`/`very_new` dead-signal gap (DR-2a), the stop-flag
-  response latency (DR-5), and blocklist hot-reload (DR-3) are all closed.
-  The detection engine (66 signals / 10 lenses /
-  confusable-normalization pipeline) and the audit-integrity
-  infrastructure (hash chain + Merkle proofs) were already mature before
-  this cycle began.
-- **Recommended next action**: the remainder of DR-2 (helper-reported
-  `origin`, `has_close_button`, `blocks_input` fidelity — `age_ms` itself
-  is done, see DR-2a) is the clear next priority — it is the largest
-  remaining gap between the classifier's designed detection power and
-  what it actually achieves on a real host, but is scoped as its own
-  multi-platform session rather than a quick fix. Next after that: DR-4
-  (log rotation), ★★ and a self-contained single-session fix.
+  response latency (DR-5), blocklist hot-reload (DR-3), and the X11
+  `blocks_input` gap (DR-2b) are all closed. The detection engine
+  (66 signals / 10 lenses / confusable-normalization pipeline) and the
+  audit-integrity infrastructure (hash chain + Merkle proofs) were
+  already mature before this cycle began.
+- **Recommended next action**: run `cargo test`/`clippy`/`fmt` on
+  `tests/linux_helper_reference.rs` at the start of the next session (the
+  sandbox's egress policy blocked crate downloads this round — see the
+  DR-2b caveat) before trusting it as a green regression guard. After
+  that, the DR-2 per-field table above shows the next-smallest increments
+  are `has_close_button`/`blocks_input` on macOS and Wayland (same
+  single-platform, single-field shape as DR-2b just closed); `origin` on
+  any platform is the largest remaining piece (needs cross-invocation
+  focus-history state) and still warrants its own dedicated session.
+  DR-4 (log rotation) remains a ★★ self-contained single-session fix if
+  preferred instead.
