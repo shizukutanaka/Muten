@@ -147,6 +147,32 @@ better next increments; `origin` is the multi-file, cross-call
 state-tracking undertaking that still warrants its own dedicated
 session.
 
+**Investigated this cycle, deliberately NOT changed: Wayland
+`has_close_button`/`blocks_input`.** Web research (not primary-source
+confirmed — the actual manpage and the sourcehut source both returned
+HTTP 403 when fetched; findings rest on secondary search-result
+summaries only) suggests the `wlr-foreign-toplevel-management-unstable-v1`
+protocol does carry more state than the helper's own comment claims:
+a `state` field including `fullscreen` (not just maximized/minimized/
+activated), and a `parent` event marking a toplevel as a child of
+another — the closest Wayland analogue to X11's `_NET_WM_STATE_MODAL`.
+`lswt` reportedly exposes both via `-j` (JSON) and `-t <format>` (custom
+CSV) flags, rather than the multi-line `title:`/`app-id:` block format
+`muten-overlay-helper-wayland.sh`'s current parser assumes for plain
+`lswt` output — which, if the search summaries are accurate, would mean
+that parsing path has never actually matched a real `lswt` invocation
+and the script has likely always fallen through to the `wlrctl` branch
+in practice on any host where `lswt` is the available tool. This was
+**not acted on**: neither `lswt` nor a Wayland compositor is available
+in this sandbox to verify against a real binary, the only two primary
+sources (manpage, protocol source) both 403'd, and secondhand summaries
+are not solid enough ground to rewrite a shipped parser touching a
+security-relevant detection path. Flagged here so the next session with
+real access to `lswt`/a Wayland session can verify directly rather than
+re-discovering this from scratch — check `lswt -j` and `lswt -t` output
+against the parser in `muten-overlay-helper-wayland.sh`'s `enumerate()`
+`lswt` branch before touching anything.
+
 ### [OPEN ★★] DR-4: No log rotation across a multi-week run
 The audit log is a single ever-growing file. `verify_chain_continued` (in
 `src/sink.rs`) already supports verifying a chain that spans a rotation
