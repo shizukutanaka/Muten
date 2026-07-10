@@ -630,8 +630,14 @@ process: security master av
 process: virus melt
 process: av security suite
 process: av guard online
-process: iolo system mechanic
-process: system mechanic professional
+# NOTE: "iolo system mechanic" / "system mechanic professional" were
+# removed from this list (they matched iolo Technologies' genuine,
+# commercially-sold PC-tuneup product line, not a rogue-AV impersonator
+# of it) — this product's own false-positive-averse design principle
+# means a legitimately-purchased utility should never be misclassified
+# as scareware. If your fleet specifically needs to catch a *fake*
+# clone of System Mechanic, add a rule scoped to that clone's exact
+# process name/path, not the real product's name.
 process: reimage repair
 process: reimage pc repair
 process: disk heal

@@ -5,6 +5,34 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Removed — false-positive-risk `process:` entries in `examples/overlay-blocklist.txt`
+- `process: iolo system mechanic` and `process: system mechanic
+  professional` matched iolo Technologies' genuine, commercially-sold
+  PC-tuneup product line — not a rogue-AV impersonator of it. Found
+  while auditing the same file for the fictional `host:` entries
+  (previous entry, this cycle): the surrounding 47 `process:` rules are
+  real, well-documented historical rogue-AV/PUP brand names (WinFixer,
+  XP Antivirus, Segurazo, Antivirus Pro 2017/2018, etc., all matching
+  the file's cited sources), but these two specifically named a real
+  legitimate product, not an impostor of one.
+- Removed both, since this product's own stated design principle
+  (`README.md`: "Observe-first / false-positive-averse... False
+  positives break the environments muten protects") means a
+  legitimately-purchased utility should never ship pre-flagged as
+  scareware. Left a comment explaining the removal and how to scope a
+  narrower rule if a fleet specifically needs to catch a *fake* clone
+  impersonating the real product's name. Confirmed no test references
+  either string. `process_count()` drops from 49 to 47 — well above
+  `blocklist_coverage.rs`'s `>= 10` assertion, so no test impact.
+- Investigated but did NOT touch: `phone: 1-800-555-0100` /
+  `phone: +81-120-000-000` looked like the same class of issue at first
+  (conventionally-fake placeholder numbers) but the section header
+  explicitly frames the entire "ADVANCED RULE TYPES" block as syntax
+  demonstrations for operator discovery, not curated threat intel —
+  555/000-block numbers are the standard telecom-documentation
+  convention for "definitely not a real number" (the phone-number
+  analogue of `.example`), used here correctly and intentionally.
+
 ### Removed — fictional `host:` entries from `examples/overlay-blocklist.txt`
 - The shipped example blocklist carried 5 `host:` rules
   (`win-prize-now.example`, `your-pc-is-infected.example`,
