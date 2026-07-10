@@ -5,6 +5,28 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Removed — duplicate rules in `examples/overlay-blocklist.txt`
+- Found while continuing the same file audit: 3 `process:` pairs
+  squash-identical under `match_process`'s space/hyphen/underscore-
+  insensitive matching (`registrysmart`/`registry smart`,
+  `systemcare antivirus`/`system care antivirus`,
+  `errorfix`/`error fix`), and 1 exact-duplicate `title:` line ("do not
+  restart your computer," present verbatim in both the generic
+  tech-support-scam block and the fake-blue-screen block). Since
+  `match_title`/`match_process` only need one matching pattern to fire
+  (first match wins, per `docs/SPECIFICATION.md` §5.1), the second
+  occurrence in each pair was pure dead weight — indistinguishable
+  spelling variants sharing the exact same normalized key, not two
+  distinct real-world variants.
+- Removed one line from each pair/duplicate. Zero behavior change: every
+  removed line's normalized key is still covered by its surviving
+  sibling. `blocklist_coverage.rs`'s `covers_fake_blue_screen` test
+  (which checks "Do not restart your computer" specifically) still
+  passes — it only needs *a* matching pattern to exist, and the
+  surviving occurrence still does. `process_count()` (44) and
+  `title_count()` (305) both remain well above the test file's `>= 10`
+  / `>= 100` assertions.
+
 ### Removed — false-positive-risk `process:` entries in `examples/overlay-blocklist.txt`
 - `process: iolo system mechanic` and `process: system mechanic
   professional` matched iolo Technologies' genuine, commercially-sold

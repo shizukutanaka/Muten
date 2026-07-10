@@ -395,7 +395,6 @@ title: stop code: critical process died
 title: your windows license has expired
 title: hardware failure detected
 title: your hard drive will be deleted
-title: do not restart your computer
 title: do not shut down your pc
 
 # ─────────────────────────────────────────────────────────────────
@@ -603,9 +602,7 @@ title: secret service warning unauthorized transaction detected
 process: pc protector plus
 process: advanced mac cleaner
 process: registrysmart
-process: registry smart
 process: systemcare antivirus
-process: system care antivirus
 process: mac auto fixer
 process: smart mac care
 process: driver updater plus
@@ -644,7 +641,6 @@ process: disk heal
 process: winifixer
 process: winfixer
 process: errorfix
-process: error fix
 process: virus heat
 process: ie defender
 process: ie antivirus
