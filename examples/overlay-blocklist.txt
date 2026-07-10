@@ -498,18 +498,14 @@ title: secret service warning unauthorized transaction detected
 # only HARD-BLOCKS on host match, blocking a whole cloud suffix would
 # cause false positives. We therefore DO NOT list bare cloud suffixes
 # here; instead, IT should add the specific malicious subdomains their
-# deployment observes. The entries below are illustrative placeholders
-# to be replaced with site-specific intel.
+# deployment observes. No illustrative `host:` entries are shipped
+# below — the placeholder syntax hints are commented out (the format
+# to follow, not fictional live rules); add real, currently-observed
+# malicious hosts as your deployment's own EDR/SIEM/abuse reports
+# surface them.
 # ─────────────────────────────────────────────────────────────────
 # host: <specific-scam-subdomain>.z13.web.core.windows.net
 # host: <specific-rotated-domain>.example
-
-# Known-bad illustrative hosts (replace with live intel via MDM):
-host: win-prize-now.example
-host: your-pc-is-infected.example
-host: urgent-security-alert.example
-host: microsoft-security-alert.example
-host: windows-defender-alert.example
 
 # ─────────────────────────────────────────────────────────────────
 # COMPOSITE AND-CONDITION RULES  (composite:)

@@ -5,6 +5,27 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Removed — fictional `host:` entries from `examples/overlay-blocklist.txt`
+- The shipped example blocklist carried 5 `host:` rules
+  (`win-prize-now.example`, `your-pc-is-infected.example`,
+  `urgent-security-alert.example`, `microsoft-security-alert.example`,
+  `windows-defender-alert.example`) that were never real: all five used
+  the RFC 2606 reserved `.example` TLD, which never resolves to
+  anything, and — unlike every `title:`/`glob:`/`process:`/`phone:`
+  pattern elsewhere in the file — were not sourced from any of the
+  file's cited threat intel. The file's own comment already called them
+  "illustrative placeholders to be replaced with site-specific intel,"
+  but shipped them as if they were live rules.
+- Removed the 5 entries; the two already-commented-out `# host: <...>`
+  syntax examples (showing the format, not claiming to be real domains)
+  are kept. No test asserted on these specific hosts or on a nonzero
+  `host_count()` — `blocklist_coverage.rs` only checks
+  `title_count()`/`process_count()` — and no other file in the repo
+  reads `examples/overlay-blocklist.txt`'s host rules (the Rust unit
+  tests using `win-prize-now.example` construct their own inline
+  `Ruleset::from_lines(...)`, independent of this file), so this is a
+  content-only change with no code impact.
+
 ### Fixed — macOS helper hard-coded `blocks_input: false` (audit DR-2d)
 - `muten-overlay-helper-macos.sh` hard-coded `blocks_input: false`
   unconditionally, silently suppressing the classifier's `blocks_input`
