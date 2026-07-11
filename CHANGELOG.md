@@ -5,6 +5,37 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — FileFix / TerminalFix ClickFix-variant detection (DR-12, cargo-unverified)
+- `has_clickfix_instruction` (`src/confusables.rs`) had no vocabulary for
+  2026's two newest high-prevalence ClickFix variants (Recorded Future,
+  The Hacker News 2026): **FileFix** (pastes into the Explorer address
+  bar — no Mark-of-the-Web, bypasses SmartScreen) and
+  **TerminalFix**/DownloadFix (pastes into a terminal/PowerShell).
+- Added `win+e` to the existing keyboard-shortcut chain and a new
+  `filefix` AND-compound block (a surface noun — address bar / file
+  explorer / terminal / powershell — required together with a `paste`
+  verb, mirroring the file's existing `run_cmd` precision discipline so
+  a surface noun alone in ordinary IT documentation can't fire it), then
+  wired it into the function's return expression. Extends the existing
+  `clickfix_instruction` signal; no new signal id, no `classify()`
+  change.
+- Added 2 unit tests to `confusables.rs` (7 positive FileFix/TerminalFix
+  phrasings; 4 FP-guard cases confirming each surface noun alone does
+  not fire) and 2 end-to-end tests to `tests/scoring_scenarios.rs`
+  mirroring the existing ClickFix/GlitchFix e2e tests. Checked for FP
+  collision against `tests/benign_corpus.rs`'s adversarial legitimate-
+  window corpus: zero hits.
+- **Known limitation**: `cargo` remains unavailable in this sandbox
+  (egress policy blocks `static.crates.io`). Unlike the shell-script
+  DR-2b/2c/2d fixes earlier this cycle, Rust logic cannot be exercised
+  without compiling it, so this change is **implementation-complete but
+  unverified** — paren/brace/quote balance was checked by hand and by a
+  small Python script, but `cargo build`/`test`/`clippy`/`fmt` have not
+  run. Tracked in `docs/FEATURE_AUDIT_2026H2.md` DR-12 as the top
+  priority for the next session with working `cargo`: build, test, prove
+  the new tests have teeth by reverting the `filefix` block, then mark
+  DR-12 RESOLVED.
+
 ### Added — 2026-H2 threat-intel refresh (research → docs + blocklist)
 - Researched the latest public reporting and literature (WebSearch, this
   session): CypherLoc browser-locking scareware (Barracuda 2026-05, ~2.8M

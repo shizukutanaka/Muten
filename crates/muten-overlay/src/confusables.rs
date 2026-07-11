@@ -1761,7 +1761,8 @@ pub fn has_clickfix_instruction(s: &str) -> bool {
         || compact.contains("ctrl+v")
         || compact.contains("ctrl+r")
         || compact.contains("alt+r")
-        || compact.contains("cmd+r"); // macOS run-equivalent framing
+        || compact.contains("cmd+r") // macOS run-equivalent framing
+        || compact.contains("win+e"); // FileFix: opens File Explorer
 
     // Run-dialog / command-execution framing phrases.
     let run_cmd = s.contains("open run")
@@ -1772,6 +1773,20 @@ pub fn has_clickfix_instruction(s: &str) -> bool {
         || s.contains("run the following")
         || s.contains("the following command")
         || s.contains("into the run box");
+
+    // FileFix / TerminalFix / DownloadFix variants (Recorded Future 2026,
+    // The Hacker News 2026, revel8 2026 variant catalogue). These push
+    // execution into the Explorer address bar (programs launched that way
+    // carry no Mark-of-the-Web, bypassing SmartScreen) or a terminal,
+    // instead of the Win+R run dialog above. A surface noun (address bar
+    // / file explorer / terminal / powershell) AND a paste verb are both
+    // required to keep precision high, mirroring `run_cmd`'s discipline —
+    // "address bar" or "terminal" alone are far too common in legitimate
+    // help documentation and IT-support windows.
+    let filefix = (s.contains("address bar") && s.contains("paste"))
+        || (s.contains("file explorer") && s.contains("paste"))
+        || (s.contains("terminal") && s.contains("paste"))
+        || (s.contains("powershell") && s.contains("paste"));
 
     // CAPTCHA / human-verification framing.  Both components required for
     // the compound patterns to keep precision high; "captcha" alone is
@@ -1823,7 +1838,7 @@ pub fn has_clickfix_instruction(s: &str) -> bool {
                 || s.contains("インストール"))) // font missing/required (subject form)
         || (s.contains("フォントを") && s.contains("インストール")); // install font (object form)
 
-    shortcut || run_cmd || captcha_frame || glitchfix || jp_clickfix
+    shortcut || run_cmd || filefix || captcha_frame || glitchfix || jp_clickfix
 }
 
 /// Detect a countdown/timer pattern (`M:SS` or `MM:SS`) combined with an
@@ -5935,6 +5950,33 @@ mod tests {
         assert!(has_clickfix_instruction("open run dialog and type"));
         assert!(has_clickfix_instruction("paste the command into terminal"));
         assert!(has_clickfix_instruction("type the command shown below"));
+    }
+
+    /// DR-12 (2026-H2 threat refresh): FileFix pastes into the Explorer
+    /// address bar (no Mark-of-the-Web, bypassing SmartScreen) instead of
+    /// the Win+R run dialog; TerminalFix/DownloadFix push execution into
+    /// a terminal or PowerShell. Same social-engineering technique as the
+    /// run_cmd cases above, different UI surface.
+    #[test]
+    fn clickfix_fires_on_filefix_terminalfix_phrases() {
+        assert!(has_clickfix_instruction("paste into the address bar"));
+        assert!(has_clickfix_instruction("paste this into your address bar"));
+        assert!(has_clickfix_instruction("press win+e"));
+        assert!(has_clickfix_instruction("open file explorer and paste"));
+        assert!(has_clickfix_instruction("open terminal and paste"));
+        assert!(has_clickfix_instruction("paste in the terminal"));
+        assert!(has_clickfix_instruction("paste the following into powershell"));
+    }
+
+    /// The FileFix/TerminalFix surface nouns are common in ordinary IT
+    /// documentation — only the noun+paste compound should fire, never
+    /// the noun alone (mirrors the run_cmd/captcha precision discipline).
+    #[test]
+    fn clickfix_filefix_surface_noun_alone_does_not_fire() {
+        assert!(!has_clickfix_instruction("open file explorer"));
+        assert!(!has_clickfix_instruction("edit the address bar settings"));
+        assert!(!has_clickfix_instruction("terminal preferences"));
+        assert!(!has_clickfix_instruction("powershell scripting guide"));
     }
 
     #[test]

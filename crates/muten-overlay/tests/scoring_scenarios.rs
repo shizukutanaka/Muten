@@ -104,6 +104,41 @@ fn glitchfix_browser_error_fires() {
     );
 }
 
+/// DR-12 (2026-H2 threat refresh): FileFix pastes execution into the
+/// Explorer address bar instead of the Win+R run dialog (no
+/// Mark-of-the-Web, bypassing SmartScreen — Recorded Future / The
+/// Hacker News 2026). Same social-engineering technique as
+/// `clickfix_instruction_fires_on_alert_shaped_window` above, new
+/// surface.
+#[test]
+fn filefix_address_bar_instruction_fires() {
+    let v = classify(
+        &alert_window("Security check failed — paste this into your address bar"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "clickfix_instruction"),
+        "FileFix must fire clickfix_instruction; got {:?}",
+        v.signals
+    );
+    assert!(v.score >= SUSPICIOUS_THRESHOLD);
+}
+
+/// TerminalFix: paste-and-run in a terminal/PowerShell window instead of
+/// Explorer's address bar — the other 2026-H2 ClickFix variant.
+#[test]
+fn terminalfix_powershell_instruction_fires() {
+    let v = classify(
+        &alert_window("Verification required — open terminal and paste the following"),
+        &Ruleset::default(),
+    );
+    assert!(
+        v.signals.iter().any(|s| s == "clickfix_instruction"),
+        "TerminalFix must fire clickfix_instruction; got {:?}",
+        v.signals
+    );
+}
+
 // ── Cloud blob-storage abuse (E10) ────────────────────────────────────────
 
 #[test]

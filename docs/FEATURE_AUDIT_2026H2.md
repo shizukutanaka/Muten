@@ -206,12 +206,12 @@ Authenticode/Sigstore signing, `cargo-semver-checks` CI gate, and
 `criterion` throughput benchmarks are all unimplemented (tracked
 previously as roadmap C10-1 and the remainder of category C3).
 
-### [OPEN ★★★] DR-12: ClickFix variant vocabulary gap — FileFix / TerminalFix
+### [OPEN ★★★, code written — cargo-unverified] DR-12: ClickFix variant vocabulary gap — FileFix / TerminalFix
 **Evidence**: `has_clickfix_instruction` (`src/confusables.rs:1746`)
-covers Win+R / Ctrl+V shortcut framing, run-dialog phrases (`open run`,
+covered Win+R / Ctrl+V shortcut framing, run-dialog phrases (`open run`,
 `paste the command`, `into the run box`), CAPTCHA framing,
 GlitchFix/CrashFix browser-error framing, and JP-localised variants —
-but has NO vocabulary for the two newest high-prevalence variants
+but had NO vocabulary for the two newest high-prevalence variants
 (threat intel refresh 2026-07, see `THREAT_INTEL_2026.md` §2026-H2):
 - **FileFix**: pastes into the **Windows Explorer address bar** (no
   Mark-of-the-Web → bypasses SmartScreen). Tells: "paste into the
@@ -220,16 +220,38 @@ but has NO vocabulary for the two newest high-prevalence variants
 - **TerminalFix**: "open terminal / PowerShell and paste", "paste in
   the terminal".
 
-**Fix** (spec for next session — not implemented this round, `cargo`
-unavailable in this sandbox to verify): add `win+e` to the compact
-shortcut list; add an `address_bar` / `terminal` compound branch to
-`run_cmd` (require the paste/execution verb AND the surface noun, e.g.
-`(contains("address bar") && contains("paste"))`, mirroring the
-existing AND-compound precision discipline). The `alert_shaped` guard
-in `classify()` stays as-is; no new signal id needed — these extend the
-existing `clickfix_instruction` signal. Add unit tests alongside the
-existing ClickFix tests in `confusables.rs`, and a `scoring_scenarios.rs`
-end-to-end case. Prove teeth by reverting.
+**Implemented this round, but still OPEN pending verification** — the
+sandbox's `cargo` remains unavailable (egress policy blocks
+`static.crates.io`), and unlike the shell-script DR-2b/2c/2d fixes
+earlier this cycle, there is **no way to exercise Rust logic without
+compiling it**, so this cannot be independently verified the way those
+were. Do not mark RESOLVED until a session with working `cargo`
+confirms it builds and the new tests pass:
+- `src/confusables.rs`: added `compact.contains("win+e")` to the
+  `shortcut` chain; added a new `filefix` AND-compound block (surface
+  noun — address bar / file explorer / terminal / powershell — AND a
+  `paste` verb, mirroring `run_cmd`'s existing precision discipline) and
+  wired it into the function's final `||` return. Paren/brace/quote
+  balance checked by hand and by a Python script (both zero-balanced)
+  since `cargo build` isn't available to confirm.
+- Added `clickfix_fires_on_filefix_terminalfix_phrases` (7 positive
+  cases matching the new blocklist title additions from this cycle) and
+  `clickfix_filefix_surface_noun_alone_does_not_fire` (4 FP-guard cases:
+  each surface noun alone, without "paste", must not fire) next to the
+  existing ClickFix unit tests in `confusables.rs`.
+- Added `filefix_address_bar_instruction_fires` and
+  `terminalfix_powershell_instruction_fires` end-to-end cases to
+  `tests/scoring_scenarios.rs`, mirroring
+  `clickfix_instruction_fires_on_alert_shaped_window`.
+- Checked for FP collision against `tests/benign_corpus.rs` (the
+  adversarial legitimate-window corpus): zero hits for "address bar",
+  "file explorer", "terminal", or "powershell".
+- **First action for the next session with working `cargo`**: run
+  `cargo build --tests`, then `cargo test`, `cargo clippy --all-targets
+  -- -D warnings`, `cargo fmt --check`. If green, additionally prove the
+  new tests have teeth (temporarily revert the `filefix` block, confirm
+  `clickfix_fires_on_filefix_terminalfix_phrases` fails, restore) before
+  marking this ~~DR-12~~ RESOLVED.
 
 ### [OPEN ★★] DR-13: No signal for a literal IP address shown in an alert
 **Evidence**: CypherLoc (Barracuda 2026-05) displays the victim's public
@@ -309,10 +331,12 @@ AI-scam overlay vocabulary has emerged.
   dedicated session. DR-4 (log rotation) remains a ★★ self-contained
   single-session fix if preferred instead.
 - **New this refresh (2026-07)**: **DR-12** (ClickFix FileFix/TerminalFix
-  vocabulary) is now the top ★★★ *code* gap — pure `src/confusables.rs`
-  vocabulary additions with an existing test harness to extend, no helper
-  or protocol change, so it is the highest-leverage first task once
-  `cargo` is available again. DR-13/DR-14 (CypherLoc IP-display and
-  IT-helpdesk signals) follow. The blocklist/docs half of the 2026-H2
-  refresh is already landed (needs no compilation); only the detector
-  code is deferred.
+  vocabulary) code is now **written** in `src/confusables.rs` +
+  `tests/scoring_scenarios.rs`, but **cargo-unverified** — this is the
+  single highest-priority action for the next session with a working
+  `cargo`: run the full `cargo test`/`clippy`/`fmt` suite, prove the new
+  tests have teeth by reverting the `filefix` block, then flip DR-12 to
+  RESOLVED. DR-13/DR-14 (CypherLoc IP-display and IT-helpdesk signals)
+  are still spec-only, unimplemented — do those next. The blocklist/docs
+  half of the 2026-H2 refresh is already landed and needs no
+  compilation.
