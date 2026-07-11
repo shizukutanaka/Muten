@@ -51,6 +51,14 @@ title: windows defender alert
 title: windows security alert
 title: microsoft warning alert
 title: virus alert from microsoft
+# CypherLoc browser-locking scareware (Barracuda 2026-05; ~2.8M attacks
+# in 2026). Full-screen browser lock pushing a fake "IT helpdesk" phone
+# number; re-locks on escape. See THREAT_INTEL_2026.md §2026-H2.
+title: your browser has been locked
+title: this browser has been locked for security
+title: contact your it helpdesk
+title: contact your it department to unlock
+title: call the it help desk to unlock this device
 
 # GLOB PATTERNS — full-string wildcard match (* = any chars, ? = one char).
 # Useful when the scam phrase appears at a predictable position (prefix,
@@ -318,6 +326,17 @@ title: a font is required to display this page
 title: failed to load font
 title: update your browser to continue
 title: your browser is out of date
+# FileFix / TerminalFix / DownloadFix variants (Recorded Future, The
+# Hacker News 2026; revel8 2026 variant catalogue). Push execution into
+# the Explorer address bar (no Mark-of-the-Web → bypasses SmartScreen)
+# or a terminal, instead of the Win+R run dialog.
+title: paste into the address bar
+title: paste this into your address bar
+title: press win+e
+title: open file explorer and paste
+title: open terminal and paste
+title: paste in the terminal
+title: paste the following into powershell
 
 # ─────────────────────────────────────────────────────────────────
 # FAKE DOWNLOAD / FAKE-UPDATE GATES (download_trap_lure E21).

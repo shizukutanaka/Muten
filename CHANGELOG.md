@@ -5,6 +5,39 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — 2026-H2 threat-intel refresh (research → docs + blocklist)
+- Researched the latest public reporting and literature (WebSearch, this
+  session): CypherLoc browser-locking scareware (Barracuda 2026-05, ~2.8M
+  attacks in 2026), ClickFix's 2026 variant explosion (FileFix /
+  TerminalFix / DownloadFix — Recorded Future, The Hacker News), the FBI
+  IC3 2025 Annual Report (released 2026-04-07: $20.9B total, +26% YoY;
+  AI-fraud now its own category), Microsoft Edge's on-device ML scareware
+  sensor, and two new arXiv papers (PP3D 2510.18465, Anatomy of Scam
+  Scenarios 2606.16052).
+- `docs/THREAT_INTEL_2026.md`: added a **2026-H2 UPDATE** section capturing
+  all of the above with sources, and noted that CypherLoc's re-lock loop
+  (present→gone→present) is real-world confirmation the DR-11
+  presence-vs-appearance fix was correct.
+- `docs/FEATURE_AUDIT_2026H2.md`: filed four new OPEN items with
+  implementation specs precise enough for a next session to execute
+  directly — **DR-12** (ClickFix FileFix/TerminalFix vocabulary gap in
+  `has_clickfix_instruction`), **DR-13** (no signal for a literal IP shown
+  in an alert, the CypherLoc authenticity trick), **DR-14** (no internal
+  "IT helpdesk" impersonation vocabulary), **DR-15** (AI-fraud watch item).
+- `examples/overlay-blocklist.txt`: +12 `title:` rules (305→317) for the
+  FileFix/TerminalFix address-bar/terminal lures and the CypherLoc
+  browser-lock / IT-helpdesk framing. These are additive title
+  *contributions* (+40, never an auto-block on their own), so a benign
+  window that happens to contain e.g. "contact your IT helpdesk" is
+  neutralized by the `user_initiated` (−40) relief when the user opened
+  it — consistent with the file's existing FP-averse design. Verified no
+  squash-duplicate collisions with existing rules.
+- **NOT done this round**: the Rust detector changes (DR-12/13/14) are
+  specified but unimplemented — `cargo` remains unavailable in this
+  sandbox (egress policy blocks `static.crates.io`), so they are deferred
+  to a session that can compile and run the tests. The blocklist/docs
+  changes above need no compilation.
+
 ### Removed — duplicate rules in `examples/overlay-blocklist.txt`
 - Found while continuing the same file audit: 3 `process:` pairs
   squash-identical under `match_process`'s space/hyphen/underscore-

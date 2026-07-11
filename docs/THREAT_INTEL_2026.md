@@ -1,8 +1,10 @@
-# Scam Overlay Threat Intel — 2026-05
+# Scam Overlay Threat Intel — 2026-05 (H2 update: 2026-07)
 
 Snapshot of the scam-overlay landscape used to seed
 `examples/overlay-blocklist.txt`. Refresh quarterly (the host side
 rotates weekly; the title/behaviour side is stable for months).
+The newest refresh is the **2026-H2 UPDATE** section at the end of
+this file; the body below is the original 2026-05 snapshot.
 
 ## Dominant vectors (2026)
 
@@ -259,3 +261,98 @@ benign host folding to equal a known-bad brand rule — vanishingly
 unlikely, and covered by `benign_host_not_falsely_matched`.
 Verified end to end: `micr0s0ft-secure.example` → Block via the
 `microsoft-secure.example` rule.
+
+---
+
+## 2026-H2 UPDATE (research refresh, 2026-07)
+
+New public reporting since the 2026-05 snapshot. Where a finding
+implies a concrete detection gap, the gap is tracked as a numbered
+`DR-*` item in [`FEATURE_AUDIT_2026H2.md`](FEATURE_AUDIT_2026H2.md)
+§5 (OPEN list) rather than restated here.
+
+### CypherLoc — browser-locking scareware kit (Barracuda, 2026-05)
+
+A web-based scareware kit responsible for ~2.8M attacks in 2026 alone,
+pushing victims to fraudulent tech-support / "IT helpdesk" phone
+numbers. Behavioural profile, per Barracuda's threat spotlight:
+
+- **Full-screen takeover** + disables the context menu + **hides the
+  cursor** + blankets the screen with overlays.
+- **Re-locks immediately** on any attempt to regain control — a
+  disappear/reappear loop. *This is real-world confirmation that the
+  DR-11 fix was correct*: muten's repeat-flood detection deliberately
+  counts genuine re-appearances (present→gone→present), which is
+  exactly CypherLoc's re-lock signature, while NOT counting a single
+  static window's continued presence.
+- **Displays the victim's public IP address** on the lure page for
+  false authenticity (retrieved at page load). muten has no signal for
+  a literal IP shown in an alert-shaped window today → tracked as
+  **DR-13**.
+- **"Contact your IT helpdesk"** framing — an *internal*-authority
+  impersonation distinct from the government/big-brand impersonation
+  muten's abused-authority lens covers → tracked as **DR-14**.
+- Evasion: encrypted, condition-based execution (decrypts only when a
+  required URL-fragment hash is present and integrity checks pass) +
+  warning sounds on click / fullscreen / reload. The evasion is
+  server/JS-side and out of scope for a window-metadata classifier;
+  noted for completeness only.
+
+Sources: Barracuda Networks blog, *Threat Spotlight: CypherLoc*
+(2026-05-20); Infosecurity Magazine; Cybernews (2.8M figure).
+
+### ClickFix — still the #1 initial-access vector, now 7 named variants
+
+Recorded Future's Insikt Group assesses ClickFix will very likely
+remain the dominant initial-access technique through 2026: ~9 delivery
+vectors, ≥7 named variants, used by criminal kit-buyers through
+nation-state actors (Kimsuky, MuddyWater, APT28).
+
+- **FileFix** pastes the payload into the **Windows Explorer address
+  bar** — which can't practically be restricted, and programs launched
+  that way carry **no Mark-of-the-Web**, bypassing SmartScreen and
+  origin-based controls.
+- **TerminalFix / DownloadFix** push execution into less-monitored
+  interfaces (a terminal, a download flow).
+- muten's `has_clickfix_instruction` (`src/confusables.rs`) already
+  covers Win+R / Ctrl+V, run-dialog framing, CAPTCHA framing,
+  GlitchFix/CrashFix browser-error framing, and JP-localised variants —
+  but has **no FileFix (address-bar / Win+E) or TerminalFix vocabulary**
+  → tracked as **DR-12**.
+
+Sources: The Hacker News (2026-01, 2026-03); Menlo Security (server-side
+polymorphism); revel8.ai (2026 variant catalogue); Recorded Future.
+
+### FBI IC3 2025 Annual Report (released 2026-04-07)
+
+Refreshes the loss figures cited throughout this file:
+
+- Total reported losses **$20.9B** (+26% YoY), 1,008,597 complaints.
+- **Investment fraud $8.6B** (largest); **tech/customer-support fraud
+  $2.1B**; crypto-related **$11.3B**.
+- **Seniors (60+) $7.7B** (+~59% YoY); avg senior loss $38,500.
+- **AI-facilitated fraud** appears as its own category for the first
+  time: >22,000 complaints, ~$893M. Overlay-title vocabulary for this
+  is still thin, so it is a **watch item (DR-15)**, not yet an
+  actionable blocklist gap.
+
+Source: IC3 2025 Annual Report (ic3.gov), FBI press release
+*Cryptocurrency and AI Scams Bilk Americans of Billions*.
+
+### Comparable-software note: Microsoft Edge scareware sensor (2026)
+
+Edge now ships an on-device **ML** scareware sensor that compares
+full-screen pages against thousands of known scam samples and feeds
+Defender SmartScreen. This is the ML/vision approach muten
+deliberately does *not* take: muten stays explainable additive scoring
+over window metadata (no per-frame CV, offline, `forbid(unsafe_code)`).
+The two are complementary — Edge sees page pixels/DOM in one browser;
+muten sees OS-level window geometry across the whole managed desktop
+(any browser, any native app). Recorded here to keep the design's
+positioning explicit against a now-shipping commercial competitor.
+
+Also new in the academic literature (added to research grounding, not
+yet actioned): **PP3D** (arXiv:2510.18465 — in-browser vision-based
+defense against web behaviour-manipulation attacks) and **"The Anatomy
+of Scam Scenarios"** (arXiv:2606.16052 — large-scale characterization +
+conversation-aware detection).

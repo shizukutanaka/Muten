@@ -111,7 +111,7 @@ into one `const`.
 | D-8 | Notification-permission-bait scams undetected | "Click Allow to continue watching" (Matrix Push C2-style) matched neither `clickfix_instruction` (needs CAPTCHA vocabulary) nor `download_trap_lure` (needs install vocabulary). | New signal `notification_permission_bait` (E66), fully wired across all 10 lenses. |
 | D-9 | `--helper-timeout-ms` CLI flag untested | Only the underlying library call was tested; a refactor could silently drop the CLI wiring back to the library default with nothing noticing. | Regression test with a threshold tight enough to distinguish "flag worked" from "flag silently ignored"; verified by deliberately breaking the wiring and watching the test fail. |
 | ~~DR-1~~ | Helper process-name reporting missing | `cmd_daemon` hard-wired `process_of` to `None` — the `rogue_av_process` signal and all 49 shipped `process:` blocklist rules were dead in production `daemon` mode. | `EnumeratedWindow.process` (optional, `#[serde(default)]`) reported best-effort by all 4 helpers (X11: `_NET_WM_PID`→`/proc/PID/comm`; Windows: `GetWindowThreadProcessId`→`Get-Process`; macOS: System Events process name; Wayland: foreign-toplevel app-id). `Monitor::sweep` prefers the embedded value over the `process_of` fallback. e2e-verified: a benign-titled window with a blocklisted process name produces `scareware_detected` + `rogue_av_process` + a non-zero `muten_scareware_total`. |
-| ~~DR-11~~ | **Long-lived benign windows falsely flagged as repeat-flood** | `Monitor::sweep` (src/monitor.rs) called `tracker.record()` for **every** enumerated window on **every** sweep — conflating "still present" with "just appeared." `signature()` (`src/lib.rs`) is content-only (`title\|host`), so a static window produces the same signature every sweep; `REPEAT_THRESHOLD=3` (`src/scareware.rs`) meant any long-lived window fired `scareware_detected` continuously from its 3rd sweep onward. The `Origin::UserInitiated` carve-out never helped in practice because every real helper reports `origin:"unknown"`. Found and reproduced (2 spurious events / 4 sweeps) during D-1's e2e verification; deliberately deferred to its own fix. | `Monitor` gained `present_last_sweep: HashSet<Signature>` (the prior sweep's signature set, replaced wholesale each sweep — bounded memory). A signature already in that set is probed (`count`, non-incrementing); a signature absent from it (first sight, or a genuine re-appearance after disappearing) is recorded (`record`, incrementing) — this is exactly the presence-vs-appearance distinction the bug lacked. Verified in both directions with a real running daemon binary: a static benign window produced 0 `scareware_detected` across 6 sweeps; an appear/disappear/appear helper (genuine re-pop) still produced 3 `scareware_detected` events across 10 sweeps. 3 pre-existing tests that had baked in "same static controller swept repeatedly = a flood" were rewritten to alternate present/gone controllers, matching real re-pop behavior instead of the bug. |
+| ~~DR-11~~ | **Long-lived benign windows falsely flagged as repeat-flood** | `Monitor::sweep` (src/monitor.rs) called `tracker.record()` for **every** enumerated window on **every** sweep — conflating "still present" with "just appeared." `signature()` (`src/lib.rs`) is content-only (`title\|host`), so a static window produces the same signature every sweep; `REPEAT_THRESHOLD=3` (`src/scareware.rs`) meant any long-lived window fired `scareware_detected` continuously from its 3rd sweep onward. The `Origin::UserInitiated` carve-out never helped in practice because every real helper reports `origin:"unknown"`. Found and reproduced (2 spurious events / 4 sweeps) during D-1's e2e verification; deliberately deferred to its own fix. | `Monitor` gained `present_last_sweep: HashSet<Signature>` (the prior sweep's signature set, replaced wholesale each sweep — bounded memory). A signature already in that set is probed (`count`, non-incrementing); a signature absent from it (first sight, or a genuine re-appearance after disappearing) is recorded (`record`, incrementing) — this is exactly the presence-vs-appearance distinction the bug lacked. Verified in both directions with a real running daemon binary: a static benign window produced 0 `scareware_detected` across 6 sweeps; an appear/disappear/appear helper (genuine re-pop) still produced 3 `scareware_detected` events across 10 sweeps. 3 pre-existing tests that had baked in "same static controller swept repeatedly = a flood" were rewritten to alternate present/gone controllers, matching real re-pop behavior instead of the bug. **Real-world confirmation (2026-07 threat refresh)**: CypherLoc (Barracuda 2026-05) re-locks the browser immediately on any escape attempt — a present→gone→present loop — which is exactly the appearance-not-presence pattern this fix counts, validating the design against a live 2.8M-victim campaign. |
 | ~~DR-2a~~ | **`age_ms` always 0 → `very_new` signal dead on every real host** | All 4 helpers unconditionally report `age_ms:0` ("unknown"), so the `very_new` (+10) signal and `sudden_fullscreen_takeover` composite (both gated on `age_ms > 0 && age_ms < 1000`) never fired on a real machine, even though the classifier logic for both was already correct and tested. Split out of DR-2 as the one sub-piece fixable without any helper changes. | `Monitor` infers `age_ms` from how long *it* has tracked a window (`first_seen_ms: HashMap<WindowId, u64>`, pruned to present ids each sweep) whenever the helper reports 0. First draft had a real bug (caught before any test run, not by a test): gating the `first_seen_ms` *insert* on "not the first sweep" meant a window present since sweep 1 got no entry during sweep 1, so on sweep 2 it looked brand-new and was scored `very_new` a few sweeps later anyway — the exact false positive the fix was meant to prevent, just delayed by one sweep. Corrected: `first_seen_ms` is now recorded unconditionally every sweep including the first; a separate `untrusted_from_startup: HashSet<WindowId>` marks every id present during the daemon's very first sweep, and only ids *not* in that set get their inferred age trusted; the set is pruned to present-ids each sweep, so a startup-cohort window that is ever absent even once permanently regains trust on any later reappearance. 3 new unit tests + 1 real-binary/real-wall-clock `cli_contract.rs` e2e test; proved the unit test and the e2e test both have teeth by reverting to the flawed design and confirming both failed (the e2e test caught the real daemon firing `overlay_suspicious` with `very_new` on every sweep after the first) before restoring the fix. |
 | ~~DR-5~~ | **Stop-flag response latency on long `--interval-ms`** | `cmd_daemon`'s loop checked the stop flag once per sweep, then slept the *entire* configured interval in one unbroken `thread::sleep` — a daemon tuned with a long interval to keep idle CPU near zero could take up to that whole interval to actually stop after a service manager's `ExecStop` touched the flag file. | Sleep is now chunked into 250ms slices with a stop-flag check between each; breaks out the moment the flag appears instead of waiting for the chunked sleep to run out naturally. No new dependency or CLI flag. e2e-verified: `daemon_stop_flag_takes_effect_promptly_on_a_long_interval` runs the real binary with `--interval-ms 5000`, requests a stop after 200ms, and asserts exit within 2s; proved it has teeth by reverting to the single unbroken sleep first and confirming the unfixed binary took 4.87s to exit under the identical test. |
 | ~~DR-3~~ | **No blocklist hot-reload** | `--rules` was only ever read once at startup — pushing an updated blocklist to a fleet running `daemon` required a coordinated restart of every instance, a real availability gap for routine policy updates (e.g. adding a newly discovered scam host). | `Monitor::set_rules(&mut self, rules: Ruleset)` swaps the active blocklist without disturbing repeat/age/presence tracking state. `cmd_daemon` stats `--rules`'s mtime once per sweep (one cheap syscall) and re-reads/re-parses/`set_rules`s it when the mtime advances; a transient read failure is best-effort (warn once per failure streak, keep protecting on the last-good ruleset, auto-retry next sweep) — the same pattern already used for the metrics writer. e2e-verified: `daemon_reloads_rules_file_edited_while_running` edits `--rules` in place on a running daemon and confirms a previously-non-matching window is `overlay_blocked` afterward; proved it has teeth by reverting to load-once behavior and confirming the test failed first (no audit log was ever created). |
@@ -206,6 +206,70 @@ Authenticode/Sigstore signing, `cargo-semver-checks` CI gate, and
 `criterion` throughput benchmarks are all unimplemented (tracked
 previously as roadmap C10-1 and the remainder of category C3).
 
+### [OPEN ★★★] DR-12: ClickFix variant vocabulary gap — FileFix / TerminalFix
+**Evidence**: `has_clickfix_instruction` (`src/confusables.rs:1746`)
+covers Win+R / Ctrl+V shortcut framing, run-dialog phrases (`open run`,
+`paste the command`, `into the run box`), CAPTCHA framing,
+GlitchFix/CrashFix browser-error framing, and JP-localised variants —
+but has NO vocabulary for the two newest high-prevalence variants
+(threat intel refresh 2026-07, see `THREAT_INTEL_2026.md` §2026-H2):
+- **FileFix**: pastes into the **Windows Explorer address bar** (no
+  Mark-of-the-Web → bypasses SmartScreen). Tells: "paste into the
+  address bar", "file explorer", the **Win+E** shortcut, "open file
+  explorer and paste".
+- **TerminalFix**: "open terminal / PowerShell and paste", "paste in
+  the terminal".
+
+**Fix** (spec for next session — not implemented this round, `cargo`
+unavailable in this sandbox to verify): add `win+e` to the compact
+shortcut list; add an `address_bar` / `terminal` compound branch to
+`run_cmd` (require the paste/execution verb AND the surface noun, e.g.
+`(contains("address bar") && contains("paste"))`, mirroring the
+existing AND-compound precision discipline). The `alert_shaped` guard
+in `classify()` stays as-is; no new signal id needed — these extend the
+existing `clickfix_instruction` signal. Add unit tests alongside the
+existing ClickFix tests in `confusables.rs`, and a `scoring_scenarios.rs`
+end-to-end case. Prove teeth by reverting.
+
+### [OPEN ★★] DR-13: No signal for a literal IP address shown in an alert
+**Evidence**: CypherLoc (Barracuda 2026-05) displays the victim's public
+IP on the lure page for false authenticity. muten's existing `ip_alarm`
+signal (`src/lib.rs`, `W_IP_ALARM`) requires alarm vocabulary
+("your IP has been hacked/flagged") — it does NOT fire on a bare IP
+literal presented in an otherwise alert-shaped window, which is the
+CypherLoc pattern (the IP is shown as "proof", not as an alarm phrase).
+**Fix** (spec): a new `ip_address_displayed` signal — scan the
+normalized title for a dotted IPv4 literal (four 1–3 digit octets, each
+≤255) via a hand-written octet scan (no regex dependency, consistent
+with the crate's no-new-deps rule), gated by `alert_shaped` to avoid
+firing on legitimate network-config windows. Low weight (≈15) since an
+IP alone is weak; it stacks with fullscreen/no-close. FP guard: a
+router admin page or a real network dialog is `user_initiated`
+(suppressed) or not alert-shaped.
+
+### [OPEN ★★] DR-14: No "internal IT helpdesk" impersonation vocabulary
+**Evidence**: CypherLoc funnels victims to a fake **IT helpdesk**. The
+abused-authority lens (`src/` authority-impersonation signals) targets
+government / big-brand impersonation (FBI, Microsoft, banks) — it has no
+vocabulary for *internal*-authority framing ("contact your IT
+helpdesk / IT department / system administrator to unlock"). This is a
+distinct, growing social-engineering angle (impersonating the victim's
+own org rather than an external authority).
+**Fix** (spec): add a compound title pattern — an IT-support noun
+(`it helpdesk`, `it department`, `system administrator`, `help desk`)
+combined with an unlock/urgency verb — as a new low/medium-weight
+signal or a `composite:` rule. AND-compound to keep precision (a benign
+"IT helpdesk ticket #123" window must not fire).
+
+### [OPEN ★] DR-15: AI-facilitated fraud — watch item, not yet actionable
+**Evidence**: FBI IC3 2025 (released 2026-04) breaks out AI-facilitated
+fraud as its own category for the first time (>22k complaints, ~$893M).
+For an overlay/window classifier this is currently a *delivery/content*
+trend (AI tailors the lure text to the victim's OS/brand) rather than a
+new window-metadata tell, so there is no concrete detector to add yet —
+tracked so the next threat refresh re-checks whether distinctive
+AI-scam overlay vocabulary has emerged.
+
 ---
 
 ## Current State Summary (as of this audit's last commit)
@@ -243,5 +307,12 @@ previously as roadmap C10-1 and the remainder of category C3).
   `origin` on any platform is the largest remaining piece (needs
   cross-invocation focus-history state) and still warrants its own
   dedicated session. DR-4 (log rotation) remains a ★★ self-contained
-  single-session fix if
-  preferred instead.
+  single-session fix if preferred instead.
+- **New this refresh (2026-07)**: **DR-12** (ClickFix FileFix/TerminalFix
+  vocabulary) is now the top ★★★ *code* gap — pure `src/confusables.rs`
+  vocabulary additions with an existing test harness to extend, no helper
+  or protocol change, so it is the highest-leverage first task once
+  `cargo` is available again. DR-13/DR-14 (CypherLoc IP-display and
+  IT-helpdesk signals) follow. The blocklist/docs half of the 2026-H2
+  refresh is already landed (needs no compilation); only the detector
+  code is deferred.
