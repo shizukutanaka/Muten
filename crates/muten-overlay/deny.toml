@@ -1,6 +1,8 @@
 # cargo-deny configuration for muten-overlay.
 # Run locally: `cargo deny check` (cargo install cargo-deny).
-# CI runs this on every PR (see .github/workflows/ci.yml).
+# The CI workflow that runs this on every push/PR is provided at
+# docs/ci/ci.yml and must be installed to .github/workflows/ci.yml
+# once by the repository owner (see that file's header for why).
 
 [advisories]
 # Fail on any known vulnerability. Unmaintained/yanked are warnings so

@@ -1,0 +1,98 @@
+# CI for muten-overlay — format/lint/test on stable, an MSRV (1.75.0)
+# build, and a supply-chain gate (cargo-audit + cargo-deny + gitleaks).
+#
+# ── INSTALL (one manual step, repository owner only) ────────────────
+# This file must live at .github/workflows/ci.yml to run, but the
+# GitHub App used for automated sessions lacks the `workflows`
+# permission — both a git push and the contents API were rejected when
+# attempted (remote: "refusing to allow a GitHub App to create or
+# update workflow ... without `workflows` permission"; API: 403).
+# A human with normal repo access installs it once:
+#   either  copy this file to .github/workflows/ci.yml and push,
+#   or      paste its contents into GitHub → Add file →
+#           .github/workflows/ci.yml in the web UI.
+# After that, every push and PR runs the three jobs below, and
+# docs/FEATURE_AUDIT_2026H2.md's cargo-unverified items can be verified
+# from any session via the GitHub Actions API.
+# ─────────────────────────────────────────────────────────────────────
+#
+# The crate is NOT a workspace member at the repo root — it lives
+# standalone at crates/muten-overlay, hence the working-directory
+# defaults on every cargo job.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: fmt + clippy + test (stable)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/muten-overlay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/muten-overlay
+      - name: cargo fmt --check
+        run: cargo fmt --check
+      - name: cargo clippy (deny warnings)
+        run: cargo clippy --all-targets -- -D warnings
+      - name: cargo build --all-targets
+        run: cargo build --all-targets
+      - name: cargo test
+        run: cargo test
+
+  msrv:
+    name: MSRV build (1.75.0)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/muten-overlay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.75.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/muten-overlay
+      - name: cargo build --all-targets (MSRV)
+        run: cargo build --all-targets
+
+  supply-chain:
+    name: cargo-audit + cargo-deny + gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks scans commit history, not just the checkout.
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit,cargo-deny
+      - name: cargo audit
+        working-directory: crates/muten-overlay
+        run: cargo audit
+      - name: cargo deny check
+        working-directory: crates/muten-overlay
+        run: cargo deny check
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml

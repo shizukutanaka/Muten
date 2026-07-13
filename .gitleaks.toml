@@ -1,7 +1,9 @@
 # gitleaks configuration for muten.
 # Extends the default ruleset (broad secret detection) and adds an
-# allowlist for this repo's known false positives. CI runs gitleaks on
-# every PR; locally: `gitleaks detect --source . -c .gitleaks.toml`.
+# allowlist for this repo's known false positives. The CI workflow that
+# runs gitleaks on every push/PR is provided at docs/ci/ci.yml (owner
+# must install it once — see that file's header); locally:
+# `gitleaks detect --source . -c .gitleaks.toml`.
 # CLAUDE.md I4: no secrets in commits.
 
 [extend]

@@ -5,6 +5,37 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Fixed — CI claimed everywhere, existed nowhere (DR-16; workflow shipped, install blocked on owner)
+- `README.md`, `deny.toml`, and `.gitleaks.toml` all described an active
+  CI pipeline (format/lint/test + MSRV build + cargo-audit/cargo-deny/
+  gitleaks "on every PR") — but no `.github/` directory existed anywhere
+  in the repository. Same unbacked-claim class as the fictional
+  blocklist hosts removed earlier this cycle, but heavier: a quality
+  gate described as active that never ran.
+- Wrote the real 3-job workflow (test / msrv / supply-chain, matching
+  every promise those files made) and attempted to land it at
+  `.github/workflows/ci.yml` via **both** available channels. Both were
+  rejected by GitHub — git push: "refusing to allow a GitHub App to
+  create or update workflow ... without `workflows` permission"
+  (matching the constraint a prior session had already recorded in
+  `.gitignore`); contents API: `403 Resource not accessible by
+  integration`. The rejected local commit was cleanly reset; the remote
+  branch never contained it.
+- Fallback shipped instead: the workflow lives at **`docs/ci/ci.yml`**
+  with install instructions in its header (one manual copy to
+  `.github/workflows/ci.yml` by the repository owner, whose user token
+  has the `workflow` scope App tokens lack). All three false claims
+  were corrected to state the workflow is provided but not yet active;
+  `.gitignore`'s note now records the 2026-07 empirical re-confirmation
+  and points at the asset.
+- Why this matters beyond honesty: once installed, CI runs `cargo test`
+  on GitHub-hosted runners (unrestricted egress) on every push — which
+  retroactively verifies all of this cycle's cargo-unverified changes
+  (DR-12, `scoring_scenarios.rs` additions, both `*_helper_reference.rs`
+  files) with results readable from any future session via the Actions
+  API. Tracked as DR-16 in `docs/FEATURE_AUDIT_2026H2.md`, marked
+  "blocked on repository owner."
+
 ### Added — FileFix / TerminalFix ClickFix-variant detection (DR-12, cargo-unverified)
 - `has_clickfix_instruction` (`src/confusables.rs`) had no vocabulary for
   2026's two newest high-prevalence ClickFix variants (Recorded Future,

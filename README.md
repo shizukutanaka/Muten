@@ -92,8 +92,12 @@ produces these.
 
 `muten-overlay` v0.6.0 — 1331 unit tests + 26 `cli_contract` integration
 tests, `clippy -D warnings` clean, MSRV 1.75.0.
-CI runs format/lint/test, an MSRV build, and a supply-chain gate
-(cargo-audit + cargo-deny + gitleaks) on every PR.
+A ready-to-install CI workflow (format/lint/test, an MSRV build, and a
+supply-chain gate: cargo-audit + cargo-deny + gitleaks) is provided at
+[`docs/ci/ci.yml`](docs/ci/ci.yml); it is **not yet active** — the
+GitHub App used by automated sessions cannot push workflow files, so
+the repository owner must install it once (instructions at the top of
+the file).
 
 ## License
 

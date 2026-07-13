@@ -24,6 +24,9 @@
 .env
 
 # GitHub Actions workflows — the GitHub App used for automated commits
-# lacks the `workflows` permission to push .github/workflows/*.
-# Workflows are managed manually by repository owners with full access.
+# lacks the `workflows` permission to push .github/workflows/*
+# (re-confirmed empirically 2026-07: git push → remote rejected; the
+# contents API → 403). Workflows are managed manually by repository
+# owners with full access; the ready-to-install workflow lives at
+# docs/ci/ci.yml.
 .github/
