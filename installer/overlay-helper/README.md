@@ -73,20 +73,32 @@ standard packaging steps for whatever you use today.
   blocklist, then `ansible.builtin.systemd` (Linux — enable + start
   `muten-overlay.service`), `community.general.launchd` (macOS), or
   `community.windows.win_scheduled_task` (Windows) to register the
-  service-manager unit. Rolling a new blocklist is a `copy` + a graceful
-  restart (touch stop-flag, wait, `systemd`/`launchctl`/`schtasks` restart)
-  — no daemon code change needed, since the blocklist is read fresh on
-  each `daemon` invocation.
+  service-manager unit. Rolling a new blocklist is just an
+  `ansible.builtin.copy` over the existing `--rules` file — the running
+  daemon picks up the change on its own within one sweep interval (see
+  "Updating the blocklist in the field" below); no restart task needed.
 
 ## Updating the blocklist in the field
 
 The blocklist is a plain text file (`docs/OVERLAY_BLOCKING.md` documents
 the full `host:`/`title:`/`glob:`/`process:`/`phone:`/`composite:`/
 `weight:` grammar — see `examples/overlay-blocklist.txt` for a fully
-worked, threat-intel-sourced example). Pushing a new version is: copy the
-new file over the old one, then gracefully restart the daemon so it picks
-up the change on its next start (the daemon does not currently hot-reload
-a running blocklist — restart is required).
+worked, threat-intel-sourced example). Pushing a new version is just:
+copy the new file over the one at the path passed to `--rules`. The
+running `daemon` checks that file's mtime once per sweep and reloads it
+automatically when it changes (no restart, no code change) — see
+`Monitor::set_rules` and the mtime check in `cmd_daemon`
+(`crates/muten-overlay/src/bin/cli.rs`). A restart is only needed to
+change the `--rules` *path* itself (or any other CLI flag), not to pick
+up an edited file at the same path.
+
+One deployment caveat: reload is triggered by the file's modified-time
+advancing, so a copy/rsync tool that preserves the *source* file's
+original mtime (e.g. `rsync -t` reproducing an older timestamp, or
+restoring from a backup) can leave the daemon still on the previous
+ruleset even though the file's bytes changed. Make sure whatever pushes
+the file lets the destination's mtime update normally (a plain
+`ansible.builtin.copy` or `cp` does this by default).
 
 ## Verifying a deployment
 

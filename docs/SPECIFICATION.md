@@ -8,6 +8,11 @@ and the CLI contract. Keywords **MUST / SHOULD / MUST NOT** are used in
 the RFC 2119 sense. Where the implementation diverged from this spec, the
 gap is listed in [§13](#13-conformance-gaps) and fixed in the same change.
 
+This is the current, actively-maintained spec. `docs/SPECIFICATION_V2.md`
+is a frozen historical snapshot (Round 19–30) kept only for its detailed
+Unicode-confusable fold table and strengths/weaknesses analysis of that
+era — it is not updated and should not be treated as authoritative.
+
 ## 1. Scope & invariants
 
 muten-overlay decides, **offline and deterministically**, whether an

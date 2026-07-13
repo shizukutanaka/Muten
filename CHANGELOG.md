@@ -5,6 +5,45 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Fixed — installer README described daemon behavior that DR-3 had already changed
+- `installer/overlay-helper/README.md` stated in two places (the Ansible
+  deployment section and "Updating the blocklist in the field") that the
+  `daemon` "does not currently hot-reload a running blocklist — restart
+  is required." This stopped being true on 2026-07-04 (commit `549df29`,
+  DR-3): `cmd_daemon` checks the `--rules` file's mtime every sweep and
+  calls `Monitor::set_rules()` automatically when it changes, with a
+  regression test (`daemon_reloads_rules_file_edited_while_running`)
+  proving it end-to-end against the real binary. The installer README
+  was last touched three days *before* DR-3 landed (commit `d54cce2`,
+  2026-07-01) and was never updated afterward.
+- Real-world impact: an operator following this doc's advice would
+  perform an unnecessary daemon restart on every blocklist push — a
+  concrete operational cost caused by a documentation defect, found
+  while auditing the repo for the same "claims something that isn't
+  true" pattern as the CI fix below.
+- Corrected both sections to describe the actual mtime-based hot-reload
+  behavior, and added an operational caveat: a copy tool that preserves
+  the *source* file's original mtime (some `rsync -t` invocations,
+  restoring from a backup) can leave the daemon on the previous ruleset
+  even though the file's bytes changed.
+
+### Fixed — `docs/SPECIFICATION_V2.md` was an orphaned, silently-stale spec
+- The file existed but was linked from neither `README.md`'s
+  documentation index nor `docs/SPECIFICATION.md` itself, and its header
+  claimed to cover only "through Round 19" while its own version-history
+  table (§10) had been extended through Round 30 without the rest of the
+  document being refreshed — internally inconsistent about its own
+  currency, and easy to mistake for an up-to-date second spec.
+- Rather than deleting it (its §4 exhaustive per-script Unicode-fold
+  table and §§5–7 strengths/weaknesses/improvement-areas analysis of the
+  Round 19–30 confusable-folding work have no equivalent elsewhere and
+  remain useful as an engineering record), added an explicit
+  "SUPERSEDED — historical snapshot" banner pointing readers to
+  `SPECIFICATION.md` for current behavior, added a matching back-link
+  from `SPECIFICATION.md`, and linked it from `README.md`'s
+  documentation index labeled **historical only** — resolving the
+  orphan/staleness ambiguity without discarding the content.
+
 ### Fixed — CI claimed everywhere, existed nowhere (DR-16; workflow shipped, install blocked on owner)
 - `README.md`, `deny.toml`, and `.gitleaks.toml` all described an active
   CI pipeline (format/lint/test + MSRV build + cargo-audit/cargo-deny/

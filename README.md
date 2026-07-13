@@ -87,6 +87,10 @@ produces these.
 - [`docs/MODEL_PLAYBOOK.md`](docs/MODEL_PLAYBOOK.md) — which Claude model
   (Haiku/Sonnet/Opus/Fable 5) and which skill to use for which kind of
   work on this repo, grounded in actual session history.
+- [`docs/SPECIFICATION_V2.md`](docs/SPECIFICATION_V2.md) — **historical
+  only** (Round 19–30 snapshot, superseded by `SPECIFICATION.md` above);
+  kept for its detailed per-script Unicode-confusable fold table and
+  strengths/weaknesses/improvement-areas analysis of that era.
 
 ## Status
 

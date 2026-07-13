@@ -1,6 +1,22 @@
-# muten-overlay v0.6 — Technical Specification
+# muten-overlay v0.6 — Technical Specification (historical snapshot, Round 19–30)
 
-> Generated: 2026-06-20. Covers the codebase through Round 19 (Coptic + superscript/subscript folding).
+> **SUPERSEDED — this is a frozen historical snapshot, not the current spec.**
+> For the current normative specification (types, classifier contract,
+> blocklist grammar, audit chain, CLI contract), see
+> [`docs/SPECIFICATION.md`](SPECIFICATION.md) instead — that file is the
+> one listed in `README.md`'s documentation index and has continued to
+> receive updates through DR-1..DR-16 (2026-07), long after this file was
+> generated. This document was never linked from `README.md` or
+> cross-referenced by `SPECIFICATION.md`; it is kept only as a detailed
+> engineering record of the Round 19–30 Unicode-confusable-folding work
+> (the exhaustive per-script fold table in §4 and the Strengths/
+> Weaknesses/Improvement-Areas analysis in §§5–7 have no equivalent
+> elsewhere and are still useful *as history*), not as a source of truth
+> for current behavior, test counts, or line counts — all of which are
+> stale here and should be read from `SPECIFICATION.md`, `CHANGELOG.md`,
+> and `docs/FEATURE_AUDIT_2026H2.md` instead.
+
+> Generated: 2026-06-20. Covers the codebase through Round 19 (Coptic + superscript/subscript folding); the version-history table in §10 was later extended through Round 30 without the rest of this document being refreshed to match.
 
 ---
 
