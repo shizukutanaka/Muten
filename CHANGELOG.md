@@ -5,6 +5,28 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Investigated — Wayland `lswt` parser: confirmed a code-internal bug, deferred the rewrite
+- Re-investigated the deferred DR-2 Wayland item. The primary sources
+  (sourcehut `lswt.1.scd` manpage source, sr.ht project page) still 403
+  on fetch, so the exact `lswt -j` JSON schema is unconfirmed and the
+  parser rewrite stays correctly deferred (writing a parser against a
+  guessed schema would be false verification — the same discipline that
+  kept the shell-script DR-2b/2c/2d fixes honest).
+- But reading `muten-overlay-helper-wayland.sh` against the consistent
+  secondary reports surfaced a bug provable from the script alone:
+  `pick_tool` validates lswt with `lswt -j` (JSON mode) while `enumerate`
+  runs plain `lswt` and scrapes a `title:`/`app-id:` block format — the
+  two functions disagree on which lswt mode they use. The plain-lswt loop
+  also has no final-block flush (its own comment admits this), dropping
+  the last toplevel when output lacks a trailing blank line.
+- Recorded the concrete fix in `docs/FEATURE_AUDIT_2026H2.md` for the
+  next Wayland-capable session: switch `enumerate` to `lswt -j` (the mode
+  `pick_tool` already validates) parsed via `jq`, validate the query
+  against a real `lswt -j` dump, then add a `wayland_helper_reference.rs`
+  e2e test against a stub emitting that *captured real* format — not a
+  guessed one. No code changed this round (no real lswt binary or Wayland
+  compositor available in the sandbox to validate against).
+
 ### Fixed — installer README described daemon behavior that DR-3 had already changed
 - `installer/overlay-helper/README.md` stated in two places (the Ansible
   deployment section and "Updating the blocklist in the field") that the

@@ -174,6 +174,35 @@ re-discovering this from scratch — check `lswt -j` and `lswt -t` output
 against the parser in `muten-overlay-helper-wayland.sh`'s `enumerate()`
 `lswt` branch before touching anything.
 
+**2026-07 re-investigation (still not acted on, but one code-internal
+inconsistency is now confirmed without needing the external schema).**
+Retried the primary sources — the sourcehut `lswt.1.scd` manpage source
+and the sr.ht project page both still return HTTP 403 to WebFetch, so the
+exact JSON schema remains unconfirmed and the parser rewrite is still
+correctly deferred. However, reading the shipped script against the
+(consistent, multi-source) secondary reports surfaced a bug provable from
+`muten-overlay-helper-wayland.sh` *alone*: `pick_tool` validates lswt by
+running **`lswt -j`** (JSON mode, line 41), but `enumerate` then runs
+plain **`lswt`** (no `-j`, line 96) and scrapes a `title:`/`app-id:`
+multi-line block format. So even setting aside whether that block format
+matches real lswt output, the two functions disagree about which lswt
+mode they use — `pick_tool` proves JSON works, `enumerate` ignores JSON.
+Additionally, the plain-lswt loop has no final-block flush (line ~109's
+own comment says "flush last block if no trailing blank line" but no code
+does it), so the last toplevel is dropped whenever lswt's output doesn't
+end in a blank line. **Recommended concrete fix for the next
+Wayland-capable session**: switch `enumerate`'s lswt branch to consume
+`lswt -j` (the mode `pick_tool` already validates) and parse it with
+`jq` (checking `have jq` first, matching the existing `have`-gated tool
+pattern), keying on the JSON `app_id`/`title` fields — this removes both
+the mode mismatch and the block-flush bug at once, and `lswt -j`'s
+versioned JSON is a far more stable contract than scraping human-readable
+text. Validate the exact `jq` query against a real `lswt -j` dump on a
+wlroots compositor before shipping; add a `wayland_helper_reference.rs`
+e2e test with a fake `lswt` stub emitting that captured real format
+(same harness as `linux_helper_reference.rs`/`macos_helper_reference.rs`),
+NOT a stub emitting a guessed format.
+
 ### [OPEN ★★] DR-4: No log rotation across a multi-week run
 The audit log is a single ever-growing file. `verify_chain_continued` (in
 `src/sink.rs`) already supports verifying a chain that spans a rotation
