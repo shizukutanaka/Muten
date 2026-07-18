@@ -5,6 +5,21 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Hardened — `selftest.sh` now bounds every helper call with a timeout
+- A hung helper is itself a deployment hazard (the daemon survives one
+  only via a tight `--helper-timeout-ms`), and the un-guarded self-test
+  would have hung forever on one — the opposite of a pre-flight's job.
+- Every `--probe`/`enumerate`/`dismiss` invocation now runs under
+  `timeout` (Linux) or `gtimeout` (macOS/coreutils) when available
+  (default 10s, `MUTEN_SELFTEST_TIMEOUT` to override), falling back to a
+  bare call when neither is present — the "no hard dependency" promise is
+  kept. A timeout kill (exit 124) is reported as a FAIL with a message
+  pointing at `--helper-timeout-ms`.
+- Verified in-sandbox: a helper that `sleep 3600`s on probe or on
+  enumerate is now caught as FAIL within the timeout (2s in the test, not
+  3600s), and all five original failure-mode fakes plus the three real
+  helpers still classify exactly as before the change.
+
 ### Added — `installer/overlay-helper/selftest.sh` helper pre-flight validator
 - Closed a real operational gap: the installer README's "Verifying a
   deployment" section only covered validating the *audit log* after the

@@ -38,9 +38,31 @@ fi
 fail=0
 note() { printf '%s\n' "$1"; }
 
+# A hung helper is itself a deployment hazard (the daemon needs
+# --helper-timeout-ms to survive one), and we must not let it hang this
+# script either. Wrap every helper invocation in `timeout` when it's
+# available (coreutils `timeout` on Linux, `gtimeout` on macOS via
+# coreutils); fall back to a bare call if neither is present, keeping the
+# "no hard dependency" promise. A timeout kill surfaces as exit 124.
+HELPER_TIMEOUT="${MUTEN_SELFTEST_TIMEOUT:-10}"
+if command -v timeout >/dev/null 2>&1; then
+    run_helper() { timeout "$HELPER_TIMEOUT" "$@"; }
+elif command -v gtimeout >/dev/null 2>&1; then
+    run_helper() { gtimeout "$HELPER_TIMEOUT" "$@"; }
+else
+    run_helper() { "$@"; }
+fi
+
 # 1. --probe must exit 0 on a host where the helper is usable.
-if "$helper" --probe >/dev/null 2>&1; then
+probe_rc=0
+run_helper "$helper" --probe >/dev/null 2>&1 || probe_rc=$?
+if [ "$probe_rc" -eq 0 ]; then
     note "PASS  --probe          exit 0 (helper reports usable on this host)"
+elif [ "$probe_rc" -eq 124 ]; then
+    note "FAIL  --probe          hung (killed after ${HELPER_TIMEOUT}s) — a helper that"
+    note "                       blocks would stall each sweep; needs a fix or a tight"
+    note "                       --helper-timeout-ms before deploying"
+    fail=1
 else
     note "FAIL  --probe          non-zero (helper reports it cannot run here —"
     note "                        wrong compositor/WM, missing tool, or no display)"
@@ -49,22 +71,31 @@ fi
 
 # 2. enumerate must print a JSON array to stdout. A quiet desktop (no
 #    windows) legitimately prints "[]" — that is a PASS, not a failure.
-out="$("$helper" enumerate 2>/dev/null || true)"
+enum_rc=0
+out="$(run_helper "$helper" enumerate 2>/dev/null)" || enum_rc=$?
 # Strip leading/trailing whitespace for the shape check.
 trimmed="$(printf '%s' "$out" | tr -d '\n\r\t ' )"
-case "$trimmed" in
-    "["*"]")
-        note "PASS  enumerate        printed a JSON array"
-        ;;
-    "")
-        note "FAIL  enumerate        printed nothing (expected at least '[]')"
-        fail=1
-        ;;
-    *)
-        note "FAIL  enumerate        output is not a JSON array (got: $(printf '%.40s' "$out")…)"
-        fail=1
-        ;;
-esac
+if [ "$enum_rc" -eq 124 ]; then
+    # Already reported below; skip the shape checks (output is truncated
+    # garbage from the kill, not a real verdict).
+    note "FAIL  enumerate        hung (killed after ${HELPER_TIMEOUT}s) — same hazard as"
+    note "                       a hung probe; the daemon would stall on this helper"
+    fail=1
+else
+    case "$trimmed" in
+        "["*"]")
+            note "PASS  enumerate        printed a JSON array"
+            ;;
+        "")
+            note "FAIL  enumerate        printed nothing (expected at least '[]')"
+            fail=1
+            ;;
+        *)
+            note "FAIL  enumerate        output is not a JSON array (got: $(printf '%.40s' "$out")…)"
+            fail=1
+            ;;
+    esac
+fi
 
 # 2b. Opportunistic deep check — only if a JSON tool is available. Every
 #     array element must be an object with a string "id" and an object
@@ -100,8 +131,15 @@ fi
 #    that blindly exits 0 for any id would make the daemon believe it
 #    dismissed windows it never touched. Informational (some helpers exit
 #    2 = already-gone, others 1 = error); a 0 here is the only real problem.
-if "$helper" dismiss "__muten_selftest_definitely_no_such_window__" >/dev/null 2>&1; then
+dismiss_rc=0
+run_helper "$helper" dismiss "__muten_selftest_definitely_no_such_window__" \
+    >/dev/null 2>&1 || dismiss_rc=$?
+if [ "$dismiss_rc" -eq 0 ]; then
     note "WARN  dismiss(bogus id) exited 0 — helper may report false dismissals"
+elif [ "$dismiss_rc" -eq 124 ]; then
+    note "FAIL  dismiss(bogus id) hung (killed after ${HELPER_TIMEOUT}s) — the daemon"
+    note "                       would stall trying to dismiss a window"
+    fail=1
 else
     note "PASS  dismiss(bogus id) non-zero (does not claim a dismissal it didn't do)"
 fi

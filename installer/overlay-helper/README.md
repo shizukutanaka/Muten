@@ -119,8 +119,13 @@ success. Exit 0 = safe to deploy here; exit 1 = fix before deploying
 Wayland helper needs, or `wmctrl`/`xprop` aren't installed for X11). It
 is pure POSIX `sh` (uses `python3` for a deeper structural check only if
 present) so it runs inside the same MDM push step that stages the helper.
-This is a fast pre-flight, not a substitute for a real dry-run — for that,
-pipe a captured `enumerate` snapshot through `muten-overlay enforce`.
+Every helper call is bounded by `timeout`/`gtimeout` when available
+(default 10s, override with `MUTEN_SELFTEST_TIMEOUT`), so a *hung* helper
+— itself a deployment hazard the daemon can only survive with a tight
+`--helper-timeout-ms` — is caught and reported rather than stalling the
+check. This is a fast pre-flight, not a substitute for a real dry-run —
+for that, pipe a captured `enumerate` snapshot through
+`muten-overlay enforce`.
 
 ## Verifying a deployment
 
