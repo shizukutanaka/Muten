@@ -5,6 +5,32 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — `installer/overlay-helper/selftest.sh` helper pre-flight validator
+- Closed a real operational gap: the installer README's "Verifying a
+  deployment" section only covered validating the *audit log* after the
+  fact (`muten-overlay verify`), with no scripted way for an operator to
+  confirm a *helper* actually satisfies the protocol on a specific
+  endpoint's window manager / compositor *before* trusting the daemon
+  with it. On a fleet with mixed X11/Wayland/desktop-environment hosts
+  (where e.g. GNOME/KDE don't offer the wlr foreign-toplevel protocol the
+  Wayland helper needs), a helper that silently enumerates nothing is a
+  real deployment hazard.
+- `selftest.sh <helper>` exercises all three protocol verbs and checks:
+  `--probe` exits 0; `enumerate` prints a JSON array of
+  `{id, window[, process]}` (a quiet desktop's `[]` is a PASS, not a
+  failure); each element has a string `id` and object `window` (deep
+  check, opportunistic — uses `python3` only if present); and `dismiss`
+  of a non-existent id does not falsely report success (which would make
+  the daemon believe it dismissed windows it never touched). Exit 0 =
+  safe to deploy; exit 1 = fix first.
+- Pure POSIX `sh`, no hard dependency (so it runs in the same MDM push
+  step that stages the helper). Verified end-to-end in this sandbox
+  against all three real shipped helpers with stubbed OS tools, and given
+  teeth against five deliberately-broken helpers (probe-fails,
+  non-JSON-enumerate, missing-`window`-field, blind-dismiss→WARN,
+  empty-array→PASS) — each failure mode is caught with the right exit
+  code. Wired into the installer README as a "Pre-flight" section.
+
 ### Investigated — Wayland `lswt` parser: confirmed a code-internal bug, deferred the rewrite
 - Re-investigated the deferred DR-2 Wayland item. The primary sources
   (sourcehut `lswt.1.scd` manpage source, sr.ht project page) still 403

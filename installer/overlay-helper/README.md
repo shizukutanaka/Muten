@@ -100,6 +100,28 @@ ruleset even though the file's bytes changed. Make sure whatever pushes
 the file lets the destination's mtime update normally (a plain
 `ansible.builtin.copy` or `cp` does this by default).
 
+## Pre-flight: does the helper work on this host?
+
+Before trusting the daemon with a helper on a given endpoint, run the
+bundled self-test to confirm the helper satisfies the protocol on *that*
+machine's window manager / compositor:
+
+```sh
+./selftest.sh ./muten-overlay-helper-linux.sh
+```
+
+It exercises all three protocol verbs (`--probe`, `enumerate`,
+`dismiss`) and checks that `enumerate` emits a JSON array of
+`{id, window[, process]}` objects, that a quiet desktop's `[]` is
+accepted, and that `dismiss` of a non-existent id does not falsely report
+success. Exit 0 = safe to deploy here; exit 1 = fix before deploying
+(e.g. the compositor doesn't offer the foreign-toplevel protocol the
+Wayland helper needs, or `wmctrl`/`xprop` aren't installed for X11). It
+is pure POSIX `sh` (uses `python3` for a deeper structural check only if
+present) so it runs inside the same MDM push step that stages the helper.
+This is a fast pre-flight, not a substitute for a real dry-run — for that,
+pipe a captured `enumerate` snapshot through `muten-overlay enforce`.
+
 ## Verifying a deployment
 
 `muten-overlay verify <audit-log-path>` replays the tamper-evident hash
