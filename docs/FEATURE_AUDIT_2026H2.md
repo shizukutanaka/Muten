@@ -371,6 +371,21 @@ other open item.
   shell-script level but their Rust compilation is **unverified** this
   round — see the DR-2b/DR-2c/DR-2d caveats above. Zero new dependencies
   added across this entire audit cycle. MSRV 1.75 preserved throughout.
+- **Shell-helper verification (re-run 2026-07 on the final HEAD)**: all
+  three POSIX-shell helpers pass `sh -n`, and all three were re-driven
+  end-to-end on the current committed scripts with stubbed OS tools on
+  `PATH` (no cargo needed): `muten-overlay-helper-linux.sh` (a modal
+  `_NET_WM_STATE_MODAL`+`ABOVE` window with no `_NET_WM_ACTION_CLOSE`
+  correctly yields `blocks_input:true`+`has_close_button:false`, a benign
+  window yields the opposite — DR-2b confirmed);
+  `muten-overlay-helper-macos.sh` (an `AXDialog` subrole with no
+  `button 1` yields `blocks_input:true`+`has_close_button:false` — DR-2c
+  /DR-2d confirmed); `muten-overlay-helper-wayland.sh` (the `wlrctl`
+  branch maps app-id→`process` and keeps the by-design conservative
+  geometry hardcodes). So the **shell** half of this cycle's changes is
+  independently confirmed green on the shipped files; only the **Rust**
+  test files that assert the same behavior remain cargo-unverified
+  (pending CI / a local-cargo session).
 - **What changed this cycle**: production readiness (D-1..D-9), the
   process-attribution gap (DR-1), the repeat-flood false-positive
   (DR-11), the `age_ms`/`very_new` dead-signal gap (DR-2a), the stop-flag
