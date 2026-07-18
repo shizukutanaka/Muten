@@ -298,19 +298,37 @@ IP alone is weak; it stacks with fullscreen/no-close. FP guard: a
 router admin page or a real network dialog is `user_initiated`
 (suppressed) or not alert-shaped.
 
-### [OPEN ★★] DR-14: No "internal IT helpdesk" impersonation vocabulary
-**Evidence**: CypherLoc funnels victims to a fake **IT helpdesk**. The
-abused-authority lens (`src/` authority-impersonation signals) targets
-government / big-brand impersonation (FBI, Microsoft, banks) — it has no
-vocabulary for *internal*-authority framing ("contact your IT
-helpdesk / IT department / system administrator to unlock"). This is a
-distinct, growing social-engineering angle (impersonating the victim's
-own org rather than an external authority).
-**Fix** (spec): add a compound title pattern — an IT-support noun
-(`it helpdesk`, `it department`, `system administrator`, `help desk`)
-combined with an unlock/urgency verb — as a new low/medium-weight
-signal or a `composite:` rule. AND-compound to keep precision (a benign
-"IT helpdesk ticket #123" window must not fire).
+### [OPEN ★ — mostly covered; only a generalized heuristic remains] DR-14: "internal IT helpdesk" impersonation
+**Evidence** (refined 2026-07 by reading the code, downgraded ★★→★):
+CypherLoc funnels victims to a fake **IT helpdesk**. Precise current
+coverage:
+- The **blocklist already covers CypherLoc's actual phrasings**: this
+  cycle's 2026-H2 refresh added `title: contact your it helpdesk`,
+  `title: contact your it department to unlock`, and `title: call the it
+  help desk to unlock this device` to `examples/overlay-blocklist.txt`
+  (confirmed present), each firing `blocklist_title` (+40); the
+  behavioral signals (fullscreen/no-close/blocks_input) stack on top, so
+  a real CypherLoc browser-lock reaches Block without any new code.
+- The **code vocabulary also already exists** — `has_tech_support_chat_lure`
+  (`src/confusables.rs`) contains `"helpdesk"`, `"help desk"`, and
+  `"it support"` — but it is AND-gated on a *chat-invite* phrase (`live
+  chat`, `chat with support`, …), so it fires on "chat with the IT
+  helpdesk" yet NOT on CypherLoc's *phone/unlock*-framed helpdesk lure.
+So the only genuine remaining gap is a **generalized heuristic** that
+catches IT-helpdesk + unlock/urgency variants the blocklist doesn't
+enumerate verbatim — i.e. a brand-new signal with its own persuasion/
+targeting/MITRE lens mappings and `all_signals()` registration.
+**Deliberately NOT implemented blind**: a new signal touches ~6
+interconnected mappings and the crate's strict invariant tests (e.g.
+`every_content_signal_has_a_persuasion_principle_or_is_exempt`) would
+fail on any missed mapping — exactly the class of error `cargo` catches
+and this sandbox cannot. Given the exact phrasings are already blocked,
+the marginal value is low and does not justify adding unverifiable
+cross-wired code. Do it in a `cargo`-capable session: add a
+non-chat-gated IT-helpdesk-lock branch (either a new signal fully wired
+across the lenses, or fold a phone/unlock-framed branch into an existing
+authority signal), with FP-guard tests (a benign "IT helpdesk ticket
+#123" window must not fire).
 
 ### [OPEN ★] DR-15: AI-facilitated fraud — watch item, not yet actionable
 **Evidence**: FBI IC3 2025 (released 2026-04) breaks out AI-facilitated
