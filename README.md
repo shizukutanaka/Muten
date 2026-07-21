@@ -91,6 +91,10 @@ produces these.
   only** (Round 19–30 snapshot, superseded by `SPECIFICATION.md` above);
   kept for its detailed per-script Unicode-confusable fold table and
   strengths/weaknesses/improvement-areas analysis of that era.
+- [`docs/WORK_ORDERS.md`](docs/WORK_ORDERS.md) — executable work orders
+  for future Claude (Opus/Sonnet) sessions: per-task procedures,
+  prerequisites, verification protocols, and hard prohibitions, bridging
+  the audit doc (*what*) and the model playbook (*who*).
 
 ## Status
 

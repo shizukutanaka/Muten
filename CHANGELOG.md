@@ -5,6 +5,33 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — `docs/WORK_ORDERS.md`: executable instructions for Opus/Sonnet sessions
+- Bridges the two existing meta-docs: `FEATURE_AUDIT_2026H2.md` records
+  *what* is healthy/broken and `MODEL_PLAYBOOK.md` records *which model*
+  fits which work — but neither tells a cold-started session *how to
+  execute* the backlog. The new doc turns every remaining item into a
+  self-contained work order (WO-1..WO-8 + backlog): purpose,
+  prerequisites (a session pre-flight decides which orders are even
+  executable — working cargo? owner-installed CI? real Wayland host?),
+  step-by-step procedure, verification protocol, done-criteria, and the
+  recommended model per the playbook.
+- Codifies the invariants every order inherits (no new deps,
+  forbid(unsafe_code), MSRV 1.75, FP-aversion with FP-guard twins, teeth
+  discipline, real-artifact verification, "never write Rust you cannot
+  compile", docs-match-reality) and the prohibitions learned empirically
+  this cycle (never push `.github/workflows/` — App token rejected on
+  both channels; no PR/tag/release without explicit user GO; no
+  cross-wired new signals in a cargo-less session; never invent data).
+- Records the user-decision history that matters for future sessions:
+  WO-7 explicitly notes the EC-2/EC-3 edits were attempted and
+  **rejected by the user** this cycle — future sessions must re-confirm
+  before touching them.
+- Self-consistency verified: every file path (13), symbol (6), and the
+  one line-number reference the document makes were checked against the
+  repo with `ls`/`grep` before commit — the instructions document
+  contains no nonexistent references, consistent with this cycle's
+  claims-must-match-reality theme.
+
 ### Hardened — `selftest.sh` now bounds every helper call with a timeout
 - A hung helper is itself a deployment hazard (the daemon survives one
   only via a tight `--helper-timeout-ms`), and the un-guarded self-test
