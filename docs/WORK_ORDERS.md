@@ -28,7 +28,46 @@ your session:
 3. `echo $WAYLAND_DISPLAY` + `command -v lswt` — only if you're on a real
    wlroots compositor with lswt installed can you do **WO-5**.
 
-## 1. Invariants — every work order inherits these
+## 1. Current state — strengths, weaknesses, and which WO fixes what
+
+Measured snapshot as of this document's commit. This table is a summary
+of [`FEATURE_AUDIT_2026H2.md`](FEATURE_AUDIT_2026H2.md); if the two ever
+disagree, the audit doc is authoritative. 日本語補足: 上段=壊しては
+ならない資産、下段=弱点と、それを直す作業指示(WO)の対応表。
+
+**Strengths — assets your change must not degrade:**
+
+- 66-signal / 10-lens detection engine with the evasion-resistant
+  Unicode-confusable normalization pipeline (`src/confusables.rs`) —
+  the product's core value.
+- Tamper-evident SHA-256 audit chain with RFC 6962 Merkle anchoring
+  (`src/sink.rs`) — the operator-trust story.
+- False-positive-averse design that actually holds: `user_initiated`
+  relief, `alert_shaped` gating on content signals, and the adversarial
+  `tests/benign_corpus.rs` corpus. FP-aversion is a stated product
+  principle (`README.md`), not just a habit.
+- Shell layer fully verified in-sandbox on the shipped files: all three
+  POSIX helpers, `installer/overlay-helper/selftest.sh` (with teeth),
+  and the three MDM service templates (XML/plist/unit validated).
+- Threat intel current through 2026-H2 (CypherLoc, ClickFix variant
+  wave, IC3 2025) with sourced docs and blocklist coverage.
+- Documentation with zero known unbacked claims — multiple false claims
+  were found and purged this cycle; keep it that way.
+
+**Weaknesses → the work order that fixes each:**
+
+| Weakness (audit ref) | Impact | Fix |
+|---|---|---|
+| Cargo-unverified Rust on the default branch: DR-12 impl, 2 `scoring_scenarios.rs` tests, both `*_helper_reference.rs` files | #1 risk — could fail to compile | **WO-1** |
+| CI claimed-then-shipped but not installed (DR-16) | no automated verification channel | **WO-2** (owner step) |
+| No signal for a bare IP literal shown in an alert (DR-13, CypherLoc trick) | detection gap on a live 2.8M-victim kit | **WO-3** |
+| IT-helpdesk impersonation only covered by verbatim blocklist rules (DR-14) | generalization gap (low — exact phrasings blocked) | **WO-4** |
+| Wayland lswt parser: probe/enumerate mode mismatch + missing last-block flush (confirmed from code) | lswt hosts silently fall back / drop a window | **WO-5** |
+| Audit log grows unbounded; no rotation (DR-4) | multi-week deployments | **WO-6** |
+| `origin` hard-coded `unknown` on all 4 platforms (DR-2 remainder) | `unsolicited` (+25) never fires on real hosts | Backlog (own session) |
+| Detection vocabulary EN+JP only (DR-8) | non-EN/JP fleets under-detect | Backlog |
+
+## 2. Invariants — every work order inherits these
 
 - **No new crate dependencies. `#![forbid(unsafe_code)]`. MSRV 1.75.0.
   Offline, pure detection path.** (Cargo.toml `rust-version` is the
@@ -59,7 +98,7 @@ your session:
   `FEATURE_AUDIT_2026H2.md` STATUS tags in the same commit as the change
   they describe.
 
-## 2. Work orders (priority order)
+## 3. Work orders (priority order)
 
 ### WO-1 — Clear the cargo-verification backlog 【model: Sonnet | needs: working cargo】
 
@@ -186,7 +225,7 @@ sed 's/[ _-]//g' | sort | uniq -d`).
 - v0.6.0 release tag: **requires explicit human GO** (release-approval
   discipline) and should follow, not precede, WO-1.
 
-## 3. Prohibitions (learned the hard way this cycle)
+## 4. Prohibitions (learned the hard way this cycle)
 
 - **Never push to `.github/workflows/`** — GitHub rejects the App token
   (both git and API paths). One retry wastes a commit-reset cycle;

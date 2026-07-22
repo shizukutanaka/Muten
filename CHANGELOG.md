@@ -31,6 +31,13 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
   repo with `ls`/`grep` before commit — the instructions document
   contains no nonexistent references, consistent with this cycle's
   claims-must-match-reality theme.
+- Follow-up: added an explicit **§1 "Current state — strengths,
+  weaknesses, and which WO fixes what"** section (the "洗い出す" half of
+  the request as a standalone reference) — a strengths list of assets a
+  change must not degrade, and a weakness→work-order mapping table so a
+  cold session can see why the WO priority order is what it is. All WO
+  numbers and audit-doc `DR-*` refs in the table were grep-verified to
+  resolve; sections renumbered 0–4 with no duplicates.
 
 ### Hardened — `selftest.sh` now bounds every helper call with a timeout
 - A hung helper is itself a deployment hazard (the daemon survives one
