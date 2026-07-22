@@ -37,8 +37,13 @@ probe() {
     exit 0
 }
 
+# See muten-overlay-helper-linux.sh's json_escape for the rationale: after
+# escaping backslash/quote and folding tab/CR/LF to spaces, delete any
+# other ASCII control char (0x00-0x1F) so a title carrying one can't emit
+# invalid JSON that the daemon's serde_json rejects for the whole sweep.
 json_escape() {
-    printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr '\t\r\n' '   '
+    printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' \
+        | tr '\t\r\n' '   ' | tr -d '[:cntrl:]'
 }
 
 enumerate() {

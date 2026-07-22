@@ -33,10 +33,23 @@ probe() {
     exit 0
 }
 
-# Escape a string for embedding in JSON (backslash, quote, control).
+# Escape a string for embedding in a JSON string literal.
+#
+# Order matters: escape backslash and double-quote first, then fold the
+# whitespace control chars (tab/CR/LF) to spaces, then DELETE any other
+# ASCII control character (0x00-0x1F: ESC, form-feed, bell, NUL, …).
+# JSON (RFC 8259) forbids raw control chars in strings, so a title
+# carrying one — which a scam overlay can trivially do to break the
+# enumerator — would otherwise produce invalid JSON that the daemon's
+# strict serde_json parser rejects for the WHOLE enumerate array, blinding
+# that entire sweep. Deleting (not spacing) the stray control chars also
+# defeats the evasion itself: "vi<ESC>rus" collapses to "virus", which
+# still matches the blocklist. muten's own normalizer strips control chars
+# too, so this only makes the two sides consistent.
 json_escape() {
     # shellcheck disable=SC1003
-    printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/ /g' | tr -d '\n\r'
+    printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' \
+        | tr '\t\r\n' '   ' | tr -d '[:cntrl:]'
 }
 
 enumerate() {

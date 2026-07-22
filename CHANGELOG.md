@@ -5,6 +5,29 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Fixed (security) — control char in a title blinded the whole sweep (DR-17)
+- All three shell helpers' `json_escape` escaped backslash/quote and
+  folded tab/CR/LF to space, but passed **other ASCII control chars
+  (0x00–0x1F: ESC, form-feed, bell, NUL, …) through raw**. JSON (RFC
+  8259) forbids raw control chars in strings, so a scam overlay that puts
+  one in its title makes `enumerate` emit invalid JSON — and because the
+  daemon parses the whole enumerate array at once with strict
+  `serde_json`, that single title makes the ENTIRE sweep fail to parse.
+  Every window that sweep, the scam included, goes unclassified: a
+  trivial, deliberate evasion vector.
+- Fix: each `json_escape` now appends `| tr -d '[:cntrl:]'` after the
+  existing tab/CR/LF→space fold, deleting any stray control char.
+  Deleting (rather than spacing) also defeats the evasion itself —
+  `vi<ESC>rus` collapses to `virus`, still a blocklist match — and mirrors
+  muten's own normalizer, which strips control chars too.
+- Verified end-to-end on the real shipped linux helper with a stubbed
+  `wmctrl` emitting a control-char title (output now parses; the scam
+  keyword survives so the window stays classifiable), regression-clean on
+  all three helpers with benign fakes, portable under `dash`, and given
+  teeth by reverting one helper's `json_escape` and confirming the
+  control-char title produces invalid JSON again. Pure shell change, fully
+  verified in-sandbox (no `cargo` needed).
+
 ### Added — `docs/WORK_ORDERS.md`: executable instructions for Opus/Sonnet sessions
 - Bridges the two existing meta-docs: `FEATURE_AUDIT_2026H2.md` records
   *what* is healthy/broken and `MODEL_PLAYBOOK.md` records *which model*
