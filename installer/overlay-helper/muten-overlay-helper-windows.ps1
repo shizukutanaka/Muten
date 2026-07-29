@@ -54,6 +54,19 @@ public class MutenWin {
 }
 "@
 
+# Escape a string for embedding in a JSON string literal.
+#
+# Order matters: escape backslash and double-quote first, fold the
+# whitespace control chars (tab/CR/LF) to spaces, then DELETE any other
+# control character (U+0000-U+001F plus DEL U+007F). JSON (RFC 8259)
+# forbids raw control chars in strings, so a window title carrying one —
+# which a scam overlay can trivially do — would otherwise emit invalid
+# JSON that the daemon's strict serde_json parser rejects for the WHOLE
+# enumerate array, blinding that entire sweep. Deleting (not spacing)
+# also defeats the evasion itself: "vi<ESC>rus" collapses to "virus",
+# which still matches the blocklist. This mirrors the `tr -d '[:cntrl:]'`
+# in the three POSIX helpers' json_escape and the normative MUST in
+# docs/SPECIFICATION.md section 9.
 function Json-Escape([string]$s) {
     if ($null -eq $s) { return "" }
     $s = $s -replace '\\', '\\'
@@ -61,6 +74,7 @@ function Json-Escape([string]$s) {
     $s = $s -replace "`t", " "
     $s = $s -replace "`r", ""
     $s = $s -replace "`n", " "
+    $s = $s -replace '[\x00-\x1F\x7F]', ''
     return $s
 }
 

@@ -118,7 +118,7 @@ into one `const`.
 | ~~DR-2b~~ | **`blocks_input` hard-coded `false` on X11** | Every helper hard-coded `blocks_input: false` unconditionally, silently suppressing the `blocks_input` (+20) signal for a genuinely modal scam dialog on every platform. Also corrected a stale claim in this doc's own previous DR-2 text: `has_close_button` was NOT hard-coded on X11/Windows — both already derive it from real EWMH/`WS_SYSMENU` signals (see `docs/OVERLAY_BLOCKING.md`'s "Fix" section, predates this audit cycle). Only macOS and Wayland still hard-code `has_close_button: true`. | X11/`muten-overlay-helper-linux.sh` now derives `blocks_input` from `_NET_WM_STATE_MODAL`, reusing the same `_NET_WM_STATE` fetch already done for `topmost` (one X11 round-trip covers both — no extra `xprop` call). Verified end-to-end by stubbing `xprop`/`wmctrl`/`xdotool` on `PATH` and running the real shipped shell script (`tests/linux_helper_reference.rs`, `enumerate_reports_blocks_input_from_net_wm_state_modal`); proved it has teeth by reverting to the hard-coded `false` and confirming a modal test window's `blocks_input` silently reverted to `false` under the identical harness. **Caveat**: `cargo test`/`clippy`/`fmt` could not be run this round — the sandbox's egress policy blocked `static.crates.io` crate downloads on a cache-less container, so this Rust test file's compilation is unverified pending the next session with a working `cargo` (the shell-script change itself was fully verified directly, independent of cargo). |
 | ~~DR-2c~~ | **`has_close_button` hard-coded `true` on macOS** | The macOS helper hard-coded `has_close_button: true` unconditionally, silently suppressing the `no_close_button` (+25) signal for a genuinely borderless/frameless scam window (e.g. an Electron `BrowserWindow` with `frame:false`) on macOS. | `muten-overlay-helper-macos.sh`'s AppleScript now checks `exists (button 1 of w)` per window — the same `button 1` accessor `dismiss()` already relies on to click the close button, so "no `button 1`" and "`dismiss()` can't gracefully close this window" are consistent by construction, not two independently-drifting assumptions. Verified end-to-end by stubbing `osascript` on `PATH` (both the `-e` single-expression form and the heredoc/stdin multi-line form the script uses) and running the real shipped shell script (`tests/macos_helper_reference.rs`, `enumerate_reports_has_close_button_from_button_1_existence`); proved it has teeth by reverting to the hard-coded `true` and confirming a borderless test window's `has_close_button` silently reverted to `true` under the identical harness. Same `cargo` caveat as DR-2b: the new Rust test file's compilation is unverified this round. |
 | ~~DR-2d~~ | **`blocks_input` hard-coded `false` on macOS** | The macOS helper hard-coded `blocks_input: false` unconditionally, silently suppressing the `blocks_input` (+20) signal for a genuinely modal scam dialog on macOS. | `muten-overlay-helper-macos.sh`'s AppleScript now checks `subrole of w` per window and treats `"AXDialog"`/`"AXSystemDialog"` as modal — the standard macOS Accessibility API signal for a dialog window, corroborated by 3 independent sources (Apple Developer Forums, MacScripter, a dedicated AppleScript-modal-detection writeup) found via web search before implementing, unlike the Wayland `lswt` investigation below where only a single secondary source was available and the change was deliberately NOT made. Verified end-to-end the same way as DR-2c (stubbed `osascript`, real shipped script, `tests/macos_helper_reference.rs`'s `enumerate_reports_blocks_input_from_axdialog_subrole`); proved it has teeth by reverting to the hard-coded `false` and confirming a modal test window's `blocks_input` silently reverted to `false`. Same `cargo`-unverified caveat as DR-2b/DR-2c. |
-| ~~DR-17~~ | **Control-char in a window title → invalid enumerate JSON → whole sweep blinded (evasion vector)** | All three shell helpers' `json_escape` escaped backslash/quote and folded tab/CR/LF to space, but passed **other ASCII control chars (0x00–0x1F: ESC, form-feed, bell, NUL, …) through raw**. JSON (RFC 8259) forbids raw control chars in strings, so a scam overlay that puts one in its title makes `enumerate` emit invalid JSON; the daemon parses the whole array at once with strict `serde_json`, so that one title makes the ENTIRE sweep fail to parse — every window that sweep, scam included, goes unclassified. A deliberate, trivial evasion. Found by reading `json_escape` and confirmed: `printf 'vi\033ru\014s alert'` through the pre-fix escaper yields JSON that a strict parser rejects ("Invalid control character"). | All three `json_escape` functions now append `\| tr -d '[:cntrl:]'` after the existing tab/CR/LF→space fold, deleting (not spacing) any stray control char. Deleting also defeats the evasion itself — `vi<ESC>rus` collapses to `virus`, which still matches the blocklist — and matches muten's own normalizer, which strips control chars too. Verified end-to-end on the real shipped linux helper with a stubbed `wmctrl` emitting a control-char title (output now parses; keyword survives), regression-clean on all three helpers with benign fakes, portable under `dash`, and given teeth by reverting one helper's `json_escape` and confirming the control-char title produces invalid JSON again. Shell-verified in full (no `cargo` needed — pure helper-script change). |
+| ~~DR-17~~ | **Control-char in a window title → invalid enumerate JSON → whole sweep blinded (evasion vector)** | All three shell helpers' `json_escape` escaped backslash/quote and folded tab/CR/LF to space, but passed **other ASCII control chars (0x00–0x1F: ESC, form-feed, bell, NUL, …) through raw**. JSON (RFC 8259) forbids raw control chars in strings, so a scam overlay that puts one in its title makes `enumerate` emit invalid JSON; the daemon parses the whole array at once with strict `serde_json`, so that one title makes the ENTIRE sweep fail to parse — every window that sweep, scam included, goes unclassified. A deliberate, trivial evasion. Found by reading `json_escape` and confirmed: `printf 'vi\033ru\014s alert'` through the pre-fix escaper yields JSON that a strict parser rejects ("Invalid control character"). | All three `json_escape` functions now append `\| tr -d '[:cntrl:]'` after the existing tab/CR/LF→space fold, deleting (not spacing) any stray control char. Deleting also defeats the evasion itself — `vi<ESC>rus` collapses to `virus`, which still matches the blocklist — and matches muten's own normalizer, which strips control chars too. Verified end-to-end on the real shipped linux helper with a stubbed `wmctrl` emitting a control-char title (output now parses; keyword survives), regression-clean on all three helpers with benign fakes, portable under `dash`, and given teeth by reverting one helper's `json_escape` and confirming the control-char title produces invalid JSON again. Shell-verified in full (no `cargo` needed — pure helper-script change). **Follow-up within the same cycle**: the first pass fixed only the three POSIX helpers; writing the normative spec text ("all four shipped helpers do this") forced a check of `muten-overlay-helper-windows.ps1`, which turned out to have the identical bug (`Json-Escape` handled tab/CR/LF only) — the false claim was caught *before* commit and the Windows helper fixed too (`-replace '[\x00-\x1F\x7F]', ''`, matching POSIX `[:cntrl:]` which also covers DEL). Its regex semantics were verified against the shell result via an equivalent implementation (same `virus alert` output, Japanese `ウイルス警告` intact), but **no `pwsh` exists in this sandbox, so the `.ps1` itself was not executed** — same standing caveat as all prior Windows-helper work. Also confirmed the POSIX fix is UTF-8-safe (byte-wise `tr`; `[:cntrl:]` never matches UTF-8 continuation bytes), which matters for a Japan-market product. |
 
 ## 5. Deficiency (不足) — OPEN, priority order
 
@@ -374,6 +374,44 @@ additions, `linux_helper_reference.rs`, `macos_helper_reference.rs`) —
 results readable from any future session via the GitHub Actions API,
 removing the "needs a local-cargo session" prerequisite from every
 other open item.
+
+### [OPEN ★★] DR-18: one malformed window blinds the whole sweep (fault isolation)
+**Evidence** (first-principles reading of the parse path, 2026-07):
+`SubprocessController::enumerate` (`src/controller.rs`) parses the
+helper's entire stdout in one shot —
+`serde_json::from_str::<Vec<EnumeratedWindow>>(&text)` — and maps **any**
+error to `ControllerError::Enumerate`, which `Monitor::sweep` turns into
+a single `overlay_sweep_error` audit event and an early return. So the
+classification of window B depends on window A's JSON being well-formed,
+even though they are independent observations. One malformed element ⇒
+**zero** windows classified that sweep.
+DR-17 (resolved above) removed the one attacker-reachable trigger we
+know of in *our* helpers, and §9 of `SPECIFICATION.md` now makes
+control-char stripping a normative MUST — but the architecture still has
+no fault isolation, and the protocol explicitly invites operators to
+supply their own helper ("replace with a signed binary in locked-down
+fleets" — every helper header), plus already-deployed pre-DR-17 helpers
+exist in the field. A helper bug should degrade to "we missed that one
+window", never "we saw nothing".
+**Fix** (spec — Rust, deliberately NOT written in a cargo-less session):
+in `enumerate`, keep the strict parse as the fast path; on error, (a)
+sanitize by dropping `char::is_control()` code points from `text` (legal:
+JSON never *requires* a control char — whitespace between tokens is
+optional — so this cannot corrupt a valid document, and it mirrors both
+the helpers' `json_escape` and `normalize_for_match`) and retry the
+strict parse; (b) if it still fails, parse as `Vec<serde_json::Value>`
+and `filter_map` each element through `serde_json::from_value`, keeping
+what deserializes. Return `Err` only when nothing at all is salvageable,
+so the sweep still audits a real failure. Emit a rate-limited warning
+naming how many elements were dropped (mirror the once-per-failure-streak
+pattern `cmd_daemon` already uses for metrics/rules-reload) so a
+silently-degrading helper is visible rather than invisible.
+**Tests**: unit tests in `controller.rs` (a raw control char mid-title
+still yields the window with the char stripped; one schema-invalid
+element among three yields the other two; wholly-garbage input still
+`Err`s) plus a `cli_contract.rs` e2e with a fake helper emitting a
+control-char title — the daemon must still block a scam window in the
+same sweep. Prove teeth by reverting to the single strict parse.
 
 ---
 

@@ -5,6 +5,49 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — control-char stripping is now a normative helper requirement (spec §9); DR-18 filed
+- First-principles follow-up to DR-17: the underlying architectural
+  weakness is that `SubprocessController::enumerate` parses the helper's
+  whole output with a single
+  `serde_json::from_str::<Vec<EnumeratedWindow>>`, so **window B's
+  classification depends on window A's JSON being well-formed** even
+  though they are independent observations. One malformed element ⇒ zero
+  windows classified that sweep — the worst possible failure mode for a
+  detector, and attacker-reachable since a hostile overlay picks its own
+  title.
+- DR-17 removed the one trigger we know of in *our* helpers; two further
+  steps close the rest:
+  - **Done now (docs, verifiable):** `docs/SPECIFICATION.md` §9 gained a
+    normative **MUST** — a helper MUST NOT emit raw control characters
+    (U+0000–U+001F) in JSON strings, MUST fold tab/CR/LF to spaces, and
+    MUST *delete* other control chars (deleting also collapses
+    `vi<ESC>rus` → `virus`, so the evasion doesn't survive into the title
+    either). This binds custom/third-party helpers, which the protocol
+    explicitly invites operators to write.
+  - **Caught while writing that spec text**: the sentence "all four
+    shipped helpers do this" was about to be false — DR-17's first pass
+    had fixed only the three POSIX helpers, and
+    `muten-overlay-helper-windows.ps1`'s `Json-Escape` had the identical
+    bug (tab/CR/LF only). Fixed it too
+    (`-replace '[\x00-\x1F\x7F]', ''`, matching POSIX `[:cntrl:]`, which
+    also covers DEL). Regex semantics verified against the shell result
+    via an equivalent implementation (same `virus alert` output,
+    Japanese `ウイルス警告` intact); the `.ps1` itself is **not
+    executed** — no `pwsh` in this sandbox, the standing caveat on all
+    Windows-helper work.
+  - **Filed for a cargo-capable session:** **DR-18** in
+    `FEATURE_AUDIT_2026H2.md` + **WO-9** in `WORK_ORDERS.md` — add fault
+    isolation to `enumerate` (sanitize-and-retry, then per-element
+    `filter_map` salvage, rate-limited "dropped N elements" warning,
+    with unit + `cli_contract` e2e tests and a teeth check). Not written
+    here: it is Rust, and this sandbox cannot compile it.
+- Also verified DR-17's fix is UTF-8-safe, which matters for a
+  Japan-market product: `tr -d '[:cntrl:]'` is byte-wise and
+  `[:cntrl:]` never matches UTF-8 continuation bytes, so
+  `ウイルスに感染<ESC>しています` survives intact as
+  `ウイルスに感染しています` — confirmed through the real shipped linux
+  helper, in an unset locale.
+
 ### Fixed (security) — control char in a title blinded the whole sweep (DR-17)
 - All three shell helpers' `json_escape` escaped backslash/quote and
   folded tab/CR/LF to space, but passed **other ASCII control chars

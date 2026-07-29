@@ -323,6 +323,23 @@ Each `EnumeratedWindow` on the wire is `{id, process?, window}`:
 | `process` | Option\<String\> | owning process / application name, **best-effort**; a helper that cannot attribute one for a window MUST omit the field (deserializes as `None` = unknown). Matched against blocklist `process:` rules via `match_process`'s squash semantics (case-, space-, separator-insensitive substring), so a Wayland app-id `org.mozilla.firefox` matches a rule written `firefox`. Feeds `assess()`'s `rogue_av_process` signal; the daemon prefers this enumeration-atomic value over any out-of-band `process_of` lookup |
 | `window` | OverlayWindow | the observed metadata per §2.2 |
 
+**Control characters (normative).** A helper MUST NOT emit raw ASCII
+control characters (U+0000–U+001F) inside any JSON string it produces.
+RFC 8259 forbids them in string literals, and the daemon parses a
+helper's `enumerate` output as **one** document — so a single window
+whose title carries one makes the entire array fail to parse, and *every*
+window in that sweep goes unclassified. Since a hostile overlay chooses
+its own title, this is an attacker-controlled evasion vector, not a
+theoretical edge case. Helpers MUST fold tab/CR/LF to spaces and
+**delete** any other control character before emitting (deleting rather
+than substituting also collapses `vi<ESC>rus` back to `virus`, so the
+evasion attempt does not survive into the title either — the same thing
+`normalize_for_match` does on muten's side). All four shipped reference
+helpers implement this in their `json_escape` (the three POSIX helpers
+via `tr -d '[:cntrl:]'`, the PowerShell helper via
+`-replace '[\x00-\x1F\x7F]', ''`); a custom or third-party helper MUST do
+the same.
+
 Per-OS `process` source: X11 `_NET_WM_PID` → `/proc/PID/comm`; Windows
 `GetWindowThreadProcessId` → `Get-Process .ProcessName`; macOS the System
 Events process name; Wayland the foreign-toplevel `app-id` (PIDs are not

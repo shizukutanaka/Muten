@@ -63,6 +63,7 @@ disagree, the audit doc is authoritative. 日本語補足: 上段=壊しては
 | No signal for a bare IP literal shown in an alert (DR-13, CypherLoc trick) | detection gap on a live 2.8M-victim kit | **WO-3** |
 | IT-helpdesk impersonation only covered by verbatim blocklist rules (DR-14) | generalization gap (low — exact phrasings blocked) | **WO-4** |
 | Wayland lswt parser: probe/enumerate mode mismatch + missing last-block flush (confirmed from code) | lswt hosts silently fall back / drop a window | **WO-5** |
+| No fault isolation in `enumerate` parsing (DR-18): one malformed element blinds the entire sweep | worst-case failure mode; helper bugs / custom helpers see *nothing* instead of missing one window | **WO-9** |
 | Audit log grows unbounded; no rotation (DR-4) | multi-week deployments | **WO-6** |
 | `origin` hard-coded `unknown` on all 4 platforms (DR-2 remainder) | `unsolicited` (+25) never fires on real hosts | Backlog (own session) |
 | Detection vocabulary EN+JP only (DR-8) | non-EN/JP fleets under-detect | Backlog |
@@ -196,6 +197,18 @@ the cut mechanism (size- or age-based, daemon-side, atomic rename,
 chain-continuity head carry-over), review the design against the audit
 chain's tamper-evidence guarantees, then implement with cli_contract
 e2e tests (real binary, real files, teeth).
+
+### WO-9 — DR-18: fault isolation in `enumerate` parsing 【model: Sonnet | needs: working cargo】
+
+`SubprocessController::enumerate` (`src/controller.rs`) parses the whole
+helper output with one `serde_json::from_str::<Vec<EnumeratedWindow>>`;
+any error blinds the entire sweep. Window B's fate should not depend on
+window A's JSON. Full spec (sanitize-and-retry, then per-element
+`filter_map` salvage, rate-limited "dropped N elements" warning, and the
+unit + `cli_contract` e2e tests) is in the audit doc's DR-18 entry —
+follow it directly. Do this soon after WO-1: it is small, well-specified,
+and converts the worst failure mode (see nothing) into the mildest (miss
+one window).
 
 ### WO-7 — EC-1 / EC-2 / EC-3 cleanups 【⚠ ask the user first】
 
