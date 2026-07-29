@@ -64,6 +64,7 @@ disagree, the audit doc is authoritative. 日本語補足: 上段=壊しては
 | IT-helpdesk impersonation only covered by verbatim blocklist rules (DR-14) | generalization gap (low — exact phrasings blocked) | **WO-4** |
 | Wayland lswt parser: probe/enumerate mode mismatch + missing last-block flush (confirmed from code) | lswt hosts silently fall back / drop a window | **WO-5** |
 | No fault isolation in `enumerate` parsing (DR-18): one malformed element blinds the entire sweep | worst-case failure mode; helper bugs / custom helpers see *nothing* instead of missing one window | **WO-9** |
+| Failed dismiss audited identically to a self-closed window (DR-19) | a broken dismissal path across a fleet is invisible — looks like scams closing themselves | **WO-10** |
 | Audit log grows unbounded; no rotation (DR-4) | multi-week deployments | **WO-6** |
 | `origin` hard-coded `unknown` on all 4 platforms (DR-2 remainder) | `unsolicited` (+25) never fires on real hosts | Backlog (own session) |
 | Detection vocabulary EN+JP only (DR-8) | non-EN/JP fleets under-detect | Backlog |
@@ -209,6 +210,16 @@ unit + `cli_contract` e2e tests) is in the audit doc's DR-18 entry —
 follow it directly. Do this soon after WO-1: it is small, well-specified,
 and converts the worst failure mode (see nothing) into the mildest (miss
 one window).
+
+### WO-10 — DR-19: distinguish a failed dismiss from a self-closed window 【model: Sonnet | needs: working cargo】
+
+`Monitor::sweep`'s `controller.dismiss(&ew.id).unwrap_or(false)` audits
+`Err` (protection broken, scam still on screen) identically to
+`Ok(false)` (overlay closed itself, nothing wrong). Add an additive
+`"dismiss_error"` field on failure only, plus a once-per-streak warning.
+Full spec and tests in the audit doc's DR-19 entry. Small, schema-safe,
+and pairs naturally with WO-9 (both are "stop discarding information the
+lower layer already computed").
 
 ### WO-7 — EC-1 / EC-2 / EC-3 cleanups 【⚠ ask the user first】
 

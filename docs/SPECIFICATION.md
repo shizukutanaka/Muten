@@ -323,6 +323,18 @@ Each `EnumeratedWindow` on the wire is `{id, process?, window}`:
 | `process` | Option\<String\> | owning process / application name, **best-effort**; a helper that cannot attribute one for a window MUST omit the field (deserializes as `None` = unknown). Matched against blocklist `process:` rules via `match_process`'s squash semantics (case-, space-, separator-insensitive substring), so a Wayland app-id `org.mozilla.firefox` matches a rule written `firefox`. Feeds `assess()`'s `rogue_av_process` signal; the daemon prefers this enumeration-atomic value over any out-of-band `process_of` lookup |
 | `window` | OverlayWindow | the observed metadata per §2.2 |
 
+**`dismiss` exit codes (normative).** A helper MUST exit `0` when it
+acted on the window, `2` when the window was already gone, and any other
+non-zero code only when the dismissal itself failed. These map to
+`Ok(true)` / `Ok(false)` / `Err(ControllerError::Dismiss)`. The `2` case
+and the failure case MUST NOT be conflated: *already-gone* is a normal
+outcome (the overlay closed on its own between enumerate and dismiss),
+whereas a *failure* means the endpoint's dismissal path is broken while a
+scam window may still be on screen — an operator reading the audit log
+has to be able to tell those apart. A helper that returns e.g. `1` for an
+unknown window id turns every benign self-closed window into an error and
+buries real failures in noise.
+
 **Control characters (normative).** A helper MUST NOT emit raw ASCII
 control characters (U+0000–U+001F) inside any JSON string it produces.
 RFC 8259 forbids them in string literals, and the daemon parses a

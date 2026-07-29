@@ -375,6 +375,43 @@ results readable from any future session via the GitHub Actions API,
 removing the "needs a local-cargo session" prerequisite from every
 other open item.
 
+### [OPEN ★★] DR-19: a broken dismiss is indistinguishable from a self-closed window in the audit log
+**Evidence** (first-principles pass over the *act* step, 2026-07): the
+helper protocol defines **three** dismiss outcomes — `exit 0` acted,
+`exit 2` already-gone, anything else failed — and
+`SubprocessController::dismiss` correctly projects them to
+`Ok(true)` / `Ok(false)` / `Err(ControllerError::Dismiss|Timeout)`. But
+`Monitor::sweep` (`src/monitor.rs`) collapses that with
+`controller.dismiss(&ew.id).unwrap_or(false)` and audits a single
+`"dismissed": <bool>`. So `Err` — the helper crashed, timed out, or the
+WM refused, i.e. **the endpoint's protection just failed with a Block-class
+scam on screen** — is recorded identically to `Ok(false)`, which means
+**the overlay closed by itself and nothing is wrong**. Two states with
+opposite operational meaning, one bit. An operator auditing a fleet
+cannot answer "did we actually dismiss it?" for any `dismissed: false`
+row, and a systematically broken helper (bad WM permissions, missing
+`wmctrl`) is invisible — it looks like a fleet where scams politely
+close themselves.
+**Fix** (spec — Rust, deliberately NOT written in a cargo-less session):
+keep `"dismissed": bool` exactly as-is for schema compatibility, and on
+`Err` additionally emit `"dismiss_error": "<ControllerError>"` in the
+same `overlay_blocked` detail object — a purely additive field that only
+appears on failure, so existing SIEM parsers are unaffected. Track
+consecutive dismissal failures and warn once per failure streak, reusing
+the pattern `cmd_daemon` already uses for the metrics writer and rules
+reload. Consider a `muten_dismiss_failures_total` counter alongside the
+existing Prometheus metrics.
+**Tests**: `monitor.rs` unit tests (a controller whose `dismiss` returns
+`Err` produces `dismiss_error` in the audit detail; one returning
+`Ok(false)` does **not**, proving the two are no longer conflated) plus a
+`cli_contract.rs` e2e with a fake helper whose `dismiss` exits 1. Teeth:
+restore `.unwrap_or(false)` and confirm the discrimination test fails.
+**Already done this round (the shell half)**: `selftest.sh` now
+distinguishes all four dismiss outcomes at pre-flight time, and
+`SPECIFICATION.md` §9 makes the exit-code contract normative — so a
+custom helper that would trigger this conflation is caught before
+deployment rather than after.
+
 ### [OPEN ★★] DR-18: one malformed window blinds the whole sweep (fault isolation)
 **Evidence** (first-principles reading of the parse path, 2026-07):
 `SubprocessController::enumerate` (`src/controller.rs`) parses the

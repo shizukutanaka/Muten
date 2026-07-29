@@ -5,6 +5,38 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Fixed — `selftest.sh` now distinguishes all four dismiss outcomes; dismiss exit codes made normative (DR-19 filed)
+- First-principles pass over the *act* (dismiss) step — the least-examined
+  link in the observe → decide → act → record chain — found the same
+  error class at two layers: **the protocol computes three distinct
+  dismiss outcomes and both consumers collapse them into one bit, putting
+  opposite-meaning states on the same side.**
+  - The contract (every helper header, and `SubprocessController::dismiss`)
+    is `exit 0` acted / `exit 2` already-gone / anything else failed,
+    correctly projected to `Ok(true)` / `Ok(false)` / `Err`.
+  - **`selftest.sh` (fixed now):** treated *every* non-zero code as an
+    equal PASS, so a helper returning `1` for an unknown window passed
+    pre-flight — yet in production that turns every benign self-closed
+    window into a `ControllerError::Dismiss`. It now classifies all four
+    cases separately: `0` → WARN (may report false dismissals), `2` →
+    PASS ("protocol-correct already-gone"), timeout → FAIL, any other
+    non-zero → WARN explaining that exit 2 is reserved for already-gone.
+    Verified with a four-way fake-helper matrix (0 / 2 / 1 / hang) and
+    regression-checked against the three shipped helpers, which do return
+    `exit 2` and now get the precise PASS message.
+  - **`Monitor::sweep` (filed as DR-19 + WO-10, not fixed here):**
+    `controller.dismiss(&ew.id).unwrap_or(false)` audits `Err` (protection
+    broken, scam still on screen) identically to `Ok(false)` (overlay
+    closed itself, nothing wrong). A fleet-wide broken dismissal path is
+    therefore invisible — it looks like a fleet where scams politely close
+    themselves. Spec: keep `"dismissed"` as-is and add an additive
+    `"dismiss_error"` field on failure only (SIEM-compatible), plus a
+    once-per-streak warning. Rust, so not written in this cargo-less
+    session.
+- `docs/SPECIFICATION.md` §9 gained a normative paragraph on the dismiss
+  exit codes stating that `2` and the failure codes MUST NOT be
+  conflated, binding custom/third-party helpers.
+
 ### Added — control-char stripping is now a normative helper requirement (spec §9); DR-18 filed
 - First-principles follow-up to DR-17: the underlying architectural
   weakness is that `SubprocessController::enumerate` parses the helper's

@@ -136,12 +136,24 @@ run_helper "$helper" dismiss "__muten_selftest_definitely_no_such_window__" \
     >/dev/null 2>&1 || dismiss_rc=$?
 if [ "$dismiss_rc" -eq 0 ]; then
     note "WARN  dismiss(bogus id) exited 0 — helper may report false dismissals"
+elif [ "$dismiss_rc" -eq 2 ]; then
+    note "PASS  dismiss(bogus id) exit 2 = already-gone (protocol-correct)"
 elif [ "$dismiss_rc" -eq 124 ]; then
     note "FAIL  dismiss(bogus id) hung (killed after ${HELPER_TIMEOUT}s) — the daemon"
     note "                       would stall trying to dismiss a window"
     fail=1
 else
-    note "PASS  dismiss(bogus id) non-zero (does not claim a dismissal it didn't do)"
+    # The protocol reserves exit 2 for "the window is already gone", and
+    # every other non-zero code for "the dismissal itself failed". Those
+    # mean opposite things operationally: already-gone is normal (the
+    # overlay closed on its own), a failure means the endpoint's dismissal
+    # path is broken while a scam may still be on screen. A helper that
+    # returns some other code here makes the daemon raise
+    # ControllerError::Dismiss for every benign self-closed window, burying
+    # real failures in noise.
+    note "WARN  dismiss(bogus id) exit $dismiss_rc — protocol reserves exit 2 for"
+    note "                       already-gone; other codes mean 'dismissal failed',"
+    note "                       so benign vanished windows will look like errors"
 fi
 
 echo
