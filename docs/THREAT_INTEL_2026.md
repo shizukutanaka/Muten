@@ -85,6 +85,31 @@ Feb 2026); Avast; Norton.
 The classifier's signal set is corroborated by the security
 literature, and one finding drove a new signal:
 
+- **Liu, Pun et al. — "Understanding, Measuring, and Detecting Modern
+  Technical Support Scams"** (2023), introducing **TASR
+  (Topic-Agnostic Scam Recognizer)**. TASR's thesis is that classifying
+  TSS pages by *content/topic* is brittle, because operators pivot
+  wording and pretexts continuously; it therefore detects using
+  **topic-agnostic** features — how the page is reached and behaves —
+  rather than what it says. *(Located via Semantic Scholar /
+  ResearchGate; the arXiv and publisher PDFs are blocked by this
+  sandbox's egress proxy, so this summary rests on the abstract and
+  indexed metadata, not the full text.)*
+
+  **This is the most consequential piece of literature for muten's
+  roadmap, because it says our priorities were wrong.** muten has ~6
+  structural/topic-agnostic signals (125 points: `fullscreen` 30,
+  `no_close` 25, `unsolicited` 25, `blocks_input` 20, `topmost` 15,
+  `very_new` 10) against ~60 vocabulary signals that each need the right
+  words in English or Japanese. TASR's argument makes the small
+  structural set the durable half — a scam overlay *must* cover the
+  screen, resist closing, and arrive uninvited, whatever its pretext.
+  Yet all four shipped helpers emit `"origin":"unknown"` and
+  `"age_ms":0` unconditionally, so `unsolicited` + `very_new` — 35
+  points, **28% of the topic-agnostic budget** — never fire in the
+  field. Filed as **DR-20** and promoted to **WO-11**; it outranks
+  adding a 61st vocabulary signal.
+
 - **Miramirkhani, Starov, Nikiforakis — "Dial One for Scam: A
   Large-Scale Analysis of Technical Support Scams"** (NDSS 2017,
   arXiv:1607.06891). An 8-month study of 8,698 TSS domains. Their

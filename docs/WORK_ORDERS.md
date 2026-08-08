@@ -66,7 +66,7 @@ disagree, the audit doc is authoritative. 日本語補足: 上段=壊しては
 | No fault isolation in `enumerate` parsing (DR-18): one malformed element blinds the entire sweep | worst-case failure mode; helper bugs / custom helpers see *nothing* instead of missing one window | **WO-9** |
 | Failed dismiss audited identically to a self-closed window (DR-19) | a broken dismissal path across a fleet is invisible — looks like scams closing themselves | **WO-10** |
 | Audit log grows unbounded; no rotation (DR-4) | multi-week deployments | **WO-6** |
-| `origin` hard-coded `unknown` on all 4 platforms (DR-2 remainder) | `unsolicited` (+25) never fires on real hosts | Backlog (own session) |
+| **28% of the topic-agnostic detection budget is dead (DR-20)**: `origin` and `age_ms` are hard-coded on all 4 helpers, so `unsolicited` (25) + `very_new` (10) never fire | leaves only the vocabulary path that the TSS literature (TASR) identifies as the brittle one | **WO-11** |
 | Detection vocabulary EN+JP only (DR-8) | non-EN/JP fleets under-detect | Backlog |
 
 ## 2. Invariants — every work order inherits these
@@ -221,6 +221,37 @@ Full spec and tests in the audit doc's DR-19 entry. Small, schema-safe,
 and pairs naturally with WO-9 (both are "stop discarding information the
 lower layer already computed").
 
+### WO-11 — DR-20: revive the dead topic-agnostic signals (`age_ms`, then `origin`) 【model: Opus (design) → Sonnet (impl) | needs: per-platform work; `age_ms` half is shell-only】
+
+**Read the DR-20 entry in the audit doc first** — it carries the
+literature justification (TASR: topic-agnostic features are the durable
+detection path; muten's are 28% dead) for why this outranks adding more
+vocabulary signals. This is the highest-value detection work left.
+
+Split it, and do the cheap half first:
+
+1. **`age_ms` (do this first — shell-only, verifiable without cargo).**
+   Helpers are re-spawned every sweep, so they have no memory; that is
+   the only reason `age_ms` is `0`. Give each helper a small state file
+   (e.g. `${XDG_RUNTIME_DIR:-/tmp}/muten-overlay-seen.<uid>`) mapping
+   window id → first-seen epoch-ms, written on first sighting and read
+   on later sweeps; `age_ms = now - first_seen`. Prune ids absent from
+   the current enumeration so the file cannot grow without bound. This
+   revives `very_new` (10) and makes `sudden_takeover` reachable.
+   Verifiable end-to-end in a sandbox with stubbed OS tools exactly like
+   DR-2b/2c/2d were — no cargo needed. Watch: concurrent sweeps (write
+   atomically via temp-file + `mv`), and clock changes.
+2. **`origin` (larger).** Needs cross-invocation focus/input history to
+   distinguish "user opened it" from "it appeared uninvited" — that is
+   why it is still open. Design it as its own session; the `user_initiated`
+   relief (−40) already consumes this field, so getting it *wrong* is
+   costly in both directions (a wrong `user_initiated` suppresses a real
+   scam). Prefer conservative: emit `unsolicited` only on positive
+   evidence, leave `unknown` otherwise.
+
+Do **not** let this become "add `origin` guessing heuristics" — a false
+`user_initiated` is a detection hole, and FP-aversion cuts both ways here.
+
 ### WO-7 — EC-1 / EC-2 / EC-3 cleanups 【⚠ ask the user first】
 
 These are recorded in the audit doc's Excess section. **Important
@@ -241,8 +272,9 @@ sed 's/[ _-]//g' | sort | uniq -d`).
 
 ### Backlog (one-liners — see the audit doc for full entries)
 
-- DR-2 remainder: `origin` inference on all 4 platforms (largest piece;
-  needs cross-invocation focus-history state; own session).
+- DR-2 remainder (`origin`/`age_ms`): **promoted out of the backlog** —
+  see **WO-11** / DR-20. The literature review made it the top detection
+  item, not a someday task.
 - DR-6 Merkle-root external anchoring automation. DR-7 config file.
 - DR-8 vocabulary beyond EN+JP. DR-9 BITB (needs protocol extension).
 - DR-10 remainder: signing / `cargo-semver-checks` / benchmarks.

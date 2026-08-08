@@ -5,6 +5,43 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Changed — literature review re-prioritized the roadmap: DR-20 filed, DR-2 promoted to WO-11
+- Reviewed the tech-support-scam detection literature and found one paper
+  that directly contradicts how this backlog was ordered: **Liu, Pun et
+  al., "Understanding, Measuring, and Detecting Modern Technical Support
+  Scams" (2023)**, introducing **TASR (Topic-Agnostic Scam Recognizer)**.
+  TASR's thesis: classifying TSS by *content/topic* is brittle because
+  operators pivot wording constantly, so it detects on **topic-agnostic**
+  features instead. (Found via Semantic Scholar / ResearchGate; arXiv and
+  publisher PDFs are egress-blocked here, so this rests on the abstract
+  and indexed metadata — recorded as such, not as a full-text reading.)
+- Measured muten against that thesis rather than assuming: the signal set
+  is ~6 structural/topic-agnostic signals worth **125 points**
+  (`fullscreen` 30, `no_close` 25, `unsolicited` 25, `blocks_input` 20,
+  `topmost` 15, `very_new` 10) against **~60 vocabulary signals**, each
+  needing the expected words in English or Japanese. By TASR's argument
+  the structural set is the durable half — an overlay must cover the
+  screen, resist closing, and arrive uninvited whatever its pretext.
+- **The finding (DR-20)**: `grep` over all four shipped helpers returns
+  `"origin":"unknown"` and `"age_ms":0` in 6/6 occurrences — both are
+  emitted unconditionally. So `unsolicited` (25) and `very_new` (10),
+  **35 points = 28% of the entire topic-agnostic budget**, can never fire
+  on a real host — and they are exactly the two encoding "appeared
+  uninvited, just now". What remains in the field is the brittle
+  vocabulary path the literature warns about, plus three geometry
+  signals. This also explains a previously-noted oddity: the docs already
+  concede the blocklist is the reliable path on real hosts and the
+  heuristics are weak. DR-20 is *why*.
+- **Acted on it**: the DR-2 remainder was sitting in the backlog as a
+  large awkward task; it is now **WO-11**, the top detection item, ahead
+  of adding a 61st vocabulary signal. WO-11 splits it so the cheap half
+  ships first — `age_ms` needs only a per-helper first-seen state file
+  (helpers are re-spawned each sweep, which is the sole reason it is `0`)
+  and is **shell-only, verifiable without cargo**, exactly like the
+  DR-2b/2c/2d fixes; `origin` stays a separate design-first session, with
+  an explicit warning that a wrong `user_initiated` (−40) is itself a
+  detection hole.
+
 ### Fixed — `selftest.sh` now distinguishes all four dismiss outcomes; dismiss exit codes made normative (DR-19 filed)
 - First-principles pass over the *act* (dismiss) step — the least-examined
   link in the observe → decide → act → record chain — found the same

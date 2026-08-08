@@ -375,6 +375,54 @@ results readable from any future session via the GitHub Actions API,
 removing the "needs a local-cargo session" prerequisite from every
 other open item.
 
+### [OPEN ★★★] DR-20: 28% of the topic-agnostic detection budget is dead on every real host
+**Literature basis**: Liu, Pun et al., *"Understanding, Measuring, and
+Detecting Modern Technical Support Scams"* (2023), which introduces
+**TASR (Topic-Agnostic Scam Recognizer)**. Its central thesis is that
+detecting tech-support scams by their *content/topic* is brittle —
+operators pivot topics and wording continuously — so TASR deliberately
+uses **topic-agnostic** features (how the scam page is reached and
+operates) instead of what it says. Found via Semantic Scholar /
+ResearchGate; the arXiv and publisher PDFs are egress-blocked from this
+sandbox, so this rests on the abstract and indexed summaries, not the
+full text.
+
+**Applied to muten (measured, not assumed)**: muten's signal set splits
+into ~6 structural/topic-agnostic signals worth **125 points total**
+(`fullscreen` 30, `no_close` 25, `unsolicited` 25, `blocks_input` 20,
+`topmost` 15, `very_new` 10) versus **~60 topic-specific vocabulary
+signals**, each of which only fires if the scam uses the expected words
+in English or Japanese. By TASR's argument the small structural set is
+the *durable* half — it describes behavior a scam overlay cannot avoid
+(it must cover the screen, it must resist closing, it must appear
+uninvited) regardless of whether the pretext is antivirus, tax, crypto,
+or something not yet invented.
+
+The problem: **`grep` over all four shipped helpers returns
+`"origin":"unknown"` and `"age_ms":0` in 6/6 occurrences — both are
+emitted unconditionally.** So `unsolicited` (25) and `very_new` (10) —
+**35 of those 125 points, 28% of the entire topic-agnostic budget** —
+can never fire on any real deployment. And they are precisely the two
+that encode "this appeared without you doing anything, just now", the
+most scam-characteristic *behavior* independent of topic. What survives
+on a real host is the brittle, vocabulary-dependent path the literature
+warns against, plus three geometry signals.
+
+**Consequence for prioritization**: `origin`/`age_ms` inference (the
+DR-2 remainder) has been sitting in the backlog as a large, awkward
+task. The literature says it is not backlog — it is the **highest-value
+detection work left**, worth more than adding the 61st vocabulary
+signal. Elevated to **WO-11**. Note this also explains a known oddity:
+the docs already concede that on real hosts the blocklist is the
+reliable path and the heuristics are weak — DR-20 is *why*.
+
+**Fix**: see WO-11 / the DR-2 entry. `age_ms` is the cheaper half (a
+helper can cache first-seen timestamps per window id across invocations,
+e.g. a small state file, since helpers are re-spawned each sweep);
+`origin` needs cross-invocation focus/input history and is the larger
+piece. Doing `age_ms` alone recovers `very_new` (10) plus makes
+`sudden_takeover` reachable.
+
 ### [OPEN ★★] DR-19: a broken dismiss is indistinguishable from a self-closed window in the audit log
 **Evidence** (first-principles pass over the *act* step, 2026-07): the
 helper protocol defines **three** dismiss outcomes — `exit 0` acted,
