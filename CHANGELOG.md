@@ -64,6 +64,20 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
   control-char stripping and `selftest.sh` both still pass. Also fixed a
   `set -e` interaction found during testing (`awk` exits 2 when the state
   file does not yet exist, which killed the first sweep).
+- **Measured the fix rather than assuming it worked — and it is only
+  half a win at the shipped default.** `very_new` needs
+  `0 < age_ms < 1000`, and a helper can only observe an age of about one
+  sweep interval. Measured on the real Linux helper: `--interval-ms 1000`
+  (the **default**) → `age_ms` 1142 → **`very_new` still does not fire**;
+  500 → 589 → fires; 250 → 336 → fires. The default sweep interval is
+  exactly the signal's threshold and helper runtime (~140 ms) pushes it
+  over. Recovering the 10 points needs `--interval-ms` meaningfully below
+  1000. Documented with the measurements in the installer README (a new
+  "Tuning" section) and DR-20, including two mitigations:
+  `--alert-interval-ms` (typical 200 ms) engages after any sweep with a
+  detection, so a re-spawning overlay in an *active* incident does get
+  `very_new`; and `age_ms` is now real audit data instead of a constant
+  `0` regardless.
 - **Now ported to all four helpers.** macOS and Wayland use the same
   `now_ms` / `first_seen_ms` / atomic-`mv` trio (macOS defaulting its
   state path to `$TMPDIR`, Wayland to `$XDG_RUNTIME_DIR`); the Windows

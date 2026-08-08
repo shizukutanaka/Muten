@@ -100,6 +100,28 @@ ruleset even though the file's bytes changed. Make sure whatever pushes
 the file lets the destination's mtime update normally (a plain
 `ansible.builtin.copy` or `cp` does this by default).
 
+## Tuning: `--interval-ms` and the `very_new` signal
+
+The helpers track how long they have seen each window and report a real
+`age_ms`. muten scores `very_new` (+10) only for `0 < age_ms < 1000`, and
+a helper can only observe an age of roughly one sweep interval — so the
+sweep rate decides whether that signal can fire at all. Measured on the
+Linux helper:
+
+| `--interval-ms` | observed `age_ms` | `very_new` |
+|---|---|---|
+| 1000 (default) | ~1142 | does not fire |
+| 500 | ~589 | fires |
+| 250 | ~336 | fires |
+
+At the default the signal cannot fire — the interval *is* the threshold,
+and helper runtime pushes it over. Set `--interval-ms 500` if you want
+`very_new`, weighed against idle CPU on the endpoint. Note
+`--alert-interval-ms` (e.g. 200) already shortens sweeps after any sweep
+that produced a detection, so a re-spawning overlay during an active
+incident gets the signal even at the default. Either way `age_ms` is now
+real data in the audit log instead of a constant `0`, which helps triage.
+
 ## Pre-flight: does the helper work on this host?
 
 Before trusting the daemon with a helper on a given endpoint, run the

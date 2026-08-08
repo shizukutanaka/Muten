@@ -417,11 +417,33 @@ the docs already concede that on real hosts the blocklist is the
 reliable path and the heuristics are weak — DR-20 is *why*.
 
 **Fix**: see WO-11 / the DR-2 entry. `age_ms` is the cheaper half (a
-helper can cache first-seen timestamps per window id across invocations,
-e.g. a small state file, since helpers are re-spawned each sweep);
-`origin` needs cross-invocation focus/input history and is the larger
-piece. Doing `age_ms` alone recovers `very_new` (10) plus makes
-`sudden_takeover` reachable.
+helper caches first-seen timestamps per window id across invocations in a
+small state file, since helpers are re-spawned each sweep); `origin`
+needs cross-invocation focus/input history and is the larger piece.
+
+**`age_ms` status: DONE on all four helpers — but measure before
+claiming the 10 points back.** `very_new` requires `0 < age_ms < 1000`,
+and the helper can only report the age it can actually observe, i.e.
+roughly one sweep interval. Measured on the real Linux helper with
+stubbed X11 tools:
+
+| `--interval-ms` | observed `age_ms` on the 2nd sweep | `very_new` fires? |
+|---|---|---|
+| **1000 (the shipped default)** | 1142 | **no** |
+| 500 | 589 | yes |
+| 250 | 336 | yes |
+
+So at the default configuration `very_new` is *still* effectively
+unreachable — the default sweep interval is exactly the signal's
+threshold, and helper execution time (~140 ms here) pushes it over.
+Recovering the 10 points needs `--interval-ms` meaningfully below 1000
+(500 is a reasonable setting), traded against idle CPU. Two mitigating
+notes: (a) `--alert-interval-ms` (typical 200 ms) engages after any sweep
+with a detection, so during an *active* incident a re-spawning overlay
+does get `very_new`; (b) even when `very_new` cannot fire, `age_ms` is
+now real data in the audit log rather than a constant 0, which is useful
+for triage. Fully closing the gap at slow sweep rates needs true OS
+window-creation timestamps — separate per-platform work.
 
 ### [OPEN ★★] DR-19: a broken dismiss is indistinguishable from a self-closed window in the audit log
 **Evidence** (first-principles pass over the *act* step, 2026-07): the
