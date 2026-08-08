@@ -261,13 +261,51 @@ Split it, and do the cheap half first:
    Verifiable end-to-end in a sandbox with stubbed OS tools exactly like
    DR-2b/2c/2d were — no cargo needed. Watch: concurrent sweeps (write
    atomically via temp-file + `mv`), and clock changes.
-2. **`origin` (larger).** Needs cross-invocation focus/input history to
-   distinguish "user opened it" from "it appeared uninvited" — that is
-   why it is still open. Design it as its own session; the `user_initiated`
-   relief (−40) already consumes this field, so getting it *wrong* is
-   costly in both directions (a wrong `user_initiated` suppresses a real
-   scam). Prefer conservative: emit `unsolicited` only on positive
-   evidence, leave `unknown` otherwise.
+2. **`origin` (larger) — read the trap below before writing any code.**
+   Needs cross-invocation focus/input history to distinguish "user opened
+   it" from "it appeared uninvited". Design it as its own session.
+
+   **⚠ The obvious X11 implementation is a detection bypass. Do not ship
+   it.** EWMH defines `_NET_WM_USER_TIME`, which clients set to *the
+   timestamp of the user interaction that caused the window to appear*
+   (the value `0` conventionally meaning "do not focus me on map" — this
+   is what GTK's `gtk_window_set_focus_on_map` and WM focus-stealing
+   prevention in Sawfish/dwm/KDE use). That is almost word-for-word
+   muten's `Origin`, so the tempting one-liner is
+   `_NET_WM_USER_TIME != 0 → Origin::UserInitiated`.
+
+   It is **client-set**: in X11 an application writes that property on
+   its own window, so it is fully attacker-controlled. `UserInitiated`
+   grants `W_USER_INITIATED_RELIEF = −40`. A representative scam overlay
+   scores fullscreen 30 + no_close 25 + blocks_input 20 + title_hit 40 =
+   **115 → Block**; with a forged `_NET_WM_USER_TIME` it becomes
+   **75 → Suspicious**, which is *audited but never dismissed*. One line
+   of attacker code would therefore disable the protective action
+   entirely, while leaving the logs looking healthy.
+
+   **Rule: never derive the relief from data the window itself controls.**
+   The asymmetry to hold to:
+   - `Origin::UserInitiated` (−40) may only come from evidence the daemon
+     or helper observed *independently* of the window — e.g. muten's own
+     record of a real input event immediately preceding the map, or WM
+     focus history the client cannot write.
+   - `Origin::Unsolicited` (+25) may use weaker evidence, because a
+     false negative here merely forfeits 25 points, whereas a false
+     positive on the relief forfeits the entire block. Note the
+     converse FP risk is real but bounded: benign notification popups
+     legitimately set `_NET_WM_USER_TIME = 0`, and at +25 (plus topmost
+     15 = 40) they stay under `SUSPICIOUS_THRESHOLD = 50`.
+   - When in doubt emit `Unknown`. It is the safe default and already the
+     status quo.
+
+   *Sourcing note*: the `_NET_WM_USER_TIME` semantics above come from
+   search-result summaries corroborated across several independent
+   implementations (GTK, Sawfish, dwm, KDE focus-stealing work); the
+   freedesktop/GNOME spec mirrors were egress-blocked from the sandbox
+   where this was written, so confirm the normative wording against the
+   real EWMH spec before implementing. The *security* conclusion does not
+   depend on that wording — it follows from the property being
+   client-writable, which is basic X11.
 
 Do **not** let this become "add `origin` guessing heuristics" — a false
 `user_initiated` is a detection hole, and FP-aversion cuts both ways here.

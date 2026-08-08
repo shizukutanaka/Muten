@@ -5,6 +5,36 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Documented (security) — `_NET_WM_USER_TIME` looks like the answer to `origin` and is a bypass
+- Researching how to close DR-20's remaining half (`origin`) surfaced the
+  EWMH property **`_NET_WM_USER_TIME`**: clients set it to the timestamp
+  of the user interaction that caused a window to appear (`0` meaning
+  "do not focus me on map" — the mechanism behind GTK's
+  `gtk_window_set_focus_on_map` and focus-stealing prevention in Sawfish,
+  dwm and KDE). It maps almost word-for-word onto muten's `Origin`, so
+  the tempting implementation is
+  `_NET_WM_USER_TIME != 0 → Origin::UserInitiated`.
+- **That implementation would be a complete bypass of the protective
+  action.** In X11 the property is written by the client onto its own
+  window, so a scam overlay controls it, and `UserInitiated` carries
+  `W_USER_INITIATED_RELIEF = −40`. A representative overlay scoring
+  fullscreen 30 + no_close 25 + blocks_input 20 + title_hit 40 = **115
+  (Block → dismissed)** drops to **75 (Suspicious → audited but left on
+  screen)** by forging one property. The logs would still look healthy.
+- Recorded the general rule — *never let a large negative weight be
+  driven by attacker-controlled input* — plus the safe asymmetric design
+  (relief only from evidence observed independently of the window;
+  `Unsolicited` may use weaker evidence since a false negative costs 25
+  rather than the whole block; `Unknown` when in doubt) in **WO-11** and
+  `THREAT_INTEL_2026.md`, so the next session closing `origin` hits the
+  warning before writing code.
+- Sourcing is stated honestly in both places: the `_NET_WM_USER_TIME`
+  semantics come from search-result summaries corroborated across
+  several independent implementations, because the freedesktop/GNOME
+  spec mirrors are egress-blocked from this sandbox. The security
+  conclusion does not depend on the normative wording — only on the
+  property being client-writable, which is basic X11.
+
 ### Added — real `age_ms` in the Linux helper: first half of WO-11 (DR-20)
 - Acting on the literature finding below: the helper is re-spawned every
   sweep and therefore had no memory, which was the *only* reason

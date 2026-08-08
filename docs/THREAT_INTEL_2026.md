@@ -85,6 +85,32 @@ Feb 2026); Avast; Norton.
 The classifier's signal set is corroborated by the security
 literature, and one finding drove a new signal:
 
+- **EWMH `_NET_WM_USER_TIME` — a spoofable "was this user-initiated?"
+  hint, and why muten must not trust it.** The Extended Window Manager
+  Hints spec defines `_NET_WM_USER_TIME` as the timestamp of the user
+  interaction that caused a window to appear (`0` conventionally meaning
+  "do not focus me on map" — the mechanism behind GTK's
+  `gtk_window_set_focus_on_map` and focus-stealing prevention in
+  Sawfish, dwm and KDE). It reads like a ready-made implementation of
+  muten's `Origin`, and it is the first thing a future implementer will
+  reach for when closing DR-20's `origin` half.
+
+  **It must not be used to grant `Origin::UserInitiated`.** In X11 the
+  property is written by the client onto its own window, so a scam
+  overlay controls it. `UserInitiated` carries a **−40** relief: a
+  representative overlay scoring fullscreen 30 + no_close 25 +
+  blocks_input 20 + title_hit 40 = 115 (**Block**, dismissed) drops to 75
+  (**Suspicious**, audited but *left on screen*) if it forges the
+  property. That is a one-line, total bypass of the protective action
+  that leaves the audit log looking healthy. The general rule this yields
+  — *never let a large negative weight be driven by attacker-controlled
+  input* — is recorded with the safe asymmetric design in **WO-11**.
+  (Semantics from search-result summaries corroborated across GTK,
+  Sawfish, dwm and KDE; the freedesktop/GNOME spec mirrors are
+  egress-blocked from this sandbox, so the normative wording is
+  unverified — but the security conclusion rests only on the property
+  being client-writable, which is basic X11.)
+
 - **Liu, Pun et al. — "Understanding, Measuring, and Detecting Modern
   Technical Support Scams"** (2023), introducing **TASR
   (Topic-Agnostic Scam Recognizer)**. TASR's thesis is that classifying
