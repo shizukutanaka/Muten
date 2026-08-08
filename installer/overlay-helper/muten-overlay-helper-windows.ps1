@@ -91,6 +91,30 @@ function Do-Enumerate {
     if ($screenH -le 0) { $screenH = 1080 }
     $fg = [MutenWin]::GetForegroundWindow()
 
+    # ── age_ms: first-seen tracking (DR-20 / WO-11) ──────────────────
+    # See muten-overlay-helper-linux.sh for the full rationale. The helper
+    # is re-spawned each sweep, so a first-seen timestamp per window id is
+    # persisted across invocations. muten reads age_ms == 0 as "unknown"
+    # (never as "brand new"), so the sweep that first observes a window
+    # still reports 0 - inventing a sub-second value there would fabricate
+    # very_new (+10) for every newly opened benign window.
+    $stateFile = $env:MUTEN_OVERLAY_STATE
+    if ([string]::IsNullOrWhiteSpace($stateFile)) {
+        $stateFile = Join-Path ([System.IO.Path]::GetTempPath()) 'muten-overlay-seen.txt'
+    }
+    $nowMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    $seenPrev = @{}
+    if (Test-Path -LiteralPath $stateFile) {
+        foreach ($line in (Get-Content -LiteralPath $stateFile -ErrorAction SilentlyContinue)) {
+            $parts = $line -split "`t", 2
+            if ($parts.Count -eq 2) {
+                $ts = 0L
+                if ([int64]::TryParse($parts[0], [ref]$ts)) { $seenPrev[$parts[1]] = $ts }
+            }
+        }
+    }
+    $seenNow = @{}
+
     $items = New-Object System.Collections.ArrayList
     $cb = [MutenWin+EnumWindowsProc]{
         param($h, $lp)
@@ -138,11 +162,33 @@ function Do-Enumerate {
         if (-not [string]::IsNullOrWhiteSpace($procName)) {
             $procPart = '"process":"' + (Json-Escape $procName) + '",'
         }
-        $obj = '{"id":"' + ([int64]$h) + '",' + $procPart + '"window":{"title":"' + $et + '","url":null,"coverage_percent":' + $cov + ',"topmost":' + ($topmost.ToString().ToLower()) + ',"has_close_button":' + ($hasClose.ToString().ToLower()) + ',"blocks_input":false,"origin":"unknown","age_ms":0}}'
+        # Real age when this window was seen before; 0 ("unknown") on the
+        # first sighting - never a fabricated small value.
+        $wid = ([int64]$h).ToString()
+        if ($seenPrev.ContainsKey($wid)) { $firstSeen = $seenPrev[$wid] } else { $firstSeen = $nowMs }
+        $seenNow[$wid] = $firstSeen
+        $age = $nowMs - $firstSeen
+        if ($age -lt 0) { $age = 0 }   # clock stepped backwards
+
+        $obj = '{"id":"' + ([int64]$h) + '",' + $procPart + '"window":{"title":"' + $et + '","url":null,"coverage_percent":' + $cov + ',"topmost":' + ($topmost.ToString().ToLower()) + ',"has_close_button":' + ($hasClose.ToString().ToLower()) + ',"blocks_input":false,"origin":"unknown","age_ms":' + $age + '}}'
         [void]$items.Add($obj)
         return $true
     }
     [void][MutenWin]::EnumWindows($cb, [IntPtr]::Zero)
+
+    # Atomically replace the state with exactly the ids seen this sweep,
+    # so vanished windows are pruned and the file cannot grow unbounded.
+    try {
+        $tmp = $stateFile + '.' + $PID
+        $lines = foreach ($k in $seenNow.Keys) { "$($seenNow[$k])`t$k" }
+        Set-Content -LiteralPath $tmp -Value $lines -Encoding UTF8 -ErrorAction Stop
+        Move-Item -LiteralPath $tmp -Destination $stateFile -Force -ErrorAction Stop
+    } catch {
+        # State tracking is best-effort: a failure here must never break
+        # enumeration (age_ms simply stays 0 = "unknown").
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+    }
+
     "[" + ($items -join ",") + "]"
 }
 

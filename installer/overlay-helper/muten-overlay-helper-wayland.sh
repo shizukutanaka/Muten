@@ -74,21 +74,62 @@ json_escape() {
 # `process:` rule matching is separator-insensitive substring, so an app-id
 # still matches a rule written as plain "firefox". Omitted when unknown
 # (the daemon treats a missing "process" as "unknown").
+# ── age_ms: first-seen tracking (DR-20 / WO-11) ──────────────────────
+# See muten-overlay-helper-linux.sh for the full rationale. The helper is
+# re-spawned each sweep, so a first-seen timestamp per window id is
+# persisted across invocations. muten reads `age_ms == 0` as "unknown"
+# (never "brand new"), so the first sighting still reports 0 rather than
+# fabricating `very_new` (+10) for newly opened benign windows.
+STATE_FILE="${MUTEN_OVERLAY_STATE:-${XDG_RUNTIME_DIR:-/tmp}/muten-overlay-seen.$(id -u 2>/dev/null || echo 0)}"
+
+now_ms() {
+    d=$(date +%s%3N 2>/dev/null)
+    case "$d" in
+        ''|*[!0-9]*) echo "$(( $(date +%s) * 1000 ))" ;;
+        *) echo "$d" ;;
+    esac
+}
+
+first_seen_ms() {
+    _id=$1
+    _now=$2
+    if [ -f "$STATE_FILE" ]; then
+        _prev=$(awk -F'\t' -v id="$_id" '$2 == id { print $1; exit }' \
+            "$STATE_FILE" 2>/dev/null || true)
+    else
+        _prev=""
+    fi
+    case "$_prev" in
+        ''|*[!0-9]*) _prev=$_now ;;
+    esac
+    printf '%s\t%s\n' "$_prev" "$_id" >> "$NEW_STATE"
+    echo "$_prev"
+}
+
 emit_window() {
     eid=$(json_escape "$1")
     et=$(json_escape "$2")
+    # Real age from the first-seen state file; 0 on first sighting means
+    # "unknown" (see the header comment) — never a fabricated small value.
+    _seen=$(first_seen_ms "$1" "$NOW_MS")
+    _age=$(( NOW_MS - _seen ))
+    [ "$_age" -lt 0 ] && _age=0   # clock stepped backwards
     if [ -n "$3" ]; then
         ep=$(json_escape "$3")
-        printf '{"id":"%s","process":"%s","window":{"title":"%s","url":null,"coverage_percent":0,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}' \
-            "$eid" "$ep" "$et"
+        printf '{"id":"%s","process":"%s","window":{"title":"%s","url":null,"coverage_percent":0,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":%s}}' \
+            "$eid" "$ep" "$et" "$_age"
     else
-        printf '{"id":"%s","window":{"title":"%s","url":null,"coverage_percent":0,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":0}}' \
-            "$eid" "$et"
+        printf '{"id":"%s","window":{"title":"%s","url":null,"coverage_percent":0,"topmost":false,"has_close_button":true,"blocks_input":false,"origin":"unknown","age_ms":%s}}' \
+            "$eid" "$et" "$_age"
     fi
 }
 
 enumerate() {
     tool=$(pick_tool) || { printf '[]\n'; return 0; }
+
+    NOW_MS=$(now_ms)
+    NEW_STATE="${STATE_FILE}.$$"
+    : > "$NEW_STATE" 2>/dev/null || NEW_STATE=/dev/null
 
     printf '['
     first=1
@@ -123,6 +164,11 @@ enumerate() {
         done
     fi
     printf ']\n'
+
+    # Atomically replace the state with exactly the ids seen this sweep.
+    if [ "$NEW_STATE" != /dev/null ]; then
+        mv -f "$NEW_STATE" "$STATE_FILE" 2>/dev/null || rm -f "$NEW_STATE" 2>/dev/null
+    fi
 }
 
 dismiss() {

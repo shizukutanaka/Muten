@@ -64,9 +64,24 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
   control-char stripping and `selftest.sh` both still pass. Also fixed a
   `set -e` interaction found during testing (`awk` exits 2 when the state
   file does not yet exist, which killed the first sweep).
-- Remaining: port the same three pieces to the macOS, Wayland, and
-  Windows helpers (`date +%s%3N` is GNU-only; the fallback to whole
-  seconds is already in place).
+- **Now ported to all four helpers.** macOS and Wayland use the same
+  `now_ms` / `first_seen_ms` / atomic-`mv` trio (macOS defaulting its
+  state path to `$TMPDIR`, Wayland to `$XDG_RUNTIME_DIR`); the Windows
+  helper uses the PowerShell equivalent — a hashtable loaded from the
+  state file, `DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()`, and
+  `Set-Content` + `Move-Item -Force`, wrapped in try/catch so a state
+  failure can never break enumeration.
+- The `now_ms` non-numeric guard is what makes this portable: macOS
+  `/bin/date` has no `%N` and echoes `%3N` back verbatim, so the guard
+  catches it and falls back to `seconds * 1000`. Verified against a
+  simulated BSD `date` (`17861632313N` → `1786163231000`).
+- Verified the identical lifecycle on the macOS and Wayland helpers with
+  stubbed `osascript`/`wlrctl`: cold `0` → `457`/`469` at +400 ms → 
+  `1715`/`1716` at +1.6 s. Regression-checked that DR-2b/2c/2d's
+  modal/no-close signals still resolve correctly and that `selftest.sh`
+  still passes on linux and wayland (macOS's `FAIL` is the correct
+  "not a Darwin host" probe rejection — its `enumerate` passes).
+  The `.ps1` remains **unexecuted** — no `pwsh` in the sandbox.
 
 ### Changed — literature review re-prioritized the roadmap: DR-20 filed, DR-2 promoted to WO-11
 - Reviewed the tech-support-scam detection literature and found one paper

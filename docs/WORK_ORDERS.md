@@ -230,15 +230,20 @@ vocabulary signals. This is the highest-value detection work left.
 
 Split it, and do the cheap half first:
 
-1. **`age_ms` — ✅ DONE for the Linux helper; port to macOS / Wayland / Windows.**
+1. **`age_ms` — ✅ DONE on all four helpers.**
    Implemented in `muten-overlay-helper-linux.sh` via a first-seen state
    file (`$MUTEN_OVERLAY_STATE`, default
    `${XDG_RUNTIME_DIR:-/tmp}/muten-overlay-seen.<uid>`): `first_seen_ms`
    looks the window id up, records it into a temp file, and the sweep
    ends with an atomic `mv` so ids absent from this sweep are pruned.
-   Port the same three pieces to the other helpers (`now_ms` needs a
-   non-GNU fallback on macOS — `date +%s%3N` is GNU-only; the code
-   already falls back to whole seconds when `%3N` is unsupported).
+   The same three pieces are now in the macOS, Wayland and Windows
+   helpers too (PowerShell uses a hashtable +
+   `DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()` +
+   `Set-Content`/`Move-Item -Force`). `now_ms`'s non-numeric guard covers
+   macOS, whose `date` has no `%N` and echoes the format back verbatim —
+   verified against a simulated BSD `date`. **Only the `.ps1` is
+   unexecuted** (no `pwsh` in the sandbox), the standing caveat on all
+   Windows-helper work.
    **Correction to the original estimate below**: this does *not* simply
    "revive `very_new` (10)". We report only the measurable quantity —
    time since the helper first observed the window — so the first

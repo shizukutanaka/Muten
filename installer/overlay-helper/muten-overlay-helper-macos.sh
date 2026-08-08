@@ -46,7 +46,46 @@ json_escape() {
         | tr '\t\r\n' '   ' | tr -d '[:cntrl:]'
 }
 
+# ── age_ms: first-seen tracking (DR-20 / WO-11) ──────────────────────
+# See muten-overlay-helper-linux.sh for the full rationale. Summary: the
+# helper is re-spawned each sweep, so a first-seen timestamp per window id
+# is persisted across invocations. muten reads `age_ms == 0` as "unknown"
+# (never as "brand new"), so the sweep that first observes a window still
+# reports 0 — inventing a sub-second value there would fabricate
+# `very_new` (+10) for every newly opened benign window.
+STATE_FILE="${MUTEN_OVERLAY_STATE:-${TMPDIR:-/tmp}/muten-overlay-seen.$(id -u 2>/dev/null || echo 0)}"
+
+now_ms() {
+    # macOS /bin/date has no %N — it echoes the format back verbatim, so
+    # the non-numeric guard below catches it and falls back to seconds.
+    d=$(date +%s%3N 2>/dev/null)
+    case "$d" in
+        ''|*[!0-9]*) echo "$(( $(date +%s) * 1000 ))" ;;
+        *) echo "$d" ;;
+    esac
+}
+
+first_seen_ms() {
+    _id=$1
+    _now=$2
+    if [ -f "$STATE_FILE" ]; then
+        _prev=$(awk -F'\t' -v id="$_id" '$2 == id { print $1; exit }' \
+            "$STATE_FILE" 2>/dev/null || true)
+    else
+        _prev=""
+    fi
+    case "$_prev" in
+        ''|*[!0-9]*) _prev=$_now ;;
+    esac
+    printf '%s\t%s\n' "$_prev" "$_id" >> "$NEW_STATE"
+    echo "$_prev"
+}
+
 enumerate() {
+    NOW_MS=$(now_ms)
+    NEW_STATE="${STATE_FILE}.$$"
+    : > "$NEW_STATE" 2>/dev/null || NEW_STATE=/dev/null
+
     # Screen size for coverage estimate.
     dims=$(osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>/dev/null || echo "0, 0, 1920, 1080")
     sw=$(echo "$dims" | awk -F', ' '{print $3}')
@@ -109,6 +148,9 @@ APPLESCRIPT
         [ "$ismodal" = "true" ] && blocks_input=true
 
         id="$app::$wname"
+        seen=$(first_seen_ms "$id" "$NOW_MS")
+        age=$(( NOW_MS - seen ))
+        [ "$age" -lt 0 ] && age=0   # clock stepped backwards
         eid=$(json_escape "$id")
         et=$(json_escape "$wname")
         # Owning process name = the System Events process name we already
@@ -117,10 +159,15 @@ APPLESCRIPT
         # daemon treats a missing value as "unknown").
         ep=$(json_escape "$app")
         if [ "$first" -eq 1 ]; then first=0; else printf ','; fi
-        printf '{"id":"%s","process":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":false,"has_close_button":%s,"blocks_input":%s,"origin":"unknown","age_ms":0}}' \
-            "$eid" "$ep" "$et" "$cov" "$has_close" "$blocks_input"
+        printf '{"id":"%s","process":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":false,"has_close_button":%s,"blocks_input":%s,"origin":"unknown","age_ms":%s}}' \
+            "$eid" "$ep" "$et" "$cov" "$has_close" "$blocks_input" "$age"
     done
     printf ']\n'
+
+    # Atomically replace the state with exactly the ids seen this sweep.
+    if [ "$NEW_STATE" != /dev/null ]; then
+        mv -f "$NEW_STATE" "$STATE_FILE" 2>/dev/null || rm -f "$NEW_STATE" 2>/dev/null
+    fi
 }
 
 dismiss() {
