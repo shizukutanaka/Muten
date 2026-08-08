@@ -52,12 +52,66 @@ json_escape() {
         | tr '\t\r\n' '   ' | tr -d '[:cntrl:]'
 }
 
+# ── age_ms: first-seen tracking (DR-20 / WO-11) ──────────────────────
+#
+# The helper is re-spawned every sweep, so it has no memory of its own —
+# which is the only reason `age_ms` used to be hard-coded 0. muten treats
+# `age_ms == 0` as "the enumerator could not tell" (NOT as "brand new"),
+# so a constant 0 silently disabled the `very_new` signal on every real
+# host. We restore real ages by persisting a first-seen timestamp per
+# window id across invocations.
+#
+# Honesty rule: we report only what we can actually measure — the time
+# since *this helper first observed the window*. On the sweep where a
+# window first appears we emit 0 ("unknown"), because its true age is
+# somewhere in [0, sweep-interval] and inventing a sub-second value would
+# fabricate the `very_new` signal (+10) for every newly-opened benign
+# window. On later sweeps the elapsed time is real. `very_new` therefore
+# fires only when the daemon sweeps fast enough to genuinely observe a
+# sub-second age — which is the truthful behaviour.
+STATE_FILE="${MUTEN_OVERLAY_STATE:-${XDG_RUNTIME_DIR:-/tmp}/muten-overlay-seen.$(id -u 2>/dev/null || echo 0)}"
+
+now_ms() {
+    # GNU date supports %3N; fall back to whole seconds elsewhere.
+    d=$(date +%s%3N 2>/dev/null)
+    case "$d" in
+        ''|*[!0-9]*) echo "$(( $(date +%s) * 1000 ))" ;;
+        *) echo "$d" ;;
+    esac
+}
+
+# first_seen_ms <id> <now_ms> — echo the stored first-seen stamp for the
+# window, or <now_ms> if this is the first sighting. Records the pairing
+# into $NEW_STATE so the caller can atomically replace the state file
+# with exactly the ids present in this sweep (this is what prunes it).
+first_seen_ms() {
+    _id=$1
+    _now=$2
+    # `|| true`: on the first ever sweep $STATE_FILE does not exist and
+    # awk exits 2, which `set -e` would otherwise turn into a hard failure.
+    if [ -f "$STATE_FILE" ]; then
+        _prev=$(awk -F'\t' -v id="$_id" '$2 == id { print $1; exit }' \
+            "$STATE_FILE" 2>/dev/null || true)
+    else
+        _prev=""
+    fi
+    case "$_prev" in
+        ''|*[!0-9]*) _prev=$_now ;;
+    esac
+    printf '%s\t%s\n' "$_prev" "$_id" >> "$NEW_STATE"
+    echo "$_prev"
+}
+
 enumerate() {
     # wmctrl -lG: ID  desktop  x  y  w  h  host  title
     # We approximate coverage from geometry vs the root window size.
     root_dims=$(xdotool getdisplaygeometry 2>/dev/null || echo "1920 1080")
     sw=$(echo "$root_dims" | cut -d' ' -f1)
     sh=$(echo "$root_dims" | cut -d' ' -f2)
+
+    NOW_MS=$(now_ms)
+    NEW_STATE="${STATE_FILE}.$$"
+    : > "$NEW_STATE" 2>/dev/null || NEW_STATE=/dev/null
 
     printf '['
     first=1
@@ -120,17 +174,29 @@ enumerate() {
 
         et=$(json_escape "$title")
 
+        # Real age when we have seen this window before; 0 ("unknown")
+        # on first sighting — see the first_seen_ms comment above.
+        seen=$(first_seen_ms "$id" "$NOW_MS")
+        age=$(( NOW_MS - seen ))
+        [ "$age" -lt 0 ] && age=0   # clock stepped backwards
+
         if [ "$first" -eq 1 ]; then first=0; else printf ','; fi
         if [ -n "$procname" ]; then
             ep=$(json_escape "$procname")
-            printf '{"id":"%s","process":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":%s,"has_close_button":%s,"blocks_input":%s,"origin":"unknown","age_ms":0}}' \
-                "$id" "$ep" "$et" "$cov" "$topmost" "$has_close" "$blocks_input"
+            printf '{"id":"%s","process":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":%s,"has_close_button":%s,"blocks_input":%s,"origin":"unknown","age_ms":%s}}' \
+                "$id" "$ep" "$et" "$cov" "$topmost" "$has_close" "$blocks_input" "$age"
         else
-            printf '{"id":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":%s,"has_close_button":%s,"blocks_input":%s,"origin":"unknown","age_ms":0}}' \
-                "$id" "$et" "$cov" "$topmost" "$has_close" "$blocks_input"
+            printf '{"id":"%s","window":{"title":"%s","url":null,"coverage_percent":%s,"topmost":%s,"has_close_button":%s,"blocks_input":%s,"origin":"unknown","age_ms":%s}}' \
+                "$id" "$et" "$cov" "$topmost" "$has_close" "$blocks_input" "$age"
         fi
     done
     printf ']\n'
+
+    # Atomically replace the state with exactly the ids seen this sweep,
+    # so vanished windows are pruned and the file cannot grow unbounded.
+    if [ "$NEW_STATE" != /dev/null ]; then
+        mv -f "$NEW_STATE" "$STATE_FILE" 2>/dev/null || rm -f "$NEW_STATE" 2>/dev/null
+    fi
 }
 
 dismiss() {

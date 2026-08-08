@@ -230,7 +230,27 @@ vocabulary signals. This is the highest-value detection work left.
 
 Split it, and do the cheap half first:
 
-1. **`age_ms` (do this first — shell-only, verifiable without cargo).**
+1. **`age_ms` — ✅ DONE for the Linux helper; port to macOS / Wayland / Windows.**
+   Implemented in `muten-overlay-helper-linux.sh` via a first-seen state
+   file (`$MUTEN_OVERLAY_STATE`, default
+   `${XDG_RUNTIME_DIR:-/tmp}/muten-overlay-seen.<uid>`): `first_seen_ms`
+   looks the window id up, records it into a temp file, and the sweep
+   ends with an atomic `mv` so ids absent from this sweep are pruned.
+   Port the same three pieces to the other helpers (`now_ms` needs a
+   non-GNU fallback on macOS — `date +%s%3N` is GNU-only; the code
+   already falls back to whole seconds when `%3N` is unsupported).
+   **Correction to the original estimate below**: this does *not* simply
+   "revive `very_new` (10)". We report only the measurable quantity —
+   time since the helper first observed the window — so the first
+   sighting emits `0` (= "unknown", muten's existing semantic), because
+   the true age is somewhere in `[0, sweep-interval]` and inventing a
+   sub-second value would fabricate `very_new` (+10) on every newly
+   opened *benign* window. `very_new` therefore fires only when the
+   daemon sweeps fast enough to genuinely observe a sub-second age.
+   Fully recovering those 10 points for slow sweeps needs real OS
+   window-creation timestamps, which is separate per-platform work.
+
+   *(original guidance, still applicable to the remaining helpers)*
    Helpers are re-spawned every sweep, so they have no memory; that is
    the only reason `age_ms` is `0`. Give each helper a small state file
    (e.g. `${XDG_RUNTIME_DIR:-/tmp}/muten-overlay-seen.<uid>`) mapping

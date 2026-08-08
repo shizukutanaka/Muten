@@ -5,6 +5,39 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — real `age_ms` in the Linux helper: first half of WO-11 (DR-20)
+- Acting on the literature finding below: the helper is re-spawned every
+  sweep and therefore had no memory, which was the *only* reason
+  `age_ms` was hard-coded `0`. It now persists a first-seen timestamp per
+  window id (`$MUTEN_OVERLAY_STATE`, default
+  `${XDG_RUNTIME_DIR:-/tmp}/muten-overlay-seen.<uid>`) and reports the
+  real elapsed time. The sweep ends with an atomic `mv`, so ids absent
+  from the current enumeration are pruned and the file cannot grow
+  unbounded.
+- **No fabricated signal.** muten treats `age_ms == 0` as "the enumerator
+  could not tell" and deliberately does *not* score it as `very_new` —
+  there is an explicit guard and a test (`age_zero_is_unknown_not_very_new`)
+  saying so. We honour that contract: the sweep where a window is first
+  observed still emits `0`, because its true age lies in
+  `[0, sweep-interval]` and emitting a sub-second value would fabricate
+  `very_new` (+10) for every newly opened *benign* window — with
+  `SUSPICIOUS_THRESHOLD = 50`, that could push an ordinary new fullscreen
+  window (30 + 15 + 10 = 55) over the line. `very_new` now fires only
+  when the daemon sweeps fast enough to genuinely observe a sub-second
+  age, which is the truthful behaviour. WO-11 was corrected accordingly —
+  the original "revives `very_new` (10)" claim was too optimistic.
+- Verified in-sandbox on the real shipped helper with stubbed X11 tools:
+  cold start → `0`; +400 ms → `469` (`very_new` fires legitimately);
+  +1.6 s → `1751` (no `very_new`); a vanished window is pruned from the
+  state file. Teeth: restoring the hard-coded `"age_ms":0` makes both
+  sweeps report `0`, proving `very_new` was unreachable before. DR-17's
+  control-char stripping and `selftest.sh` both still pass. Also fixed a
+  `set -e` interaction found during testing (`awk` exits 2 when the state
+  file does not yet exist, which killed the first sweep).
+- Remaining: port the same three pieces to the macOS, Wayland, and
+  Windows helpers (`date +%s%3N` is GNU-only; the fallback to whole
+  seconds is already in place).
+
 ### Changed — literature review re-prioritized the roadmap: DR-20 filed, DR-2 promoted to WO-11
 - Reviewed the tech-support-scam detection literature and found one paper
   that directly contradicts how this backlog was ordered: **Liu, Pun et
