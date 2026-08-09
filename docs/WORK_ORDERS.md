@@ -65,6 +65,7 @@ disagree, the audit doc is authoritative. 日本語補足: 上段=壊しては
 | Wayland lswt parser: probe/enumerate mode mismatch + missing last-block flush (confirmed from code) | lswt hosts silently fall back / drop a window | **WO-5** |
 | No fault isolation in `enumerate` parsing (DR-18): one malformed element blinds the entire sweep | worst-case failure mode; helper bugs / custom helpers see *nothing* instead of missing one window | **WO-9** |
 | Failed dismiss audited identically to a self-closed window (DR-19) | a broken dismissal path across a fleet is invisible — looks like scams closing themselves | **WO-10** |
+| **502 Japanese detection literals guarded by 10 Japanese benign titles (DR-21)** | the largest body of detection logic is the least FP-tested, in the primary market; no FP *rate* is reported at all | **WO-12** |
 | Audit log grows unbounded; no rotation (DR-4) | multi-week deployments | **WO-6** |
 | **28% of the topic-agnostic detection budget is dead (DR-20)**: `origin` and `age_ms` are hard-coded on all 4 helpers, so `unsolicited` (25) + `very_new` (10) never fire | leaves only the vocabulary path that the TSS literature (TASR) identifies as the brittle one | **WO-11** |
 | Detection vocabulary EN+JP only (DR-8) | non-EN/JP fleets under-detect | Backlog |
@@ -314,6 +315,41 @@ Split it, and do the cheap half first:
 
 Do **not** let this become "add `origin` guessing heuristics" — a false
 `user_initiated` is a detection hole, and FP-aversion cuts both ways here.
+
+### WO-12 — DR-21: close the Japanese false-positive blind spot 【model: Sonnet | needs: working cargo — non-negotiable】
+
+502 Japanese detection literals are guarded by 10 Japanese benign titles
+(50:1). Read the DR-21 entry for the full measurement.
+
+**Expect red, and treat every red as the deliverable.** Adding benign
+titles is supposed to expose over-broad rules; each failure is a real
+false-positive bug to fix (usually by tightening an AND-pair, not by
+deleting the title). This is exactly why it **must not** be done in a
+`cargo`-less session — pushing tests whose outcome nobody can observe is
+worse than not writing them.
+
+1. Grow the JP section of `BENIGN_TITLES` in `tests/benign_corpus.rs`
+   substantially — aim for a ratio comparable to the English side, so on
+   the order of ~50–100 JP entries rather than 10. Draw them from real
+   Japanese software: OS/desktop UI (`設定`, `システム環境設定`,
+   `ごみ箱`, `タスク マネージャー`), common apps and their window-title
+   conventions, JP browser/webapp titles, and **adversarial-benign**
+   cases that deliberately reuse scam vocabulary legitimately — a real
+   security product's `ウイルス定義を更新しました`, a bank's genuine
+   `重要なお知らせ`, an OS `警告` dialog. Those near-misses are where the
+   FPs actually live.
+2. For each failure, tighten the offending rule so the benign title stops
+   matching while the scam phrasing still does — then confirm the
+   corresponding positive test still passes. Never "fix" it by removing
+   the benign title.
+3. Replace the binary assertion with a reported **rate**: count how many
+   corpus entries trigger any non-`GEOMETRY_SIGNALS` signal and print
+   `N/total`. Keep the hard assertion at 0, but emitting the number makes
+   the FP-aversion claim measurable and lets `README.md`'s stated
+   principle cite evidence.
+4. Optional but valuable: note in the test header that the corpus is
+   hand-authored, so it bounds *imagined* FPs only — the literature's
+   collected-corpus standard remains unmet.
 
 ### WO-7 — EC-1 / EC-2 / EC-3 cleanups 【⚠ ask the user first】
 

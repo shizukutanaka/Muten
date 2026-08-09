@@ -5,6 +5,36 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Measured — DR-21: the Japanese detection surface is 50× larger than the benign corpus guarding it
+- Applied the detection literature's evaluation standard (a false-positive
+  rate against a realistic corpus is a first-class result) to muten's own
+  test suite, and measured rather than assumed:
+
+  | | detection surface | benign corpus | ratio |
+  |---|---|---|---|
+  | **Japanese** | **502** distinct JP literals in `src/confusables.rs` + `src/lib.rs` (exact) | **10** JP titles | **50 : 1** |
+  | Non-Japanese | ~1,745 EN multi-word literals *(loose heuristic)* | 58 titles | ~30 : 1 |
+
+  `BENIGN_TITLES` is **68** hand-authored entries across 7 categories.
+- muten is a Japan-market product and its Japanese vocabulary is its
+  largest single body of detection logic — yet it is the least guarded,
+  ~1.7× thinner than the already-thin English side. An over-broad JP term
+  (a bare `警告` / `重要` / `確認` inside an AND-pair) would fire on
+  legitimate Japanese software and nothing in the suite would catch it.
+- Two methodological gaps against the literature's standard: the corpus
+  is **imagined, not sampled** (hand-written, so it can only contain FPs
+  someone thought of), and **no FP rate is ever produced** — the test is
+  a binary "no content signal fires", so the repo's FP-aversion claim has
+  no number behind it.
+- Filed as **DR-21** + **WO-12** with a concrete plan (grow the JP corpus
+  toward parity, prioritising adversarial-benign near-misses like a real
+  AV's `ウイルス定義を更新しました` or a bank's genuine `重要なお知らせ`;
+  fix each failure by tightening the rule, never by deleting the title;
+  report `N/total` instead of a boolean). **Deliberately not done blind**:
+  adding benign titles is *expected* to turn tests red, and each red is a
+  genuine over-broad-rule bug — doing it without `cargo` would push tests
+  whose outcome nobody can observe.
+
 ### Documented (security) — `_NET_WM_USER_TIME` looks like the answer to `origin` and is a bypass
 - Researching how to close DR-20's remaining half (`origin`) surfaced the
   EWMH property **`_NET_WM_USER_TIME`**: clients set it to the timestamp

@@ -375,6 +375,47 @@ results readable from any future session via the GitHub Actions API,
 removing the "needs a local-cargo session" prerequisite from every
 other open item.
 
+### [OPEN ★★★] DR-21: the Japanese detection surface is 50× larger than the Japanese benign corpus guarding it
+**Literature basis**: empirical scam/phishing-detection work (TASR and
+the wider TSS measurement literature cited in `THREAT_INTEL_2026.md`)
+reports a **false-positive rate against a realistic corpus** as a
+first-class result, because an over-broad content rule is invisible
+until it is tested against legitimate data at scale.
+
+**Measured here** (counts are reproducible from the repo):
+
+| | detection surface | benign corpus guarding it | ratio |
+|---|---|---|---|
+| **Japanese** | **502** distinct JP string literals in `src/confusables.rs` + `src/lib.rs` (exact count: any literal containing kana/CJK) | **10** JP titles in `tests/benign_corpus.rs` | **50 : 1** |
+| Non-Japanese | ~1,745 lowercase multi-word EN literals *(loose heuristic — indicative only)* | 58 titles | ~30 : 1 |
+
+`BENIGN_TITLES` totals **68** hand-authored entries across 7 categories.
+
+**Why this matters.** muten is a Japan-market product and its Japanese
+vocabulary is its largest single body of detection logic, yet it is the
+*least* guarded: roughly 50 JP detection terms per JP benign title,
+~1.7× thinner than the already-thin English side. Any JP term that is
+too broad — a bare `警告`, `重要`, `確認` inside a longer AND-pair, say —
+would fire on legitimate Japanese software and nothing in the suite
+would notice.
+
+**Two methodological gaps, both from the literature's standard:**
+1. **The corpus is imagined, not sampled.** Every one of the 68 titles
+   was hand-written by the author, so it can only contain the false
+   positives someone thought of. Published FPR figures use collected
+   real-world data precisely to escape that bias.
+2. **No false-positive *rate* is ever produced.** `benign_corpus.rs`
+   asserts a binary "no content signal fires on any of these" — it
+   passes or it fails. There is no measured FPR against any realistic
+   distribution, so the repo's FP-aversion claim has no number behind it.
+
+**Fix**: see **WO-12**. Expand the JP benign corpus toward parity with
+the JP detection surface, and report a rate rather than a boolean.
+**Deliberately not done blind here**: adding benign titles is *expected*
+to turn some tests red, and each red is a genuine over-broad-rule bug —
+that is the entire value of the exercise. Adding them in a session that
+cannot run `cargo` would push tests whose outcome nobody can see.
+
 ### [OPEN ★★★] DR-20: 28% of the topic-agnostic detection budget is dead on every real host
 **Literature basis**: Liu, Pun et al., *"Understanding, Measuring, and
 Detecting Modern Technical Support Scams"* (2023), which introduces
