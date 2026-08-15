@@ -5,6 +5,40 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Found (regression) — DR-23: an auto-merged Dependabot bump broke the MSRV 1.75 guarantee
+- The repository owner enabled Dependabot and several cargo bumps were
+  merged (PRs #6–#10). **CI is still not installed** (`.github/` holds
+  only `dependabot.yml`), so nothing verified them — and one broke a
+  documented invariant. This is exactly the failure mode DR-16 predicted.
+- `Cargo.toml` declares `rust-version = "1.75.0"`. Measured MSRVs of the
+  new pins (crates.io API `rust_version`): **`clap` =4.6.6 → 1.85** (was
+  4.5.20); `serde_json` =1.0.151 → 1.71; `thiserror` =2.0.20 → 1.71;
+  `tempfile` =3.27.0 → 1.63; `serde` =1.0.229 → 1.56.
+- Only `clap` breaks it, and maximally: `default = ["cli"]` with
+  `cli = ["dep:clap"]`, so **a plain `cargo build` now needs Rust 1.85**
+  while the crate advertises 1.75 — a hard build failure for anyone on
+  the promised toolchain. The pins are exact and `Cargo.lock` is in sync,
+  so the resolver cannot route around it. `docs/ci/ci.yml`'s `msrv` job
+  would have caught this on the PR, but it is still not installed.
+- **Not remediated unilaterally** — the two fixes differ materially
+  (raise `rust-version` to 1.85 and update every MSRV claim, vs. pin
+  `clap` back to `4.5.x` and add a Dependabot `ignore`), and either
+  weakens a published guarantee or overrides the owner's dependency
+  strategy. Recorded in DR-23 with both options; install CI first so the
+  `msrv` job proves the outcome.
+
+### Found — DR-24: `automerge:` is not a valid `dependabot.yml` v2 key
+- `.github/dependabot.yml` gained an `automerge:` block (`afd85ee`), but
+  Dependabot config `version: 2` has no such key — it was a legacy
+  dependabot.com v1 option, and native Dependabot uses GitHub auto-merge
+  or a workflow instead (GitHub's Dependabot options reference;
+  `dependabot/feedback#954`). The block therefore does nothing, and
+  unrecognized keys are reported as a Dependabot **configuration error**,
+  which can halt that ecosystem's updates entirely.
+- Recommended fix in DR-24: remove the block; if unattended merging is
+  genuinely wanted, gate it on CI status — auto-merging dependency bumps
+  without CI is precisely how DR-23 happened.
+
 ### Added — `installer/overlay-helper/lint-blocklist.sh`: catch silently-dropped blocklist rules (DR-22)
 - `Ruleset::from_lines` documents itself as "skipped silently; a malformed
   entry never aborts the load". Not aborting is right — one bad line must

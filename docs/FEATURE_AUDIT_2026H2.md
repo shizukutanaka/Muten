@@ -375,6 +375,77 @@ results readable from any future session via the GitHub Actions API,
 removing the "needs a local-cargo session" prerequisite from every
 other open item.
 
+### [OPEN ★★★ — live regression on the default branch] DR-23: an auto-merged Dependabot bump broke the MSRV 1.75 guarantee
+**This is what DR-16 predicted.** Between this session's commits the
+repository owner enabled Dependabot and several cargo bumps were merged
+(PRs #6–#10). There is still **no CI** (`.github/` contains only
+`dependabot.yml`), so nothing verified them — and one of them broke a
+documented invariant.
+
+`crates/muten-overlay/Cargo.toml` declares `rust-version = "1.75.0"`, and
+MSRV 1.75 is asserted throughout this audit and `README.md`. Measured
+MSRVs of the newly pinned versions (crates.io API, `rust_version` field):
+
+| crate | pinned | MSRV | vs 1.75 |
+|---|---|---|---|
+| **`clap`** | **=4.6.6** (was 4.5.20) | **1.85** | ❌ **breaks** |
+| `serde_json` | =1.0.151 | 1.71 | ok |
+| `thiserror` | =2.0.20 | 1.71 | ok |
+| `tempfile` | =3.27.0 | 1.63 | ok |
+| `serde` | =1.0.229 | 1.56 | ok |
+
+Only `clap` breaks it, and it breaks it maximally: `[features] default =
+["cli"]` and `cli = ["dep:clap"]`, so **a plain `cargo build` now requires
+Rust 1.85** while the crate advertises 1.75. Anyone on the promised
+toolchain gets a hard build failure. `Cargo.lock` is committed and in sync
+with the bumps, so the resolver will not route around it — the pins are
+exact (`=4.6.6`).
+
+The ready-made `docs/ci/ci.yml` has a dedicated **`msrv` job** that would
+have caught this on the PR. It is still not installed (DR-16), so an
+unverified change to a stated guarantee landed on the default branch with
+nobody informed.
+
+**Not remediated here — it is a policy call with two materially different
+answers**, and picking one unilaterally would either weaken a published
+guarantee or hold back the owner's deliberate dependency strategy:
+- **(a) Raise `rust-version` to 1.85** and update every MSRV claim
+  (`README.md`, this audit, `WORK_ORDERS.md` invariants, `docs/ci/ci.yml`'s
+  msrv job). Accepts newer deps; drops support for 1.75–1.84 users.
+- **(b) Pin `clap` back to a `4.5.x`** whose MSRV ≤ 1.75 (4.5.20 was the
+  prior, known-good pin) and add a Dependabot `ignore` so the bump does
+  not silently return. Keeps the guarantee; forgoes clap 4.6 features.
+
+Either way **install CI first** (DR-16 / WO-2) so the `msrv` job proves
+the result rather than another unverified assertion replacing this one.
+
+### [OPEN ★] DR-24: `automerge:` is not a valid `dependabot.yml` v2 key — the config is silently ineffective
+`.github/dependabot.yml` carries, under the `github-actions` ecosystem:
+
+```yaml
+    automerge:
+      - dependency-type: "direct"
+```
+
+added by `afd85ee` ("enable server-side automerge for github-actions
+bumps"). **Dependabot config `version: 2` has no `automerge` key.** It
+existed in the legacy dependabot.com v1 config; the native GitHub
+Dependabot dropped it, and auto-merge is instead achieved with GitHub's
+native auto-merge (plus branch protection) or a workflow such as
+`gh pr merge --auto` / `dependabot/fetch-metadata`. See GitHub's Dependabot
+options reference and `dependabot/feedback#954` ("Auto-merge in GitHub's
+native Dependabot"). So the key does nothing — bumps still need a manual
+merge, contrary to the commit's stated intent.
+
+Worse, Dependabot validates `dependabot.yml` and reports unrecognized
+keys as a **configuration error**, which can stop the ecosystem's updates
+running at all. Worth checking the repo's Dependabot alerts/insights page.
+
+**Fix**: drop the `automerge:` block. If unattended merging really is
+wanted, do it with a workflow gated on CI status — which, given DR-23,
+should be considered *only after* CI exists: auto-merging dependency
+bumps with no CI is precisely how DR-23 happened.
+
 ### [OPEN ★★] DR-22: the blocklist loader discards mis-authored rules with no diagnostic
 **Evidence**: `Ruleset::from_lines` (`src/rules.rs`) documents its own
 behaviour as "skipped silently; a malformed entry never aborts the load"
