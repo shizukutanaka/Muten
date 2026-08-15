@@ -122,6 +122,30 @@ that produced a detection, so a re-spawning overlay during an active
 incident gets the signal even at the default. Either way `age_ms` is now
 real data in the audit log instead of a constant `0`, which helps triage.
 
+## Pre-flight: is the blocklist actually loadable?
+
+`Ruleset::from_lines` **skips malformed rules silently** — a mis-authored
+line produces no diagnostic and simply never matches, which on a
+hot-reloaded, operator-edited blocklist is easy to miss. Lint it before
+you push it to a fleet:
+
+```sh
+./lint-blocklist.sh ../../examples/overlay-blocklist.txt
+```
+
+It flags, with line numbers, the rules the loader would silently drop or
+reinterpret: a mistyped/mis-cased prefix (`Title:`, `title :` — parsed as
+a *host* rule), an empty pattern, a `phone:` under the 7-digit floor, a
+non-integer `weight:`, and a literal `#` in a pattern (impossible — the
+parser cuts at the first `#`, so a TOAD-style `case #4821` rule is
+truncated). Exit 0 = nothing dropped; exit 1 = fix before deploying. It
+also reports duplicate and substring-shadowed `title:` rules as INFO —
+those use approximate normalization, so treat them as hints. Pure POSIX
+`sh`; `python3` is optional and only powers the INFO pass.
+
+This complements `muten-overlay rules <file>`, which reports rule counts
+and a composite-weight sanity check but never says *which* line was lost.
+
 ## Pre-flight: does the helper work on this host?
 
 Before trusting the daemon with a helper on a given endpoint, run the

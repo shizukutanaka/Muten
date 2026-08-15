@@ -24,6 +24,21 @@
 #   <bare line>          treated as a host rule
 #   # comment
 #
+# AUTHORING HAZARDS — these fail SILENTLY (the loader skips bad lines
+# without any diagnostic, so a broken rule simply never matches):
+#   * Prefixes are CASE-SENSITIVE and take no space before the colon.
+#     `Title:` / `title :` are NOT title rules — they fall through to the
+#     bare-line branch and are parsed as *host* rules, then discarded.
+#   * `#` cannot appear literally in a pattern. Comment stripping cuts at
+#     the FIRST `#` and there is no escape, so
+#     `title: your case #4821 is under review` silently becomes
+#     `your case`. Use a glob instead:
+#     `glob: * your case * is under review *`.
+#   * A pattern that normalizes to empty, or a `phone:` with < 7 digits,
+#     is dropped.
+# Run `installer/overlay-helper/lint-blocklist.sh <this file>` before
+# deploying — it names the offending line and exits non-zero.
+#
 # SCOPE NOTE: muten's classifier blocks on a CONFIRMED host match or a
 # high heuristic score. Title patterns only CONTRIBUTE to the score —
 # they never auto-block alone, because legitimate windows can contain

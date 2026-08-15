@@ -375,6 +375,49 @@ results readable from any future session via the GitHub Actions API,
 removing the "needs a local-cargo session" prerequisite from every
 other open item.
 
+### [OPEN ★★] DR-22: the blocklist loader discards mis-authored rules with no diagnostic
+**Evidence**: `Ruleset::from_lines` (`src/rules.rs`) documents its own
+behaviour as "skipped silently; a malformed entry never aborts the load"
+(rules.rs:353). Not aborting is correct — one bad line must not disarm a
+fleet — but the *silence* is not: the blocklist is operator-editable and
+hot-reloaded, and is the reliable detection path on real hosts (see
+DR-20), so a rule that fails to load is a detection hole nobody is told
+about. Three concrete ways it happens, all confirmed by reading the
+parser:
+1. **Mis-cased / mis-spaced prefix.** The parser is a
+   `line.strip_prefix("title:")` chain (case-sensitive, no space allowed
+   before the colon) terminating in `else { /* Bare line → treat as
+   host */ }` (rules.rs:463). `Title:`, `TITLE:`, `title :` are therefore
+   silently reinterpreted as `host:` rules and then dropped by
+   `normalize_host`.
+2. **Literal `#` in a pattern.** `strip_comment` cuts at the first `#`
+   with no escape mechanism, so a TOAD case-number lure
+   (`title: your case #4821 is under review`) truncates to `your case`.
+   muten explicitly targets TOAD case-numbers (`W_TOAD_CASE_NUMBER`), so
+   this is a rule an author would plausibly write.
+3. **Empty-after-normalization patterns** and **`phone:` rules under the
+   7-digit floor** (rules.rs:399, :419) are dropped.
+
+`muten-overlay rules <file>` prints rule *counts* and a composite-weight
+warning, so a dropped rule shows up only as a count that failed to
+increment — easy to miss and it never identifies the line.
+**Mitigated this round (shell)**: `installer/overlay-helper/lint-blocklist.sh`
+now names the offending line and exits non-zero, and the hazards are
+documented normatively in `SPECIFICATION.md` §5 and the blocklist header.
+The shipped `examples/overlay-blocklist.txt` lints clean, so this is
+prevention, not a live-bug fix.
+**Fix** (spec — Rust, deliberately NOT written in a cargo-less session):
+have the loader collect per-line diagnostics instead of discarding them —
+either a `Vec<(usize, String)>` of skipped lines on `Ruleset`, or a
+`parse_verbose` returning them — and surface the list through
+`cmd_rules`, plus a `warn!`/stderr line on daemon rule-reload so a
+hot-reload that silently loses a rule becomes visible. Separately,
+consider a `\#` escape in `strip_comment` so `#` can be expressed at all.
+**Tests**: `rules.rs` units (a `Title:` line is reported as skipped; a
+`phone:` with 6 digits is reported; a clean file reports none) plus a
+`cli_contract.rs` e2e asserting `muten-overlay rules` prints the bad line
+number. Teeth: revert to the silent skip and confirm the assertions fail.
+
 ### [OPEN ★★★] DR-21: the Japanese detection surface is 50× larger than the Japanese benign corpus guarding it
 **Literature basis**: empirical scam/phishing-detection work (TASR and
 the wider TSS measurement literature cited in `THREAT_INTEL_2026.md`)

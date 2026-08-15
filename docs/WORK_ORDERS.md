@@ -66,6 +66,7 @@ disagree, the audit doc is authoritative. 日本語補足: 上段=壊しては
 | No fault isolation in `enumerate` parsing (DR-18): one malformed element blinds the entire sweep | worst-case failure mode; helper bugs / custom helpers see *nothing* instead of missing one window | **WO-9** |
 | Failed dismiss audited identically to a self-closed window (DR-19) | a broken dismissal path across a fleet is invisible — looks like scams closing themselves | **WO-10** |
 | **502 Japanese detection literals guarded by 10 Japanese benign titles (DR-21)** | the largest body of detection logic is the least FP-tested, in the primary market; no FP *rate* is reported at all | **WO-12** |
+| Blocklist loader drops mis-authored rules with no diagnostic (DR-22) | a hot-reloaded, operator-edited rule that fails to load is an unannounced detection hole | **WO-13** (shell linter shipped) |
 | Audit log grows unbounded; no rotation (DR-4) | multi-week deployments | **WO-6** |
 | **28% of the topic-agnostic detection budget is dead (DR-20)**: `origin` and `age_ms` are hard-coded on all 4 helpers, so `unsolicited` (25) + `very_new` (10) never fire | leaves only the vocabulary path that the TSS literature (TASR) identifies as the brittle one | **WO-11** |
 | Detection vocabulary EN+JP only (DR-8) | non-EN/JP fleets under-detect | Backlog |
@@ -350,6 +351,21 @@ worse than not writing them.
 4. Optional but valuable: note in the test header that the corpus is
    hand-authored, so it bounds *imagined* FPs only — the literature's
    collected-corpus standard remains unmet.
+
+### WO-13 — DR-22: make silently-dropped blocklist rules visible 【model: Sonnet | needs: working cargo】
+
+The loader skips mis-authored rules with no diagnostic, so a broken rule
+is an unannounced detection hole. Full evidence and spec in the audit
+doc's DR-22 entry. Collect per-line skip diagnostics in
+`Ruleset::from_lines`, surface them through `cmd_rules` and on daemon
+rule-reload, and consider a `\#` escape so a literal `#` (TOAD case
+numbers) can be expressed at all. Keep "never abort the load" — the fix
+is visibility, not strictness.
+
+The shell half is already shipped:
+`installer/overlay-helper/lint-blocklist.sh` catches the same classes
+pre-deployment. Keep the two in sync — if you add an escape or change the
+prefix handling, update the linter and its teeth tests to match.
 
 ### WO-7 — EC-1 / EC-2 / EC-3 cleanups 【⚠ ask the user first】
 

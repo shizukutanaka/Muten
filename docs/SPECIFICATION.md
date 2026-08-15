@@ -171,6 +171,30 @@ be skipped, never abort the load. Prefixes:
 The **original authored** rule text is returned as `matched_rule` for audit
 readability.
 
+**Authoring hazards (normative).** Three loader behaviours fail *silently*,
+so a mis-authored rule yields no diagnostic and simply never matches:
+
+- **Prefixes are matched case-sensitively with no space before the colon.**
+  The parser is a `strip_prefix("title:")` chain ending in
+  `else { /* bare → host */ }`, so `Title:`, `TITLE:` and `title :` are
+  **not** title rules — each is reinterpreted as a bare `host:` rule,
+  which `normalize_host` then almost certainly rejects.
+- **`#` is reserved and cannot appear literally in a pattern.** Comment
+  stripping cuts at the *first* `#` regardless of surrounding whitespace,
+  and there is no escape. A TOAD-style rule
+  `title: your case #4821 is under review` is silently truncated to
+  `your case`. Express such lures with `glob:` wildcards instead
+  (`glob: * your case * is under review *`).
+- **Patterns that normalize to empty are dropped**, as are `phone:`
+  rules under the 7-digit floor. (The empty-key guard is also what
+  prevents an empty `title:` key from matching *every* window via
+  substring search.)
+
+Implementations SHOULD provide a way to surface these. Today
+`muten-overlay rules <file>` reports rule *counts* only; the bundled
+`installer/overlay-helper/lint-blocklist.sh` names the offending line
+and exits non-zero, and is the recommended pre-deployment check.
+
 ### 5.1 Glob title patterns (`glob:`)
 
 Grammar: `glob: <pattern>` where `*` matches any run of code points

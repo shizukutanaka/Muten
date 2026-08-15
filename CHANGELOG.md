@@ -5,6 +5,50 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — `installer/overlay-helper/lint-blocklist.sh`: catch silently-dropped blocklist rules (DR-22)
+- `Ruleset::from_lines` documents itself as "skipped silently; a malformed
+  entry never aborts the load". Not aborting is right — one bad line must
+  not disarm a fleet — but the silence is not: the blocklist is
+  operator-editable, hot-reloaded, and (per DR-20) the reliable detection
+  path on real hosts, so a rule that fails to load is a detection hole
+  nobody is told about. `muten-overlay rules` reports only *counts*, so a
+  lost rule shows up as a number that failed to increment.
+- The new linter names the offending line and exits non-zero. Each check
+  mirrors a specific parser behaviour, confirmed by reading `rules.rs`:
+  - **ERROR** mis-cased/mis-spaced prefix — the parser is a
+    case-sensitive `strip_prefix("title:")` chain ending in
+    `else { /* bare → host */ }` (rules.rs:463), so `Title:` / `title :`
+    silently become *host* rules and are then discarded.
+  - **ERROR** empty pattern (rules.rs:399) and **ERROR** `phone:` under
+    the 7-digit floor (rules.rs:419).
+  - **WARN** a literal `#` in a pattern — impossible, since comment
+    stripping cuts at the first `#` with no escape.
+  - **WARN** non-integer `weight:` value; **INFO** duplicate and
+    substring-shadowed `title:` rules (approximate normalization, so
+    labelled as hints).
+- **Teeth-testing corrected the design.** The first `#` check flagged only
+  content-attached `#` (`case#4821`) — and so *missed the very case that
+  motivated it*: `title: your case #4821 is under review`, whose `#` is
+  space-preceded and therefore indistinguishable from a trailing comment
+  by spacing alone. Replaced with a signal that does discriminate: `#`
+  immediately followed by a digit (comments start with a word, case and
+  ticket numbers with a digit). Verified it now warns on both `#4821`
+  forms while staying silent on all 52 genuine inline comments in the
+  shipped blocklist, including the Japanese ones.
+- The shipped `examples/overlay-blocklist.txt` lints clean (0 errors, 0
+  warnings), so this is prevention plus a regression baseline, not a
+  live-bug fix. The linter's comment handling is also *more* accurate
+  than an earlier ad-hoc scan in this session: that scan reported 10
+  substring-shadowed rules, but one was an artefact of not stripping an
+  inline English comment — the real count is 9.
+- Documented the hazards normatively in `SPECIFICATION.md` §5 (prefixes
+  are case-sensitive; `#` is reserved with no escape, so express TOAD
+  case-number lures as `glob:` wildcards; empty/short patterns are
+  dropped) and in the blocklist header, with the installer README
+  pointing at the linter. Filed **DR-22** + **WO-13** for the Rust half —
+  collect per-line skip diagnostics and surface them via `cmd_rules` and
+  on daemon reload — not written here, as cargo is egress-blocked.
+
 ### Measured — DR-21: the Japanese detection surface is 50× larger than the benign corpus guarding it
 - Applied the detection literature's evaluation standard (a false-positive
   rate against a realistic corpus is a first-class result) to muten's own
