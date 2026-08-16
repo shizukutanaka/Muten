@@ -4,11 +4,24 @@ updates:
     directory: "/crates/muten-overlay"
     schedule:
       interval: "weekly"
+    # MSRV guard (DR-23): a prior auto-merged bump to clap 4.6.6 (MSRV
+    # 1.85) broke the crate's advertised rust-version = "1.75.0". Once
+    # clap is pinned back to a 1.75-compatible 4.5.x in Cargo.toml, this
+    # ignore stops Dependabot silently re-raising it past that line. Add
+    # further entries here if another dependency's MSRV climbs past 1.75.
+    ignore:
+      - dependency-name: "clap"
+        versions: [">=4.6.0"]
   - package-ecosystem: "github-actions"
     directory: "/"
     allow:
       - dependency-type: "direct"
-    automerge:
-      - dependency-type: "direct"
+    # NOTE: `automerge:` was removed here (DR-24) — it is NOT a valid
+    # dependabot.yml v2 key (a legacy dependabot.com v1 option), so it did
+    # nothing, and unrecognized keys can be reported as a config error
+    # that halts updates. Do not re-add it. If unattended merging is
+    # wanted, use GitHub native auto-merge or a CI-gated workflow — and
+    # only AFTER CI exists, since auto-merging bumps with no CI is exactly
+    # how DR-23 landed a broken MSRV on the default branch.
     schedule:
       interval: "weekly"

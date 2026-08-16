@@ -20,24 +20,29 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
   the promised toolchain. The pins are exact and `Cargo.lock` is in sync,
   so the resolver cannot route around it. `docs/ci/ci.yml`'s `msrv` job
   would have caught this on the PR, but it is still not installed.
-- **Not remediated unilaterally** — the two fixes differ materially
-  (raise `rust-version` to 1.85 and update every MSRV claim, vs. pin
-  `clap` back to `4.5.x` and add a Dependabot `ignore`), and either
-  weakens a published guarantee or overrides the owner's dependency
-  strategy. Recorded in DR-23 with both options; install CI first so the
-  `msrv` job proves the outcome.
+- **Decision taken (user expressed no preference): preserve the
+  guarantee.** The recurrence guard is in place now — a Dependabot
+  `ignore` for `clap >=4.6.0` was added to `.github/dependabot.yml`. The
+  actual downgrade is deferred to a cargo session, because pinning `clap`
+  back to `=4.5.20` also regenerates `Cargo.lock` (clap's transitive
+  tree changes) and this sandbox's `cargo` is egress-blocked: run
+  `cargo update -p clap --precise 4.5.20` (not a hand-edited lock) and
+  confirm `cargo build`/`test` on Rust 1.75. Both options remain recorded
+  in DR-23; the alternative (raise `rust-version` to 1.85) is a one-line
+  policy flip if the owner prefers it.
 
-### Found — DR-24: `automerge:` is not a valid `dependabot.yml` v2 key
+### Fixed — DR-24: removed the invalid `automerge:` key from `dependabot.yml`
 - `.github/dependabot.yml` gained an `automerge:` block (`afd85ee`), but
   Dependabot config `version: 2` has no such key — it was a legacy
   dependabot.com v1 option, and native Dependabot uses GitHub auto-merge
   or a workflow instead (GitHub's Dependabot options reference;
-  `dependabot/feedback#954`). The block therefore does nothing, and
-  unrecognized keys are reported as a Dependabot **configuration error**,
-  which can halt that ecosystem's updates entirely.
-- Recommended fix in DR-24: remove the block; if unattended merging is
-  genuinely wanted, gate it on CI status — auto-merging dependency bumps
-  without CI is precisely how DR-23 happened.
+  `dependabot/feedback#954`). The block therefore did nothing, and
+  unrecognized keys can be reported as a Dependabot **configuration
+  error** that halts that ecosystem's updates.
+- Removed the block (replaced with a comment explaining why it must not
+  return); the file still parses as valid YAML v2. Real unattended
+  merging, if wanted, should be a CI-gated workflow — and only after CI
+  exists, since auto-merging bumps without CI is how DR-23 happened.
 
 ### Added — `installer/overlay-helper/lint-blocklist.sh`: catch silently-dropped blocklist rules (DR-22)
 - `Ruleset::from_lines` documents itself as "skipped silently; a malformed

@@ -419,7 +419,22 @@ guarantee or hold back the owner's deliberate dependency strategy:
 Either way **install CI first** (DR-16 / WO-2) so the `msrv` job proves
 the result rather than another unverified assertion replacing this one.
 
-### [OPEN ★] DR-24: `automerge:` is not a valid `dependabot.yml` v2 key — the config is silently ineffective
+**Decision taken this round (option b — preserve the guarantee).** The
+user was asked and expressed no preference, so the conservative call was
+made: keep the published MSRV 1.75 promise that a *bot* broke (not a
+deliberate human decision). The recurrence guard is already in place — a
+Dependabot `ignore` for `clap >=4.6.0` was added to
+`.github/dependabot.yml` so the bump cannot silently return. **The actual
+downgrade is NOT done here**: pinning `clap` back to `=4.5.20` in
+`Cargo.toml` also requires regenerating `Cargo.lock` (clap's transitive
+tree — `clap_builder`, `anstream`, … — changes), which needs `cargo`, and
+this sandbox's `cargo` is egress-blocked. Do it in a cargo-capable
+session with `cargo update -p clap --precise 4.5.20` (NOT a hand-edited
+lock), confirm `cargo build`/`test` on Rust 1.75, then this drops to
+RESOLVED. If instead option (a) is later chosen, remove the `ignore` and
+raise `rust-version` everywhere.
+
+### [~~RESOLVED~~ in-branch] DR-24: `automerge:` is not a valid `dependabot.yml` v2 key — the config is silently ineffective
 `.github/dependabot.yml` carries, under the `github-actions` ecosystem:
 
 ```yaml
@@ -441,10 +456,12 @@ Worse, Dependabot validates `dependabot.yml` and reports unrecognized
 keys as a **configuration error**, which can stop the ecosystem's updates
 running at all. Worth checking the repo's Dependabot alerts/insights page.
 
-**Fix**: drop the `automerge:` block. If unattended merging really is
-wanted, do it with a workflow gated on CI status — which, given DR-23,
-should be considered *only after* CI exists: auto-merging dependency
-bumps with no CI is precisely how DR-23 happened.
+**Fixed this round**: the `automerge:` block was removed from
+`.github/dependabot.yml` and replaced with a comment explaining why it
+must not be re-added; the file still parses as valid YAML v2. If
+unattended merging really is wanted, do it with a workflow gated on CI
+status — which, given DR-23, should be considered *only after* CI exists:
+auto-merging dependency bumps with no CI is precisely how DR-23 happened.
 
 ### [OPEN ★★] DR-22: the blocklist loader discards mis-authored rules with no diagnostic
 **Evidence**: `Ruleset::from_lines` (`src/rules.rs`) documents its own
