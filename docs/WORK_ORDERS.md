@@ -351,6 +351,51 @@ Split it, and do the cheap half first:
    changing anything, so the guard is enforced by a test rather than by
    a comment.
 
+   **Scoping the locker risk — do these windows even get enumerated?**
+   (Related-software survey; sourced where noted, hypotheses flagged.)
+   The lock-shape FP only bites if the helper can *see* and *close* the
+   window, which differs sharply per platform:
+
+   - **X11 — the only platform where the risk is clearly live**, because
+     the helper enumerates with `wmctrl -lG` and dismisses with `wmctrl
+     -c`. Real software in this category: `xscreensaver`, `i3lock` (and
+     `i3lock-color`), `slock`, `swaylock` (Wayland), `xsecurelock`,
+     `light-locker`, `gtklock`, `hyprlock`, `waylock`, `alock`,
+     `kscreenlocker`, plus `xss-lock` as the activation glue.
+     **Unverified hypothesis that would shrink the risk a lot**: minimal
+     lockers (`slock`, `i3lock`, `xscreensaver`) conventionally map
+     *override-redirect* windows. `wmctrl` is EWMH/NetWM-based, so it
+     lists `_NET_CLIENT_LIST`, which by EWMH definition contains only
+     **managed** windows — override-redirect windows are unmanaged and
+     would therefore be invisible to the helper entirely. I could not
+     confirm the override-redirect detail from a primary source this
+     session, so **treat it as a hypothesis, not a fact**. It is also the
+     single cheapest thing to test: on a real X session run
+     `wmctrl -l` while a locker is active. If the locker is absent, the
+     FP is unreachable through this helper and the guard can be much
+     narrower; if present, the guard is mandatory before `origin` ships.
+   - **Windows — likely not at risk.** The real lock screen is
+     `LogonUI.exe` on the Winlogon **secure desktop**, and `EnumWindows`
+     enumerates only the calling thread's desktop, so a user-session
+     helper should never see it. Kiosk cases are different and *are*
+     in-session: Windows **Shell Launcher** replaces `Explorer.exe` with
+     a kiosk app, and Safe Exam Browser's "Disable Explorer Shell" mode
+     runs on the default desktop (its "Create New Desktop" mode does
+     not — that one is out of reach, like LogonUI).
+   - **macOS — likely not at risk**, as the lock screen is a
+     `loginwindow`-level surface rather than a System Events–enumerable
+     application window.
+   - **Wayland — likely not at risk**, since lockers use the dedicated
+     `ext-session-lock-v1` path rather than appearing as ordinary
+     foreign-toplevels.
+
+   Exam/kiosk software worth naming in any allowlist work: **Respondus
+   LockDown Browser**, **Safe Exam Browser (SEB)**, ProctorU/Honorlock
+   proctoring shims, and **Fully Kiosk Browser**; plus digital-signage
+   and ATM-style Shell Launcher deployments. These are in-session and
+   *do* present the lock shape, so they remain a live FP concern on
+   Windows even if the true lock screen is not.
+
    *Idea worth researching (unvalidated):* OS **idle time** is a
    promising evidence source precisely because — unlike
    `_NET_WM_USER_TIME` — it is maintained by the display server / OS

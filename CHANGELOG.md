@@ -5,6 +5,36 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Researched — scoped the lock-shape false positive per platform (related-software survey)
+- Followed up the screen-locker finding by asking the question that
+  actually determines its severity: **can the helper even enumerate these
+  windows?** The answer differs sharply by platform, which narrows the
+  problem considerably.
+- **X11 is the only platform where the risk is clearly live** — the
+  helper enumerates via `wmctrl -lG` and dismisses via `wmctrl -c`.
+  Catalogued the real software in this category (`xscreensaver`,
+  `i3lock`/`i3lock-color`, `slock`, `xsecurelock`, `light-locker`,
+  `gtklock`, `swaylock`, `hyprlock`, `waylock`, `alock`, `kscreenlocker`,
+  `xss-lock`) for whatever allowlist the guard ends up needing.
+- **A hypothesis that would shrink the risk sharply, recorded as
+  unverified**: minimal lockers conventionally map *override-redirect*
+  windows; `wmctrl` is EWMH/NetWM-based and so lists `_NET_CLIENT_LIST`,
+  which by definition holds only *managed* windows. If that holds, these
+  lockers are invisible to the helper and the FP is unreachable. I could
+  not confirm the override-redirect detail from a primary source, so it
+  is written up as a hypothesis with the one-line test that settles it
+  (`wmctrl -l` while a locker is active on a real X session) — not as a
+  fact.
+- **Windows/macOS/Wayland look not at risk** for the *true* lock screen:
+  Windows' `LogonUI.exe` lives on the Winlogon secure desktop and
+  `EnumWindows` only covers the calling thread's desktop; macOS's lock is
+  a `loginwindow`-level surface; Wayland lockers use `ext-session-lock-v1`
+  rather than foreign-toplevel. **Kiosk/exam software is the exception** —
+  Windows **Shell Launcher**, **Safe Exam Browser** ("Disable Explorer
+  Shell" mode, though not its "Create New Desktop" mode), **Respondus
+  LockDown Browser**, and **Fully Kiosk Browser** are in-session and do
+  present the lock shape, so they stay a live FP concern.
+
 ### Found — a rule in the shipped blocklist can never fire; DR-20's dead-signal count corrected
 - Tracing every consumer of `origin` in `classify()` showed DR-20
   understated the damage. Beyond `unsolicited` (+25) and `very_new`
