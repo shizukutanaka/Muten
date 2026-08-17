@@ -540,8 +540,31 @@ would notice.
    passes or it fails. There is no measured FPR against any realistic
    distribution, so the repo's FP-aversion claim has no number behind it.
 
+**A second, sharper instance of the same gap (measured 2026-08).** The
+two heaviest script signals — `confusable_mixed_script` (+30) and
+`whole_script_confusable` (+30) — exist precisely to judge Cyrillic,
+Greek, Coptic and Armenian text, yet `BENIGN_TITLES` contains **0 titles
+in any of those scripts** (verified by code-point range over all 68
+entries; an earlier `grep` suggesting otherwise was an artefact of the
+pattern matching the em-dash `—`). So neither signal has any
+false-positive regression guard in the scripts it targets.
+
+This is not merely theoretical. `has_whole_script_confusable` fires when
+*every* letter of a token folds to an ASCII look-alike. That guard is
+what spares ordinary Russian — `привет` contains non-folding letters —
+but a short legitimate word made only of homoglyph letters does fire:
+`сор` (с→c, о→o, р→p) scores +30, and combined with `fullscreen` (30)
+reaches 60 → **Suspicious**. Nothing in the suite would notice. Note the
+audit is otherwise clean here: the mixed-script matcher correctly
+requires `latin && confusable` **within one token** and treats
+`Script::Other` (Kana, Han, Hangul) as a no-op, so ordinary Japanese
+like `Windows セキュリティ警告` cannot fire it — muten deliberately
+implements a narrower model than full UTS #39 script resolution and
+thereby sidesteps the "legitimate Japanese is multi-script" trap.
+
 **Fix**: see **WO-12**. Expand the JP benign corpus toward parity with
-the JP detection surface, and report a rate rather than a boolean.
+the JP detection surface, add Cyrillic/Greek/Armenian negative cases for
+the two script signals, and report a rate rather than a boolean.
 **Deliberately not done blind here**: adding benign titles is *expected*
 to turn some tests red, and each red is a genuine over-broad-rule bug —
 that is the entire value of the exercise. Adding them in a session that

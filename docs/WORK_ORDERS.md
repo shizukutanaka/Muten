@@ -447,7 +447,18 @@ worse than not writing them.
    `N/total`. Keep the hard assertion at 0, but emitting the number makes
    the FP-aversion claim measurable and lets `README.md`'s stated
    principle cite evidence.
-4. Optional but valuable: note in the test header that the corpus is
+4. **Add Cyrillic/Greek/Armenian negative cases — currently there are
+   zero.** `confusable_mixed_script` (+30) and `whole_script_confusable`
+   (+30) exist to judge exactly those scripts, yet `BENIGN_TITLES` has no
+   entry in any of them, so neither signal has an FP guard. Include
+   ordinary Russian/Greek window titles (which should *not* fire, because
+   they contain non-folding letters) **and** the genuinely hard case: a
+   short legitimate all-homoglyph word such as `сор` or `рост`, which
+   *does* fire +30 today. Decide deliberately whether that is acceptable
+   (it is bounded — +30 alone is under `SUSPICIOUS_THRESHOLD`, but
+   `fullscreen` + this = 60 → Suspicious) and pin the decision with a
+   test either way.
+5. Optional but valuable: note in the test header that the corpus is
    hand-authored, so it bounds *imagined* FPs only — the literature's
    collected-corpus standard remains unmet.
 

@@ -5,6 +5,38 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Audited (UTS #39) — normalization core is sound; found zero benign coverage for the script signals
+- Audited muten's core claim — evasion-resistant Unicode normalization —
+  against **UTS #39 (Unicode Security Mechanisms)**, starting from a
+  specific high-severity hypothesis: naive mixed-script detection
+  false-positives on Japanese, which is *inherently* multi-script
+  (Hiragana + Katakana + Han). At +30 on the primary market that would be
+  serious.
+- **The implementation holds up.** `has_confusable_mixed_script` requires
+  `latin && confusable` **within a single token** and treats
+  `Script::Other` (Kana, Han, Hangul, digits, punctuation) as an explicit
+  no-op, so `Windows セキュリティ警告` cannot fire it. muten deliberately
+  models only *confusable-bearing* scripts rather than implementing full
+  UTS #39 script resolution, and thereby sidesteps the trap. The spec
+  documents `whole_script_confusable` accurately, citing UTS #39 §5.
+- **But the negative test coverage is absent.** `confusable_mixed_script`
+  (+30) and `whole_script_confusable` (+30) exist precisely to judge
+  Cyrillic/Greek/Coptic/Armenian text, yet `BENIGN_TITLES` contains **0
+  titles in any of those scripts** (verified by code-point range across
+  all 68 entries — an earlier `grep` that suggested otherwise was an
+  artefact of the pattern matching the em-dash `—`, corrected here).
+  Neither signal has a false-positive regression guard in the scripts it
+  targets.
+- Concretely reachable: `has_whole_script_confusable` fires when *every*
+  letter of a token folds to an ASCII look-alike. That spares ordinary
+  Russian (`привет` has non-folding letters) but not a short legitimate
+  all-homoglyph word — `сор` (с→c, о→o, р→p) scores +30, and with
+  `fullscreen` reaches 60 → Suspicious, unnoticed by the suite.
+- Recorded as a second, sharper instance of DR-21 and added as step 4 of
+  **WO-12**: add Cyrillic/Greek/Armenian negatives, and decide
+  deliberately whether the short-all-homoglyph case is acceptable,
+  pinning the decision with a test either way.
+
 ### Researched — scoped the lock-shape false positive per platform (related-software survey)
 - Followed up the screen-locker finding by asking the question that
   actually determines its severity: **can the helper even enumerate these
