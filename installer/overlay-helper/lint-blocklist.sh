@@ -80,6 +80,22 @@ while IFS= read -r raw || [ -n "$raw" ]; do
                 fi
             fi
 
+            # composite: conditions that depend on `origin` can never hold,
+            # because every shipped helper hard-codes "origin":"unknown"
+            # (audit item DR-20). A rule using them parses fine and then
+            # never fires — dead weight that looks active. The shipped
+            # blocklist's own `unsolicited_blocklist_hit` rule is an
+            # example. Re-check this if a helper ever starts reporting a
+            # real origin (WO-11), and drop the warning then.
+            if [ "$prefix" = "composite" ]; then
+                for cond in $value; do
+                    case "$cond" in
+                        unsolicited|user_initiated)
+                            warn "$lineno" "composite condition '$cond' depends on \`origin\`, which every shipped helper reports as \"unknown\" — this rule can never fire (see DR-20)" ;;
+                    esac
+                done
+            fi
+
             # weight: must be `<signal> <integer>`; anything else is
             # silently ignored by the loader's parse chain.
             if [ "$prefix" = "weight" ]; then

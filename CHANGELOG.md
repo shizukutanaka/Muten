@@ -5,6 +5,26 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Found — a rule in the shipped blocklist can never fire; DR-20's dead-signal count corrected
+- Tracing every consumer of `origin` in `classify()` showed DR-20
+  understated the damage. Beyond `unsolicited` (+25) and `very_new`
+  (+10), **`sudden_fullscreen_takeover` (+5) also requires
+  `Origin::Unsolicited`**, so it is transitively dead — 40 points, not 35.
+- More consequentially, the blocklist grammar exposes `unsolicited` and
+  `user_initiated` as **`composite:` conditions**, so operator rules
+  using them are inert too. This is not hypothetical: the shipped
+  `examples/overlay-blocklist.txt` carries
+  `composite: unsolicited_blocklist_hit 10 unsolicited has_blocklist_title`
+  — **a rule that cannot fire on any real host** — and its header
+  advertises the same pattern in a commented example. The gap has been
+  shipping as advertised-but-inert operator capability, not merely as
+  unused internal weight.
+- `lint-blocklist.sh` now warns on any `composite:` rule whose conditions
+  depend on `origin`. Verified it flags the shipped dead rule (line 821)
+  and stays silent on a composite using only geometry conditions. The
+  check is explicitly marked to be **removed once a helper reports a real
+  `origin`** (WO-11), so it cannot rot into a false alarm.
+
 ### Documented (safety) — enabling `origin: Unsolicited` would make muten dismiss screen lockers
 - While designing the remaining half of DR-20 (`origin`), found a second
   trap — this one **confirmed from the code**, not inferred. `classify()`

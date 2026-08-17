@@ -574,7 +574,28 @@ The problem: **`grep` over all four shipped helpers returns
 `"origin":"unknown"` and `"age_ms":0` in 6/6 occurrences — both are
 emitted unconditionally.** So `unsolicited` (25) and `very_new` (10) —
 **35 of those 125 points, 28% of the entire topic-agnostic budget** —
-can never fire on any real deployment. And they are precisely the two
+can never fire on any real deployment.
+
+**Correction (this figure was understated).** Tracing every consumer of
+`origin` in `classify()` shows the dead surface is larger, because two
+things depend on it *transitively*:
+- `sudden_fullscreen_takeover` (+5) requires `w.origin ==
+  Origin::Unsolicited`, so it is dead too. Counting it, the dead total is
+  **40 points**, and `very_new`'s revival additionally gates it (it also
+  needs `0 < age_ms < 1000`).
+- The blocklist grammar exposes `unsolicited` and `user_initiated` as
+  **`composite:` conditions** (`SPECIFICATION.md` §5.2), so
+  operator-authored rules using them are inert as well — and this is not
+  hypothetical: **the shipped `examples/overlay-blocklist.txt` contains
+  `composite: unsolicited_blocklist_hit 10 unsolicited has_blocklist_title`,
+  a rule that can never fire**, plus a commented example in its header
+  teaching operators the same dead pattern. So the gap has been shipping
+  as advertised-but-inert operator capability, not just as unused weight.
+
+`installer/overlay-helper/lint-blocklist.sh` now warns on any
+`composite:` rule using an origin-dependent condition; it flags that
+shipped rule today. **Remove the warning once a helper reports a real
+`origin` (WO-11).** And they are precisely the two
 that encode "this appeared without you doing anything, just now", the
 most scam-characteristic *behavior* independent of topic. What survives
 on a real host is the brittle, vocabulary-dependent path the literature
