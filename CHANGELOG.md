@@ -5,6 +5,42 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Documented (safety) — enabling `origin: Unsolicited` would make muten dismiss screen lockers
+- While designing the remaining half of DR-20 (`origin`), found a second
+  trap — this one **confirmed from the code**, not inferred. `classify()`
+  caps the `input_trap` bonus at +5, and the comment above it says why:
+  the bare lock shape *"without any content or provenance tell (origin
+  unknown, no scam title/number) tops out at 95 — still `Suspicious`,
+  never an automatic `Block`"*, deliberately protecting "legitimately
+  locked-down full-screen apps (kiosk shells, exam lockdown browsers)".
+- The arithmetic checks out exactly — fullscreen 30 + no_close 25 +
+  blocks_input 20 + topmost 15 + input_trap 5 = **95** — which means
+  **that false-positive guarantee is load-bearing on `origin` staying
+  `Unknown`**. Supplying `Unsolicited` (+25) turns the same window into
+  **120 → Block → dismissed**; `sudden_fullscreen_takeover` (+5, which
+  itself requires `Unsolicited`) can take it to 125.
+- The windows this hits are exactly those that legitimately appear while
+  nobody is at the machine: screen lockers (xscreensaver, i3lock,
+  gnome-screensaver), screensavers, corporate lock-screen policy,
+  kiosk/signage shells, exam lockdown browsers. For a screen locker this
+  is worse than a false positive — muten would close the lock screen on
+  an unattended machine, actively degrading security.
+- Recorded in DR-20 and WO-11: `origin` cannot ship as a plain helper
+  field. Any implementation must first answer "what stops the lock shape
+  reaching Block?" (never-dismiss process allowlist — `process` already
+  exists on `EnumeratedWindow`; re-bounding the geometry stack; or
+  requiring a content tell), and must pin the guard with a
+  `benign_corpus`-style regression test rather than a comment.
+- Also noted, honestly flagged as **unvalidated**: OS idle time is an
+  appealing evidence source because — unlike `_NET_WM_USER_TIME` — it is
+  maintained by the display server / OS rather than by the window, so it
+  is not self-forgeable. An attempt to research per-platform idle APIs
+  (X11 XScreenSaver, Wayland `ext-idle-notify-v1`, macOS `HIDIdleTime`,
+  Windows `GetLastInputInfo`) and adversarially review the design
+  produced **no results** — every agent hit a usage limit — so nothing
+  from it is recorded as fact. The sketch also does not solve the
+  locker problem: a locker appears *because* the user went idle.
+
 ### Found (regression) — DR-23: an auto-merged Dependabot bump broke the MSRV 1.75 guarantee
 - The repository owner enabled Dependabot and several cargo bumps were
   merged (PRs #6–#10). **CI is still not installed** (`.github/` holds

@@ -314,6 +314,60 @@ Split it, and do the cheap half first:
    depend on that wording — it follows from the property being
    client-writable, which is basic X11.
 
+   **⚠⚠ SECOND TRAP — enabling `Unsolicited` at all would make muten
+   dismiss screen lockers. This one is confirmed from the code, not
+   inferred.** `classify()` bounds the `input_trap` bonus at only +5, and
+   the comment above it (`src/lib.rs`, the `let input_trap = …` block)
+   states the reason outright: the bare lock shape *"without any content
+   or provenance tell (origin unknown, no scam title/number) tops out at
+   95 — still `Suspicious`, never an automatic `Block`. That preserves
+   the observe-first guard for legitimately locked-down full-screen apps
+   (kiosk shells, exam lockdown browsers) whose origin a helper can't
+   always attribute."*
+
+   That 95 checks out exactly: fullscreen 30 + no_close 25 +
+   blocks_input 20 + topmost 15 + input_trap 5 = **95**. **The guard is
+   therefore load-bearing on `origin` staying `Unknown`.** Supply
+   `Unsolicited` (+25) and the same window becomes **120 → Block →
+   dismissed** — and `sudden_fullscreen_takeover` (+5, which itself
+   *requires* `Origin::Unsolicited`) can push it to 125.
+
+   The windows this hits are exactly the ones that legitimately appear
+   while nobody is touching the machine: **screen lockers**
+   (xscreensaver, i3lock, gnome-screensaver), screensavers, corporate
+   lock-screen policy, kiosk/digital-signage shells and exam lockdown
+   browsers. For a screen locker the failure is not merely a false
+   positive — muten would *close the lock screen on an unattended
+   machine*, i.e. the product would actively degrade security.
+
+   So `origin` cannot ship as a straight helper field. Whatever evidence
+   source you pick, an implementation MUST first answer: *what stops the
+   lock shape reaching Block?* Options to evaluate (none validated yet):
+   a never-dismiss allowlist for known locker/kiosk processes (the
+   `process` field already exists on `EnumeratedWindow`); re-bounding the
+   geometry stack so the lock shape stays < 100 even with `Unsolicited`;
+   or requiring a content tell before `Unsolicited` may contribute. Add
+   a `benign_corpus`-style regression test for the lock shape *before*
+   changing anything, so the guard is enforced by a test rather than by
+   a comment.
+
+   *Idea worth researching (unvalidated):* OS **idle time** is a
+   promising evidence source precisely because — unlike
+   `_NET_WM_USER_TIME` — it is maintained by the display server / OS
+   input subsystem rather than by the window, so a window cannot forge
+   its own provenance. A design sketch is "on the sweep where a window is
+   first observed (the first-seen state file from step 1 makes this
+   knowable), emit `Unsolicited` iff the OS reports the user idle beyond
+   some threshold; otherwise `Unknown`; never `UserInitiated`." **Not
+   researched to conclusion**: an attempt to validate per-platform idle
+   APIs (X11 XScreenSaver, Wayland `ext-idle-notify-v1`, macOS
+   `HIDIdleTime`, Windows `GetLastInputInfo`), their forgeability, and
+   the FP surface was aborted when the agents hit a usage limit and
+   returned nothing. Treat the sketch as unverified, and note it does
+   **not** by itself solve the screen-locker problem above — a locker
+   appears *because* the user went idle, so idle-time evidence would fire
+   on it maximally.
+
 Do **not** let this become "add `origin` guessing heuristics" — a false
 `user_initiated` is a detection hole, and FP-aversion cuts both ways here.
 

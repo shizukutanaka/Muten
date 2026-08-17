@@ -593,6 +593,26 @@ helper caches first-seen timestamps per window id across invocations in a
 small state file, since helpers are re-spawned each sweep); `origin`
 needs cross-invocation focus/input history and is the larger piece.
 
+**⚠ `origin` is harder than "just fill the field" — confirmed from the
+code.** `classify()`'s `input_trap` bonus is deliberately capped at +5,
+and its comment states that the bare lock shape *"without any content or
+provenance tell (**origin unknown**, no scam title/number) tops out at 95
+— still `Suspicious`, never an automatic `Block`"*, explicitly to protect
+"legitimately locked-down full-screen apps (kiosk shells, exam lockdown
+browsers)". The arithmetic confirms it: fullscreen 30 + no_close 25 +
+blocks_input 20 + topmost 15 + input_trap 5 = **95**. **That FP guarantee
+is load-bearing on `origin` remaining `Unknown`.** Supplying
+`Unsolicited` (+25) turns the identical window into **120 → Block →
+dismissed**, and `sudden_fullscreen_takeover` (+5, which requires
+`Unsolicited`) can make it 125. The affected windows — screen lockers,
+screensavers, kiosk shells, exam browsers — are precisely those that
+appear while the user is idle, so idle-time-based provenance evidence
+would fire on them *maximally*. For a screen locker the outcome is worse
+than a false positive: muten would close the lock screen on an unattended
+machine. Any `origin` work must therefore ship with an explicit
+lock-shape guard (never-dismiss process allowlist, re-bounded geometry
+stack, or requiring a content tell) plus a regression test pinning it.
+
 **`age_ms` status: DONE on all four helpers — but measure before
 claiming the 10 points back.** `very_new` requires `0 < age_ms < 1000`,
 and the helper can only report the age it can actually observe, i.e.
