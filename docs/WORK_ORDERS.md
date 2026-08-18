@@ -14,6 +14,17 @@
 
 ## 0. Before you start — session pre-flight
 
+> **Check the egress proxy before concluding "no registry access".** This
+> was got wrong once: cargo work was written off as impossible from
+> 403s, but `curl -sS "$HTTPS_PROXY/__agentproxy/status"` shows
+> **`index.crates.io` is in `noProxy`** (reachable) while only
+> **`static.crates.io`** is policy-denied. So `cargo update`,
+> `cargo metadata` and anything needing only registry *metadata* work
+> here; only downloading `.crate` tarballs (`cargo build`, `cargo test`)
+> is blocked. DR-23 was fixed on that basis. See `/root/.ccr/README.md`
+> for the failure classes — and note a 403 is a policy denial to report,
+> never to route around.
+
 Run these checks first; they decide which work orders are executable in
 your session:
 
@@ -37,7 +48,7 @@ disagree, the audit doc is authoritative. 日本語補足: 上段=壊しては
 
 **Strengths — assets your change must not degrade:**
 
-- 66-signal / 10-lens detection engine with the evasion-resistant
+- 89-signal / 10-lens detection engine with the evasion-resistant
   Unicode-confusable normalization pipeline (`src/confusables.rs`) —
   the product's core value.
 - Tamper-evident SHA-256 audit chain with RFC 6962 Merkle anchoring
@@ -85,7 +96,7 @@ without it.
 
 | # | Item | Why it blocks | Status |
 |---|---|---|---|
-| B1 | **DR-23** — `clap 4.6.6` needs Rust 1.85, crate advertises 1.75 | The build is *broken today* for anyone on the promised toolchain. A release whose stated MSRV is wrong is not shippable. | Guard added (Dependabot `ignore`); the pin-back needs `cargo update -p clap --precise 4.5.20` |
+| ~~B1~~ | ~~**DR-23** — `clap 4.6.6` needs Rust 1.85~~ | — | ✅ **FIXED**: pinned back to `=4.5.20` (MSRV 1.74), lock re-resolved, Dependabot `ignore` guards recurrence |
 | B2 | **DR-12 + WO-1** — cargo-unverified code on the default branch | `src/confusables.rs`, two `*_helper_reference.rs` suites and `scoring_scenarios.rs` additions have **never been compiled**. Cannot claim a tested release. | Needs one cargo-capable session |
 | B3 | **DR-16 / WO-2** — no CI | Without it every future change repeats B1/B2. Partly mitigated: `scripts/verify.sh` runs the toolchain-free half **today**. | Owner installs `docs/ci/ci.yml` |
 | B4 | **DR-20 / WO-11** — 28% of topic-agnostic budget dead | This is the *core detection value*; the literature (TASR) says the structural signals are the durable ones. `age_ms` is done; `origin` is blocked on the lock-shape guard. | `age_ms` ✅, `origin` open |

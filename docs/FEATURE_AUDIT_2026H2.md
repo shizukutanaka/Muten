@@ -375,7 +375,7 @@ results readable from any future session via the GitHub Actions API,
 removing the "needs a local-cargo session" prerequisite from every
 other open item.
 
-### [OPEN ★★★ — live regression on the default branch] DR-23: an auto-merged Dependabot bump broke the MSRV 1.75 guarantee
+### [~~RESOLVED~~] DR-23: an auto-merged Dependabot bump broke the MSRV 1.75 guarantee
 **This is what DR-16 predicted.** Between this session's commits the
 repository owner enabled Dependabot and several cargo bumps were merged
 (PRs #6–#10). There is still **no CI** (`.github/` contains only
@@ -419,7 +419,26 @@ guarantee or hold back the owner's deliberate dependency strategy:
 Either way **install CI first** (DR-16 / WO-2) so the `msrv` job proves
 the result rather than another unverified assertion replacing this one.
 
-**Decision taken this round (option b — preserve the guarantee).** The
+**FIXED.** `clap` is pinned back to `=4.5.20` (MSRV **1.74**) and
+`Cargo.lock` was re-resolved from the index, consistently downgrading the
+transitive set (`clap_builder` 4.5.20, `clap_derive` 4.5.18, `clap_lex`
+0.7.7, `anstream` 0.6.21 — MSRV 1.66, `anstyle-parse` 0.2.7). No direct
+dependency now declares an MSRV above 1.74, so the advertised
+`rust-version = "1.75.0"` holds again, and the Dependabot `ignore` for
+`clap >=4.6.0` stops the bump returning.
+
+*How this became possible* is worth recording, because the earlier
+conclusion was wrong: this was written off as "needs registry access we
+don't have". The agent proxy's own status endpoint
+(`curl -sS "$HTTPS_PROXY/__agentproxy/status"`) shows **`index.crates.io`
+is in `noProxy`** — reachable — while only **`static.crates.io`** is
+denied (403 CONNECT). `cargo update` needs just the *index*; only
+downloading `.crate` tarballs needs the static host. So the lock could be
+re-resolved here after all. *Caveat:* the fix rests on crates.io
+`rust_version` metadata; a real `cargo build` on a 1.75 toolchain still
+requires `static.crates.io` and remains blocked by egress policy.
+
+**Original decision (option b — preserve the guarantee).** The
 user was asked and expressed no preference, so the conservative call was
 made: keep the published MSRV 1.75 promise that a *bot* broke (not a
 deliberate human decision). The recurrence guard is already in place — a

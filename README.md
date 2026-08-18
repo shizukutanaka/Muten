@@ -101,15 +101,20 @@ produces these.
 `muten-overlay` v0.6.0 — 1331 unit tests + 26 `cli_contract` integration
 tests, `clippy -D warnings` clean.
 
-> **⚠ MSRV is currently broken (DR-23).** `Cargo.toml` declares
-> `rust-version = "1.75.0"`, but an auto-merged Dependabot bump to
-> `clap 4.6.6` requires **Rust 1.85**, and `clap` is a default feature —
-> so `cargo build` fails on the advertised toolchain. A Dependabot
-> `ignore` now prevents recurrence; the pin-back
-> (`cargo update -p clap --precise 4.5.20`) needs a session with registry
-> access. See `docs/FEATURE_AUDIT_2026H2.md` DR-23 for both remediation
-> options. The test/clippy figures above were last verified before the
-> current cargo-unverified changes landed — see DR-12 / WO-1.
+> **MSRV 1.75 restored (DR-23 fixed).** An auto-merged Dependabot bump to
+> `clap 4.6.6` (MSRV **1.85**) had broken the advertised
+> `rust-version = "1.75.0"`, and `clap` is a default feature, so
+> `cargo build` failed on the promised toolchain. `clap` is pinned back
+> to `=4.5.20` (MSRV 1.74) with `Cargo.lock` re-resolved consistently
+> (`anstream` 0.6.21, MSRV 1.66; `clap_lex` 0.7.7), and a Dependabot
+> `ignore` for `clap >=4.6.0` prevents recurrence. No direct dependency
+> now declares an MSRV above 1.74. *Caveat:* this was verified from
+> crates.io `rust_version` metadata — a full `cargo build` on a 1.75
+> toolchain still needs `static.crates.io`, which this environment's
+> egress policy blocks (403).
+>
+> The test/clippy figures above were last verified before the current
+> cargo-unverified changes landed — see DR-12 / WO-1.
 
 Run `./scripts/verify.sh` for the checks that need no toolchain (helper
 syntax, blocklist lint, `Cargo.lock`↔`Cargo.toml` pin sync,
