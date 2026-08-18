@@ -5,6 +5,28 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Scoped — "the crate is cargo-unverified" was overstated; it is 3 test files
+- Measured rather than assumed what B2 actually covers. From the last
+  known-green commit (`549df29`), only **four** Rust files changed all
+  cycle: `src/confusables.rs` (now ✅ verified, 675 tests, teeth-proven)
+  and three **test** files. **The 15 serde-importing modules were never
+  touched** — byte-identical to their green state.
+- Checked what the three actually fail on:
+  `linux_helper_reference.rs` and `macos_helper_reference.rs` produce
+  **only `E0433 unresolved crate`** for `tempfile`/`serde_json` — no
+  syntax or type errors of their own. `scoring_scenarios.rs` adds E0282
+  "type annotations needed", but those **cascade from** the unresolved
+  `muten_overlay` import rather than being independent defects.
+- Their asserted behaviour is independently verified at the shell level:
+  DR-2b/2c/2d's modal and close-button signals, DR-17's control-char
+  handling, and `age_ms` were each exercised end-to-end against the real
+  shipped helper scripts with stubbed OS tools. The Rust files re-assert
+  through a Rust harness what shell testing already confirmed.
+- So the residual exposure is far smaller than "unverified crate"
+  implies. Stated honestly in WO-1: absence of independent errors is
+  evidence, not proof — a type error could still surface once the crates
+  resolve.
+
 ### Verified — DR-12 resolved: 693 tests run and pass **without a registry**
 - Questioning "verify this code compiles" showed it had been conflated
   with "download every dependency". They are not the same.

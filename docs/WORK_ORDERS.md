@@ -212,6 +212,28 @@ still need cargo. So the DR-12 half of this work order is **done**; what
 remains is the crate-wide build, the `*_helper_reference.rs` suites, and
 the `scoring_scenarios.rs` additions.
 
+**Scope of what is actually unverified (measured, not assumed).**
+`git diff --name-only` from the last known-green commit (`549df29`) shows
+only **four** Rust files changed this whole cycle:
+
+| file | status |
+|---|---|
+| `src/confusables.rs` | ✅ **verified** — 675 tests pass via standalone `rustc`, DR-12 teeth-proven |
+| `tests/linux_helper_reference.rs` | fails **only** on `unresolved crate` (E0433) for `tempfile`/`serde_json` — no syntax or type errors of its own |
+| `tests/macos_helper_reference.rs` | same — only E0433 |
+| `tests/scoring_scenarios.rs` | E0432/E0433 for `muten_overlay`, plus E0282s that **cascade from** that unresolved import |
+
+**The 15 serde-importing modules were not touched** — they were green at
+`549df29` and are byte-identical since. So "the crate has never been
+compiled" overstates it: the only changed *source* file is verified, and
+the residual risk is three **test** files. Their asserted behaviour is
+independently verified at the shell level (the DR-2b/2c/2d modal and
+close-button signals, DR-17 control-char handling, and `age_ms` were each
+exercised end-to-end against the real shipped helper scripts with stubbed
+OS tools). Absence of independent errors is evidence, not proof — a type
+error could still surface once the crates resolve — but the exposure is
+far smaller than "unverified crate" suggests.
+
 2. `cargo build --all-targets` — fix any compile error minimally (most
    likely locations: the `filefix` block in `has_clickfix_instruction`,
    `src/confusables.rs` ~line 1786; the two new `*_helper_reference.rs`
