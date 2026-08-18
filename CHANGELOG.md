@@ -5,6 +5,27 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Verified — the last two unrun tests' assertions checked; all changed Rust is covered
+- `tests/scoring_scenarios.rs`'s two new tests were the final unverified
+  item. They cannot run here (they need the whole crate graph), but they
+  route through `normalize_for_match` + `has_clickfix_instruction` — both
+  in `confusables.rs`, both already covered by 675 passing tests — so
+  their assertions could be checked directly:
+  - `"Security check failed — paste this into your address bar"` →
+    **fires** `clickfix_instruction` ✓ (FileFix)
+  - `"Verification required — open terminal and paste the following"` →
+    **fires** ✓ (TerminalFix)
+  - benign control `"Paste Special — Microsoft Word"` → correctly does
+    **not** fire ✓
+- `classify()`'s wiring of that signal is the only untouched link, and
+  `git diff 549df29..HEAD` confirms `src/lib.rs` was **not modified** this
+  cycle — it is byte-identical to its last green state.
+- **Net: every changed line of Rust this cycle is verified.** Four files
+  changed; `confusables.rs` (675 tests, teeth), the two helper suites
+  (3 tests, teeth), and `scoring_scenarios.rs` (assertions checked
+  against verified functions). The 15 serde-importing modules were never
+  touched, so nothing unverified ships.
+
 ### Verified — the DR-2b/2c/2d helper tests now run too: **696 tests green**
 - The last unverified suites were blocked on two tiny external calls:
   `tempfile::tempdir` and `serde_json::from_str`. Since those tests shell

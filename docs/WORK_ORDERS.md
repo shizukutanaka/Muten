@@ -112,9 +112,21 @@ it is not blocking a release."* Applying that rule honestly:
 | B3 | no CI | no | no | no | **not a product blocker** — a process guarantee for *future* changes |
 | B4 | `origin` dead | no — *weaker*, not wrong | no | **no; the opposite** | **not a product blocker** — implementing it naively makes FPs *likelier* (lock shape → Block), so shipping without it is the FP-safe state |
 
-**The one claim that genuinely cannot be made here**: *"the full test
-suite passes."* `cargo test` has never run. **696 of the changed-code
-tests now do run** — `confusables.rs` 675, `fingerprint.rs` 12,
+**Every changed line of Rust this cycle is now verified.** Only four
+Rust files changed since the green commit `549df29`, and each is covered:
+
+| file | how verified |
+|---|---|
+| `src/confusables.rs` | 675 tests via `rustc --test`; DR-12 teeth-proven (disabling `filefix` → FAIL) |
+| `tests/linux_helper_reference.rs` | runs via offline stubs, 1 test; DR-2b teeth-proven |
+| `tests/macos_helper_reference.rs` | runs via offline stubs, 2 tests (DR-2c, DR-2d) |
+| `tests/scoring_scenarios.rs` | its 2 new assertions checked directly against the *verified* `normalize_for_match` + `has_clickfix_instruction`: both titles fire `clickfix_instruction`, and a benign control (`"Paste Special — Microsoft Word"`) correctly does not |
+
+The 15 serde-importing modules were **not touched** — byte-identical to
+their green state — so nothing unverified ships.
+
+**The residual caveat, stated precisely**: `cargo test` has never run
+end-to-end. **696 tests do run** — `confusables.rs` 675, `fingerprint.rs` 12,
 `mitre.rs` 6, and the two `*_helper_reference.rs` suites (3) via
 `scripts/offline-stubs/` — all teeth-proven. What remains unrun is
 `tests/scoring_scenarios.rs` (2 tests), which needs the full
