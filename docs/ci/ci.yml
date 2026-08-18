@@ -33,6 +33,19 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Toolchain-free checks that also run locally via ./scripts/verify.sh.
+  # Keeping them in one script means local and CI verification cannot
+  # drift apart, and — importantly — these run even while this workflow
+  # is still not installed, so they are the one gate that is available
+  # today rather than blocked on the manual install step above.
+  verify:
+    name: shell + data checks (scripts/verify.sh)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ./scripts/verify.sh --offline
+        run: ./scripts/verify.sh --offline
+
   test:
     name: fmt + clippy + test (stable)
     runs-on: ubuntu-latest

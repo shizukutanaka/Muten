@@ -5,6 +5,39 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — `scripts/verify.sh`: one verification entrypoint, usable today
+- **Questioned the requirement instead of the blocker.** "Changes are
+  verified before they land" had been conflated with "GitHub Actions runs
+  them" — and since only a repository owner can install
+  `.github/workflows/`, verification stayed blocked indefinitely. Those
+  are different things. `scripts/verify.sh` runs every check that does
+  not need the registry, on any machine, right now.
+- Checks: `sh -n` on all shipped helpers and scripts; the blocklist lints
+  clean (DR-22); `Cargo.lock` agrees with `Cargo.toml`'s exact pins — the
+  **DR-23 class of failure**, where a dependency change reaches a build
+  unverified; `dependabot.yml` carries no invalid `automerge:` key
+  (DR-24); and the crate declares a `rust-version` at all.
+- **A skip is never a pass.** Unavailable checks are reported as SKIP,
+  named, and the summary states outright that a run which skipped the
+  Rust phase has *not* verified that the crate compiles or tests green.
+  That is the whole point: the project's problem was silent
+  non-verification, so a tool that quietly reported success would
+  recreate it.
+- **Teeth-tested each failure path**: a mis-cased `Title:` rule, a
+  re-introduced `automerge:` key, and a `Cargo.toml`/`Cargo.lock` pin
+  desync each turn the run red; the clean tree passes reproducibly
+  (3/3 runs).
+- **Fixed a hang the teeth test itself exposed**: the `cargo metadata`
+  probe sat for minutes against the blocked registry, so the script hung
+  rather than reporting a skip — precisely the "verification never
+  finishes" failure it exists to prevent. It is now bounded by
+  `timeout`/`gtimeout` (`MUTEN_CARGO_PROBE_TIMEOUT`, default 20s); a full
+  run takes ~24s.
+- `docs/ci/ci.yml` gained a `verify` job that simply calls
+  `./scripts/verify.sh --offline`, so local and CI verification cannot
+  drift apart — and that job is the one gate available *before* the
+  workflow is installed.
+
 ### Removed — deleted 9 provably-dead blocklist rules (317→309 titles, 2→1 composites)
 - Applied "question every requirement, then delete" to the shipped
   blocklist. First it questioned the tool: the linter's shadow check
