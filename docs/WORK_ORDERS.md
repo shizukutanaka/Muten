@@ -155,6 +155,26 @@ broken, or a false positive likelier, it is not blocking a release.
 and `tests/macos_helper_reference.rs` are implementation-complete but
 have **never been compiled**. Everything else queues behind this.
 
+**Pre-flight de-risking (done 2026-08, by inspection — reading, not
+compiling).** The three failure modes most likely to stall this work were
+checked and all look clean, so expect it to build rather than fight it:
+- **`clippy -D warnings` on unused bindings**: every `let` in
+  `has_clickfix_instruction` (`compact`, `shortcut`, `run_cmd`,
+  `filefix`, `captcha_frame`, `glitchfix`, `jp_clickfix`) is consumed —
+  `compact` feeds `shortcut`, the rest appear in the final return
+  expression. The DR-12 additions cannot trip an unused-variable denial.
+- **Crate-API drift in the new test files**: `linux_helper_reference.rs`
+  and `macos_helper_reference.rs` reference **no** `muten_overlay::`
+  items at all — they use only `std::process::{Command, Stdio}` and
+  `std::os::unix::fs::PermissionsExt`, shelling out to the helper
+  scripts. So no signature can have drifted under them.
+- **Windows build breakage**: both files carry `#![cfg(unix)]` as an
+  inner attribute at file scope (after the `//!` docs, before the
+  `use`s), so they compile out entirely off Unix. `PermissionsExt` is
+  safe.
+This reduces the risk; it does not remove it — reading cannot catch
+type errors inside complex expressions. Still run the full gauntlet.
+
 1. `cd crates/muten-overlay`
 2. `cargo build --all-targets` — fix any compile error minimally (most
    likely locations: the `filefix` block in `has_clickfix_instruction`,
