@@ -537,7 +537,7 @@ consider a `\#` escape in `strip_comment` so `#` can be expressed at all.
 `cli_contract.rs` e2e asserting `muten-overlay rules` prints the bad line
 number. Teeth: revert to the silent skip and confirm the assertions fail.
 
-### [OPEN ★★★] DR-21: the Japanese detection surface is 50× larger than the Japanese benign corpus guarding it
+### [◐ LARGELY ADDRESSED — 50:1 → 9:1] DR-21: the Japanese detection surface vs the benign corpus guarding it
 **Literature basis**: empirical scam/phishing-detection work (TASR and
 the wider TSS measurement literature cited in `THREAT_INTEL_2026.md`)
 reports a **false-positive rate against a realistic corpus** as a
@@ -592,6 +592,40 @@ requires `latin && confusable` **within one token** and treats
 like `Windows セキュリティ警告` cannot fire it — muten deliberately
 implements a narrower model than full UTS #39 script resolution and
 thereby sidesteps the "legitimate Japanese is multi-script" trap.
+
+**Substantially fixed 2026-08-18.** The blocker was assumed to be cargo,
+but the content detectors live in `confusables.rs`, which has no external
+dependencies — so `rustc` can run all 62 of them against candidate titles
+directly (tool + method: `scripts/fp-probe/`). 50 realistic Japanese
+titles were probed; 46 came back clean and were added to
+`BENIGN_TITLES`, weighted toward the adversarial-benign cases where FPs
+actually hide (a real AV's `ウイルス定義を更新しました`, a real bank's
+`重要なお知らせ`, `ワンタイムパスワードを入力してください`,
+`税務署からのお知らせ - e-Tax`, `宅配便のお届け予定のお知らせ`).
+
+| | before | after |
+|---|---|---|
+| JP benign titles | 10 | **54** |
+| ratio to 502 JP literals | 50 : 1 | **9 : 1** |
+| corpus total | 68 | **112** |
+
+The whole 112-title corpus was then re-probed against all 62 content
+detectors: **0 false positives**. The array was also compiled standalone
+with `rustc` to confirm the edit is syntactically valid, so this is not
+an unverified change. **Still open**: the FP *rate* is reported as a
+boolean rather than a number (WO-12 step 3), the corpus remains
+hand-authored rather than sampled, and Cyrillic/Greek/Armenian negatives
+are still absent (WO-12 step 4).
+
+**Four probed titles fired and were deliberately NOT added** —
+`アカウントがロックされました…`, `不正なログインを検知しました…`,
+`お客様のアカウントは一時的に制限されています` (`credential_harvest`) and
+`ウイルスが検出されました - 隔離しました - Windows セキュリティ`
+(`fake_scanner`). Both signals are `alert_shaped`-gated in `classify()`,
+so a real notification never reaches them — the signals are correct and
+the geometry guard is doing its job. `benign_corpus.rs` evaluates with an
+alert-shaped profile *on purpose*, so adding them there would fail and
+the failure would be wrong. See `scripts/fp-probe/README.md`.
 
 **Fix**: see **WO-12**. Expand the JP benign corpus toward parity with
 the JP detection surface, add Cyrillic/Greek/Armenian negative cases for

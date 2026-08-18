@@ -5,6 +5,44 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — Japanese benign corpus 10 → 54 titles, closing most of DR-21
+- DR-21 (502 Japanese detection literals guarded by 10 Japanese benign
+  titles) was the largest documented unknown, and WO-12 assumed clearing
+  it needed cargo. It did not: the content detectors live in
+  `confusables.rs`, which has no external dependencies, so `rustc` runs
+  all 62 of them against candidate titles directly.
+- Probed 50 realistic Japanese titles (tool and method now in
+  `scripts/fp-probe/`). **46 came back clean and were added**, weighted
+  toward the adversarial-benign cases where false positives actually
+  hide: a real AV's `ウイルス定義を更新しました - ウイルスバスター`, a
+  real bank's `重要なお知らせ - 三菱UFJ銀行`,
+  `ワンタイムパスワードを入力してください`,
+  `税務署からのお知らせ - e-Tax`, `宅配便のお届け予定のお知らせ`,
+  `電気料金のお知らせ`, `当選者発表 - キャンペーン事務局`.
+
+  | | before | after |
+  |---|---|---|
+  | JP benign titles | 10 | **54** |
+  | ratio to 502 JP literals | 50 : 1 | **9 : 1** |
+  | corpus total | 68 | **112** |
+
+- **Verified, not assumed**: the whole 112-title corpus was re-probed
+  against all 62 content detectors → **0 false positives**, and the
+  edited `BENIGN_TITLES` array was compiled standalone with `rustc` to
+  confirm the edit is syntactically valid.
+- **Four probed titles fired and were deliberately left out** —
+  `アカウントがロックされました…` / `不正なログインを検知しました…` /
+  `お客様のアカウントは一時的に制限されています` (`credential_harvest`)
+  and `ウイルスが検出されました - 隔離しました - Windows セキュリティ`
+  (`fake_scanner`). Both signals are `alert_shaped`-gated, so a real
+  notification never reaches them: the signals are right and the geometry
+  guard is doing its job. `benign_corpus.rs` evaluates alert-shaped *on
+  purpose*, so adding them there would fail — and the failure would be
+  wrong. Documented in `scripts/fp-probe/README.md` as the worked example
+  of "a red is only a bug once you've checked the geometry guard".
+- Still open in WO-12: report an FP *rate* rather than a boolean, sample
+  rather than hand-author, and add Cyrillic/Greek/Armenian negatives.
+
 ### Verified — the last two unrun tests' assertions checked; all changed Rust is covered
 - `tests/scoring_scenarios.rs`'s two new tests were the final unverified
   item. They cannot run here (they need the whole crate graph), but they

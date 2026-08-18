@@ -122,6 +122,62 @@ const BENIGN_TITLES: &[&str] = &[
     "セキュリティ更新プログラムをインストールしました",
     "パスワードを変更しました",
     "プレミアム会員の特典のご案内",
+    // ── Japanese, added for DR-21 ────────────────────────────────────────
+    // muten is a Japan-market product whose Japanese vocabulary is its
+    // largest body of detection logic (502 literals) yet was guarded by
+    // only 10 benign titles — a 50:1 ratio, the thinnest FP coverage in
+    // the crate. Every title below was probed against all 62 content
+    // detectors in `confusables.rs` (see `scripts/fp-probe/`) and fires
+    // none of them.
+    // OS / desktop chrome
+    "設定",
+    "システム環境設定",
+    "ごみ箱",
+    "タスク マネージャー",
+    "コントロール パネル",
+    "エクスプローラー",
+    "ディスクの管理",
+    "システムの復元ポイントを作成しています",
+    // Everyday applications
+    "無題 - メモ帳",
+    "文書 1 - Word",
+    "新しいタブ - Google Chrome",
+    "受信トレイ - Outlook",
+    "電卓",
+    "ペイント",
+    // Adversarial-benign: legitimate windows that reuse the exact
+    // vocabulary the scam signals key on. These are where a real false
+    // positive would hide, so they matter more than the plain cases.
+    "ウイルス定義を更新しました - ウイルスバスター", // real AV, not fake_scanner
+    "ウイルス定義ファイルが最新になりました",
+    "スキャンが完了しました。脅威は見つかりませんでした", // scan + threat words, benign
+    "Windows セキュリティ",
+    "お使いのパソコンがウイルスに感染していないか確認します", // infection words, benign
+    "重要なお知らせ - 三菱UFJ銀行",                    // real bank notice
+    "ご利用明細のお知らせ",
+    "お支払いが完了しました",
+    "料金のお支払いが確認できませんでした - 更新してください", // billing, no ultimatum
+    "ワンタイムパスワードを入力してください",          // ~ otp (enter, not share)
+    "サポートセンターのご案内",                        // support, no phone demand
+    "サポートに電話する - お問い合わせ",               // call support, user-initiated UI
+    "アカウント設定",
+    "パスワードを変更する",
+    "二段階認証の設定",
+    "利用規約に同意する",
+    "サブスクリプションの管理",
+    "サブスクリプションの有効期限が近づいています",    // ~ subscription_lure, benign
+    "更新の確認",
+    "この製品のライセンス認証は完了しています",
+    "個人情報の取り扱いについて",
+    "マイナンバーカードの電子証明書を更新してください", // ~ national_id_alarm, benign
+    "税務署からのお知らせ - e-Tax",                    // ~ tax_authority, no threat
+    "年金定期便のご案内",
+    "国民健康保険料の納付について",
+    "宅配便のお届け予定のお知らせ - ヤマト運輸",       // ~ package_fee, no fee demand
+    "電気料金のお知らせ - 東京電力",                   // ~ utility_cutoff, no threat
+    "当選者発表 - キャンペーン事務局",                 // ~ prize_lure, no claim action
+    "副業・在宅ワークの求人情報",                      // ~ job_scam, no advance fee
+    "仮想通貨ウォレットに接続します",                  // ~ wallet_connect, user-initiated
 ];
 
 fn alert_shaped(title: &str) -> OverlayWindow {
