@@ -191,8 +191,33 @@ if command -v rustc >/dev/null 2>&1; then
         rm -rf "$_tmp2"
     fi
 
+    # Compile-check the two suites that need the crate itself. This proves
+    # they still TYPE-CHECK; it says nothing about behaviour, because the
+    # stub's classify() returns an empty verdict. See the stubs' README.
+    if [ -f "$_stub/muten_overlay_compileonly.rs" ]; then
+        _tmp3="${TMPDIR:-/tmp}/muten-mo-$$"
+        mkdir -p "$_tmp3"
+        if rustc --edition 2021 --crate-type lib --crate-name muten_overlay \
+                 -o "$_tmp3/libmuten_overlay.rlib" \
+                 "$_stub/muten_overlay_compileonly.rs" >/dev/null 2>&1; then
+            for _t in benign_corpus scoring_scenarios; do
+                [ -f "$CRATE/tests/$_t.rs" ] || continue
+                if (cd "$CRATE" && rustc --edition 2021 --test -O \
+                        --extern muten_overlay="$_tmp3/libmuten_overlay.rlib" \
+                        -o "$_tmp3/c_$_t" "tests/$_t.rs" >/dev/null 2>&1); then
+                    ok "$_t.rs type-checks (compile-only stub — not a behaviour check)"
+                else
+                    bad "$_t.rs fails to compile"
+                fi
+            done
+        else
+            skp "benign_corpus/scoring_scenarios compile check" "compile-only stub failed to build"
+        fi
+        rm -rf "$_tmp3"
+    fi
+
     rm -rf "$_tmp"
-    skp "scoring_scenarios.rs + the 15 serde modules" "need the real crate graph — cargo + registry"
+    skp "the 15 serde modules + a real end-to-end cargo test" "need the real crate graph — cargo + registry"
 else
     skp "standalone rustc module tests" "rustc not installed"
 fi

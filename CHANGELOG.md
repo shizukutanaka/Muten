@@ -5,6 +5,23 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — every verification in this cycle is now reproducible via `verify.sh` (17 checks)
+- Committed `scripts/offline-stubs/muten_overlay_compileonly.rs` and wired
+  the `benign_corpus.rs` / `scoring_scenarios.rs` type-checks into
+  `verify.sh`, so all 17 checks — shell, data, MSRV, 696 tests, and the
+  compile checks — run on any machine with no registry.
+- **Declined to stub the whole crate, on purpose.** Compiling all of
+  `lib.rs` would need stand-ins for serde's derive macros, and a blanket
+  `impl<T> Serialize for T {}` accepts code that real serde rejects — a
+  green from it would be *weaker* than it looks while *reading* as
+  stronger. A real `cargo build` is the only honest answer to "does the
+  whole crate compile?", and manufacturing a misleading green would undo
+  the point of this whole cycle.
+- The stub README now states plainly that the compile-only stub's
+  pass/fail is meaningless (its `classify` returns an empty verdict, so
+  benign tests pass trivially and scam tests fail as artefacts), and that
+  behaviour is established only by probing the real detectors.
+
 ### Verified — all five touched Rust files now compile; B2's engineering work is done
 - Applied the compile-only-stub technique to the last unverified file.
   `tests/scoring_scenarios.rs` now compiles (it needed

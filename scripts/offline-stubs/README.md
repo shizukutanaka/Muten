@@ -48,3 +48,31 @@ helper's modal detection makes the test FAIL).
 **Does not**: verify integration with the *real* `serde_json`/`tempfile`.
 A real `cargo test` remains the authority. Never advertise "all tests
 green" on the strength of these stubs alone.
+
+
+## `muten_overlay_compileonly.rs` — compile checking only
+
+`tests/benign_corpus.rs` and `tests/scoring_scenarios.rs` need the crate
+itself, which needs `serde`/`sha2` and therefore the blocked registry.
+This stub provides just the surface they name (`OverlayWindow`, `Origin`,
+`Ruleset`, `Decision`, `Verdict`, `classify`, the two thresholds) so
+`rustc` can **type-check** them.
+
+**Its `classify` returns an empty verdict, so the resulting pass/fail is
+meaningless.** Use it to answer *"does this file still compile?"* and
+nothing else. Under it the benign tests pass trivially and the
+scam-detection tests fail as artefacts — neither outcome is evidence.
+
+Behaviour is established separately, by probing the **real** detectors in
+`confusables.rs` (`scripts/fp-probe/`). Keeping the two apart is
+deliberate: a stub can only ever prove compilation, so it must never be
+the thing that tells you detection works.
+
+### Why there is no stub for the whole crate
+
+Compiling all of `lib.rs` would need stand-ins for serde's derive macros
+too. That was considered and **rejected**: a blanket
+`impl<T> Serialize for T {}` accepts code that real serde would reject,
+so a green from it would be weaker than it looks while reading as
+stronger. A real `cargo build` is the only honest answer to *"does the
+whole crate compile?"*.
