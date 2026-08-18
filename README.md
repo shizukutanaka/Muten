@@ -99,7 +99,25 @@ produces these.
 ## Status
 
 `muten-overlay` v0.6.0 — 1331 unit tests + 26 `cli_contract` integration
-tests, `clippy -D warnings` clean, MSRV 1.75.0.
+tests, `clippy -D warnings` clean.
+
+> **⚠ MSRV is currently broken (DR-23).** `Cargo.toml` declares
+> `rust-version = "1.75.0"`, but an auto-merged Dependabot bump to
+> `clap 4.6.6` requires **Rust 1.85**, and `clap` is a default feature —
+> so `cargo build` fails on the advertised toolchain. A Dependabot
+> `ignore` now prevents recurrence; the pin-back
+> (`cargo update -p clap --precise 4.5.20`) needs a session with registry
+> access. See `docs/FEATURE_AUDIT_2026H2.md` DR-23 for both remediation
+> options. The test/clippy figures above were last verified before the
+> current cargo-unverified changes landed — see DR-12 / WO-1.
+
+Run `./scripts/verify.sh` for the checks that need no toolchain (helper
+syntax, blocklist lint, `Cargo.lock`↔`Cargo.toml` pin sync,
+`dependabot.yml` validity). It reports skipped checks explicitly — a skip
+is never counted as a pass. `docs/ci/ci.yml`'s `verify` job runs the same
+script, so local and CI verification cannot drift apart.
+[`docs/WORK_ORDERS.md` §1.5](docs/WORK_ORDERS.md) states precisely what
+blocks a release and what does not.
 A ready-to-install CI workflow (format/lint/test, an MSRV build, and a
 supply-chain gate: cargo-audit + cargo-deny + gitleaks) is provided at
 [`docs/ci/ci.yml`](docs/ci/ci.yml); it is **not yet active** — the

@@ -71,6 +71,50 @@ disagree, the audit doc is authoritative. 日本語補足: 上段=壊しては
 | **28% of the topic-agnostic detection budget is dead (DR-20)**: `origin` and `age_ms` are hard-coded on all 4 helpers, so `unsolicited` (25) + `very_new` (10) never fire | leaves only the vocabulary path that the TSS literature (TASR) identifies as the brittle one | **WO-11** |
 | Detection vocabulary EN+JP only (DR-8) | non-EN/JP fleets under-detect | Backlog |
 
+## 1.5 Definition of Done — what actually blocks v0.6.0
+
+The backlog has ~20 open items and 13 work orders, which makes "finish
+the product" look unbounded. It isn't. Applying *question every
+requirement* — the product's one job is **detect and dismiss scam
+overlays on managed fleets without false-positiving** — most of the
+backlog turns out not to gate completion. Work the four blockers; do the
+rest because you want the feature, not because the product is unfinished
+without it.
+
+**BLOCKING — v0.6.0 cannot honestly ship until these are true:**
+
+| # | Item | Why it blocks | Status |
+|---|---|---|---|
+| B1 | **DR-23** — `clap 4.6.6` needs Rust 1.85, crate advertises 1.75 | The build is *broken today* for anyone on the promised toolchain. A release whose stated MSRV is wrong is not shippable. | Guard added (Dependabot `ignore`); the pin-back needs `cargo update -p clap --precise 4.5.20` |
+| B2 | **DR-12 + WO-1** — cargo-unverified code on the default branch | `src/confusables.rs`, two `*_helper_reference.rs` suites and `scoring_scenarios.rs` additions have **never been compiled**. Cannot claim a tested release. | Needs one cargo-capable session |
+| B3 | **DR-16 / WO-2** — no CI | Without it every future change repeats B1/B2. Partly mitigated: `scripts/verify.sh` runs the toolchain-free half **today**. | Owner installs `docs/ci/ci.yml` |
+| B4 | **DR-20 / WO-11** — 28% of topic-agnostic budget dead | This is the *core detection value*; the literature (TASR) says the structural signals are the durable ones. `age_ms` is done; `origin` is blocked on the lock-shape guard. | `age_ms` ✅, `origin` open |
+
+**NOT BLOCKING — deliberately deferred (each is a feature or a research
+item, not an unfinished obligation):**
+
+- **Vocabulary growth** — DR-13 (IP-literal signal), DR-14 (IT-helpdesk
+  generalisation), DR-8 (languages beyond EN/JP), WO-8 (intel refresh).
+  Per TASR this is the *brittle* detection path, and DR-21 shows each
+  addition widens an untested FP surface. Adding the 61st vocabulary
+  signal is the lowest-value work available. WO-8 is recurring
+  maintenance and by definition never "done".
+- **Feature expansion** — DR-7 (config file), DR-9 (BITB), DR-10 (signed
+  builds / semver-checks / benchmarks), DR-6 (anchoring automation:
+  manual works today).
+- **Robustness hardening** — DR-18, DR-19, DR-22, DR-4. Real, worth
+  doing, but each is a degradation-under-fault issue, not a "the product
+  doesn't work" issue.
+- **Cosmetic** — EC-1/EC-2/EC-3. Note the user **rejected** the EC-2 and
+  EC-3 edits when they were attempted; do not redo them uninvited.
+- **DR-21** sits between the two lists: it is not a broken feature, but
+  it is the largest *unknown* — 502 Japanese detection terms guarded by
+  10 Japanese benign titles. Treat it as required before advertising
+  FP-aversion with a number attached.
+
+**Rule of thumb**: if an item does not make the detector wrong, the build
+broken, or a false positive likelier, it is not blocking a release.
+
 ## 2. Invariants — every work order inherits these
 
 - **No new crate dependencies. `#![forbid(unsafe_code)]`. MSRV 1.75.0.
