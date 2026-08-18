@@ -171,6 +171,25 @@ for order, lineno, key in entries:
                   f"'title: {key2}' at line {lineno2} appears earlier and always "
                   f"matches first")
             break
+
+# classify() tries match_title() BEFORE match_title_glob(), and both award the
+# same weight. So a glob is unreachable if every string it can match already
+# contains some `title:` key: the literal segments between its wildcards are
+# present in every match, so a title key inside one of them always wins first.
+title_keys = [e[2] for e in entries]
+for lineno, raw in enumerate(open(sys.argv[1], encoding='utf-8', errors='replace'), 1):
+    body = raw.split('#', 1)[0].strip()
+    if not body.startswith('glob:'):
+        continue
+    g = approx(body[len('glob:'):])
+    if not g:
+        continue
+    segments = [s for s in re.split(r'[*?]+', g) if s.strip()]
+    for t in title_keys:
+        if any(t in s for s in segments):
+            print(f"INFO  line {lineno}: 'glob: {g}' is unreachable — every string it "
+                  f"matches contains 'title: {t}', which match_title() checks first")
+            break
 PY
 else
     echo "INFO  (install python3 for the duplicate / shadowed-rule pass)"
