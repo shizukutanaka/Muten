@@ -132,6 +132,38 @@ else
 fi
 
 echo
+echo "[2b/3] Standalone rustc checks (no registry needed)"
+
+# Some modules have no external-crate dependencies at all, so rustc can
+# compile AND run their unit tests directly — no cargo, no registry, no
+# network. That matters because this environment's egress policy denies
+# static.crates.io, which blocks `cargo test` entirely; without this the
+# largest module in the crate would stay unverified. `confusables.rs` in
+# particular carries the evasion-normalization engine and the DR-12
+# ClickFix/FileFix work.
+if command -v rustc >/dev/null 2>&1; then
+    _tmp="${TMPDIR:-/tmp}/muten-verify-$$"
+    mkdir -p "$_tmp"
+    for _m in confusables fingerprint mitre; do
+        _src="$CRATE/src/$_m.rs"
+        [ -f "$_src" ] || continue
+        if rustc --edition 2021 --test -O -o "$_tmp/t_$_m" "$_src" >/dev/null 2>&1; then
+            _res=$("$_tmp/t_$_m" 2>&1 | grep -m1 'test result')
+            case "$_res" in
+                *"0 failed"*) ok "rustc --test $_m.rs — ${_res#test result: }" ;;
+                *)            bad "rustc --test $_m.rs — ${_res:-no result line}" ;;
+            esac
+        else
+            bad "rustc failed to compile $_m.rs standalone"
+        fi
+    done
+    rm -rf "$_tmp"
+    skp "the other 15 modules" "they import serde/serde_json/sha2 — need cargo + registry"
+else
+    skp "standalone rustc module tests" "rustc not installed"
+fi
+
+echo
 echo "[3/3] MSRV consistency"
 
 # The crate advertises a rust-version; a dependency whose own MSRV is higher

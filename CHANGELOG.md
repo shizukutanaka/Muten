@@ -5,6 +5,36 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Verified — DR-12 resolved: 693 tests run and pass **without a registry**
+- Questioning "verify this code compiles" showed it had been conflated
+  with "download every dependency". They are not the same.
+  **`src/confusables.rs` — the crate's largest module and the home of the
+  DR-12 ClickFix/FileFix work — has no external-crate dependencies at
+  all** (its single "serde" hit is a doc comment; zero derive macros). So
+  `rustc` can compile *and run* its tests directly, with no cargo, no
+  registry and no network.
+- Result: **`confusables.rs` 675 passed / 0 failed**, plus
+  `fingerprint.rs` 12 and `mitre.rs` 6 — **693 tests green**. Among them
+  `clickfix_fires_on_filefix_terminalfix_phrases`, the DR-12 test that
+  had never been executed.
+- **Teeth-proven**: replacing the `filefix` block with `false` makes that
+  test **FAIL**; restored afterwards. So the passing result reflects the
+  fix, not a vacuous assertion.
+- DR-12 is therefore **RESOLVED**, and B2 downgraded to partial — what
+  remains is the crate-wide build, the `*_helper_reference.rs` suites and
+  the `scoring_scenarios.rs` additions, all of which need the 15
+  serde-importing modules and hence the blocked registry.
+- **Automated as phase [2b/3] of `scripts/verify.sh`**, so this is a
+  standing capability rather than a one-off: any session, on any machine,
+  now runs those 693 tests without network.
+- **Corrected an earlier claim of mine.** The WO-1 de-risking note said
+  `linux_helper_reference.rs` / `macos_helper_reference.rs` use "only
+  std". They also use **`tempfile`** and **`serde_json`**, via
+  fully-qualified paths inside function bodies rather than a top-level
+  `use` — which is precisely why a `^use` grep missed them. `rustc --test`
+  fails on both with `unresolved module or unlinked crate`, so they still
+  need cargo. Fixed in WO-1.
+
 ### Fixed — DR-23 resolved: `clap` pinned back to 4.5.20, MSRV 1.75 restored
 - **The "cannot do cargo work here" conclusion was wrong, and it was mine.**
   Registry work had been written off from 403 errors without ever running

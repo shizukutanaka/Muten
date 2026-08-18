@@ -97,7 +97,7 @@ without it.
 | # | Item | Why it blocks | Status |
 |---|---|---|---|
 | ~~B1~~ | ~~**DR-23** — `clap 4.6.6` needs Rust 1.85~~ | — | ✅ **FIXED**: pinned back to `=4.5.20` (MSRV 1.74), lock re-resolved, Dependabot `ignore` guards recurrence |
-| B2 | **DR-12 + WO-1** — cargo-unverified code on the default branch | `src/confusables.rs`, two `*_helper_reference.rs` suites and `scoring_scenarios.rs` additions have **never been compiled**. Cannot claim a tested release. | Needs one cargo-capable session |
+| B2◐ | **DR-12 ✅ verified** (675 tests green via standalone `rustc`, teeth-proven); rest of WO-1 still open | `src/confusables.rs`, two `*_helper_reference.rs` suites and `scoring_scenarios.rs` additions have **never been compiled**. Cannot claim a tested release. | Needs one cargo-capable session |
 | B3 | **DR-16 / WO-2** — no CI | Without it every future change repeats B1/B2. Partly mitigated: `scripts/verify.sh` runs the toolchain-free half **today**. | Owner installs `docs/ci/ci.yml` |
 | B4 | **DR-20 / WO-11** — 28% of topic-agnostic budget dead | This is the *core detection value*; the literature (TASR) says the structural signals are the durable ones. `age_ms` is done; `origin` is blocked on the lock-shape guard. | `age_ms` ✅, `origin` open |
 
@@ -176,9 +176,14 @@ checked and all look clean, so expect it to build rather than fight it:
   expression. The DR-12 additions cannot trip an unused-variable denial.
 - **Crate-API drift in the new test files**: `linux_helper_reference.rs`
   and `macos_helper_reference.rs` reference **no** `muten_overlay::`
-  items at all — they use only `std::process::{Command, Stdio}` and
-  `std::os::unix::fs::PermissionsExt`, shelling out to the helper
-  scripts. So no signature can have drifted under them.
+  items, so no crate signature can have drifted under them.
+  **Correction to an earlier version of this note**, which claimed they
+  use "only std": they also depend on **`tempfile`** and
+  **`serde_json`**, referenced by fully-qualified path inside function
+  bodies rather than by a top-level `use` — which is exactly why a
+  `^use` grep missed them. Confirmed by `rustc --test`, which fails on
+  both with `unresolved module or unlinked crate`. They therefore still
+  need cargo + the registry; they are not standalone-runnable.
 - **Windows build breakage**: both files carry `#![cfg(unix)]` as an
   inner attribute at file scope (after the `//!` docs, before the
   `use`s), so they compile out entirely off Unix. `PermissionsExt` is
@@ -187,6 +192,19 @@ This reduces the risk; it does not remove it — reading cannot catch
 type errors inside complex expressions. Still run the full gauntlet.
 
 1. `cd crates/muten-overlay`
+**Already verified without cargo (2026-08-18).** `rustc` alone can
+compile *and run* the tests of every module that has no external-crate
+dependency, which this environment's blocked registry does not prevent.
+Results, now automated as phase [2b/3] of `scripts/verify.sh`:
+`confusables.rs` **675 passed / 0 failed** (this is the DR-12 file — the
+`clickfix_fires_on_filefix_terminalfix_phrases` test passes, and
+disabling the `filefix` block makes it FAIL, so it has teeth),
+`fingerprint.rs` **12 passed**, `mitre.rs` **6 passed** — 693 tests
+green. The remaining 15 modules import `serde`/`serde_json`/`sha2` and
+still need cargo. So the DR-12 half of this work order is **done**; what
+remains is the crate-wide build, the `*_helper_reference.rs` suites, and
+the `scoring_scenarios.rs` additions.
+
 2. `cargo build --all-targets` — fix any compile error minimally (most
    likely locations: the `filefix` block in `has_clickfix_instruction`,
    `src/confusables.rs` ~line 1786; the two new `*_helper_reference.rs`

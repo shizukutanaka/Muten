@@ -236,7 +236,7 @@ Authenticode/Sigstore signing, `cargo-semver-checks` CI gate, and
 `criterion` throughput benchmarks are all unimplemented (tracked
 previously as roadmap C10-1 and the remainder of category C3).
 
-### [OPEN ★★★, code written — cargo-unverified] DR-12: ClickFix variant vocabulary gap — FileFix / TerminalFix
+### [~~RESOLVED~~ — verified with standalone rustc] DR-12: ClickFix variant vocabulary gap — FileFix / TerminalFix
 **Evidence**: `has_clickfix_instruction` (`src/confusables.rs:1746`)
 covered Win+R / Ctrl+V shortcut framing, run-dialog phrases (`open run`,
 `paste the command`, `into the run box`), CAPTCHA framing,
