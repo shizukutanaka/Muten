@@ -404,16 +404,44 @@ Split it, and do the cheap half first:
    positive — muten would *close the lock screen on an unattended
    machine*, i.e. the product would actively degrade security.
 
-   So `origin` cannot ship as a straight helper field. Whatever evidence
-   source you pick, an implementation MUST first answer: *what stops the
-   lock shape reaching Block?* Options to evaluate (none validated yet):
-   a never-dismiss allowlist for known locker/kiosk processes (the
-   `process` field already exists on `EnumeratedWindow`); re-bounding the
-   geometry stack so the lock shape stays < 100 even with `Unsolicited`;
-   or requiring a content tell before `Unsolicited` may contribute. Add
-   a `benign_corpus`-style regression test for the lock shape *before*
-   changing anything, so the guard is enforced by a test rather than by
-   a comment.
+   So `origin` cannot ship as a straight helper field. **Decided design —
+   build this guard FIRST, before any `origin` work, as its own
+   independently-shippable change:**
+
+   > **Structure alone must never reach `Block`.** If no *content or
+   > provenance-of-badness* tell fired — no `blocklist_title`, no
+   > `blocklist_host`, no `blocklist_phone`, no `phone_number`, and no
+   > content-vocabulary signal — clamp the final score to
+   > `BLOCK_THRESHOLD - 1`, so a purely structural window can reach
+   > `Suspicious` (audited) but never `Block` (dismissed).
+
+   Why this and not the alternatives. A never-dismiss allowlist of
+   locker/kiosk process names is an unbounded list that silently rots —
+   every distro's locker, every kiosk vendor, every exam browser, and it
+   fails open for the one you didn't enumerate. Re-bounding individual
+   geometry weights spreads the fix across many constants and breaks the
+   moment someone re-tunes one. The clamp is a single invariant that
+   states the actual safety property directly, and it is **already the
+   design's intent**: the `input_trap` comment promises the bare lock
+   shape "tops out at 95 — still `Suspicious`, never an automatic
+   `Block`". Today that 95 is an *arithmetic coincidence* of six
+   constants; the clamp turns the same promise into something enforced.
+   It also fails safe for shapes nobody has thought of yet, not just
+   lockers.
+
+   Note what it does **not** weaken: a real scam overlay carries a
+   content tell (a scam title, a phone number, ClickFix instructions), so
+   it is unaffected and still Blocks. The clamp only bites on windows
+   whose sole evidence is their shape — which is precisely the class
+   where lockers, kiosk shells and exam browsers are indistinguishable
+   from scams.
+
+   **Order of work**: (1) add a `benign_corpus`-style regression test
+   pinning "lock shape + `Unsolicited` + `very_new` ⇒ not `Block`" — it
+   will *fail* today if you inject `Unsolicited`, which is the proof the
+   guard is needed; (2) implement the clamp; (3) confirm the scam
+   scenarios in `scoring_scenarios.rs` still Block; (4) only then start
+   `origin`. Teeth: remove the clamp and confirm the new test goes red.
 
    **Scoping the locker risk — do these windows even get enumerated?**
    (Related-software survey; sourced where noted, hypotheses flagged.)

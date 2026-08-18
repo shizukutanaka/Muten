@@ -653,9 +653,17 @@ screensavers, kiosk shells, exam browsers — are precisely those that
 appear while the user is idle, so idle-time-based provenance evidence
 would fire on them *maximally*. For a screen locker the outcome is worse
 than a false positive: muten would close the lock screen on an unattended
-machine. Any `origin` work must therefore ship with an explicit
-lock-shape guard (never-dismiss process allowlist, re-bounded geometry
-stack, or requiring a content tell) plus a regression test pinning it.
+machine. **Decided guard (see WO-11)**: rather than an
+unbounded allowlist of locker/kiosk process names, enforce the invariant
+the design already claims — *structure alone never reaches `Block`*.
+When no content or provenance-of-badness tell fired (`blocklist_title`,
+`blocklist_host`, `blocklist_phone`, `phone_number`, or any content
+vocabulary signal), clamp the score to `BLOCK_THRESHOLD - 1`. That turns
+the `input_trap` comment's promise ("tops out at 95 — still
+`Suspicious`") from an arithmetic coincidence of six constants into an
+enforced property, and fails safe for shapes nobody has enumerated. Real
+scams are unaffected: they carry a content tell. Build and test this
+guard **before** any `origin` work.
 
 **`age_ms` status: DONE on all four helpers — but measure before
 claiming the 10 points back.** `very_new` requires `0 < age_ms < 1000`,
