@@ -69,7 +69,7 @@ disagree, the audit doc is authoritative. 日本語補足: 上段=壊しては
 
 | Weakness (audit ref) | Impact | Fix |
 |---|---|---|
-| Cargo-unverified Rust on the default branch: DR-12 impl, 2 `scoring_scenarios.rs` tests, both `*_helper_reference.rs` files | #1 risk — could fail to compile | **WO-1** |
+| ~~Cargo-unverified Rust on the default branch~~ | ✅ largely resolved — 696 tests green via standalone `rustc`; only a real end-to-end `cargo test` remains | **WO-1** |
 | CI claimed-then-shipped but not installed (DR-16) | no automated verification channel | **WO-2** (owner step) |
 | No signal for a bare IP literal shown in an alert (DR-13, CypherLoc trick) | detection gap on a live 2.8M-victim kit | **WO-3** |
 | IT-helpdesk impersonation only covered by verbatim blocklist rules (DR-14) | generalization gap (low — exact phrasings blocked) | **WO-4** |
@@ -92,12 +92,13 @@ backlog turns out not to gate completion. Work the four blockers; do the
 rest because you want the feature, not because the product is unfinished
 without it.
 
-**Status as of 2026-08-18**: B1 cleared; B2 largely cleared (693 tests
-now verified without a registry); B3 and B4 blocked by environment
-policy, not by unfinished work. Confirmed exhaustively: no vendored
-sources, no crate cache, and no permitted crate mirror — `index.crates.io`
-is reachable but `static.crates.io` is a policy 403, and per
-`/root/.ccr/README.md` that is to be reported, never routed around.
+**Status as of 2026-08-18**: B1 fixed; B2 covered (**696 tests green**
+without a registry, plus the last two assertions checked directly); B3
+and B4 re-classified below as *not product blockers*. Registry access was
+confirmed exhaustively: no vendored sources, no crate cache, no permitted
+mirror — `index.crates.io` is reachable but `static.crates.io` is a
+policy 403, and per `/root/.ccr/README.md` that is to be reported, never
+routed around.
 
 **RE-CLASSIFIED 2026-08-18.** The original four-item blocking list was
 written before B1 was fixed and before B2 was measured, and two of its
@@ -634,6 +635,39 @@ worse than not writing them.
    `N/total`. Keep the hard assertion at 0, but emitting the number makes
    the FP-aversion claim measurable and lets `README.md`'s stated
    principle cite evidence.
+3b. **Pre-probed Japanese candidates (2026-08) — use these, they are
+   already measured.** `scripts/fp-probe/` runs a title through all 62
+   content detectors with `rustc` alone (no registry). 50 realistic
+   Japanese titles were probed: **46 came back clean** and are safe to
+   paste into `BENIGN_TITLES` — OS/app chrome (`設定`,
+   `システム環境設定`, `ごみ箱`, `タスク マネージャー`, `無題 - メモ帳`,
+   `受信トレイ - Outlook`, …) and the adversarial-benign set that reuses
+   scam vocabulary legitimately (`ウイルス定義を更新しました -
+   ウイルスバスター`, `スキャンが完了しました。脅威は見つかりませんでした`,
+   `重要なお知らせ - 三菱UFJ銀行`, `ワンタイムパスワードを入力してください`,
+   `税務署からのお知らせ - e-Tax`, `宅配便のお届け予定のお知らせ`,
+   `電気料金のお知らせ`, `当選者発表 - キャンペーン事務局`, …).
+
+   **Four fired, and all four are traps — do NOT add them to
+   `BENIGN_TITLES`:**
+
+   | title | signal |
+   |---|---|
+   | アカウントがロックされました - パスワードを再設定してください | `credential_harvest` |
+   | 不正なログインを検知しました - ご確認ください | `credential_harvest` |
+   | お客様のアカウントは一時的に制限されています | `credential_harvest` |
+   | ウイルスが検出されました - 隔離しました - Windows セキュリティ | `fake_scanner` |
+
+   Both signals are gated behind `alert_shaped` in `classify()`, so a
+   real notification (small, closable, non-modal) never reaches them —
+   **the signals are correct and the geometry guard is doing its job**.
+   But `benign_corpus.rs` evaluates with an alert-shaped profile *on
+   purpose*, to isolate content FPs, so these would fail there and the
+   failure would be wrong. Put them in a separate test asserting
+   *"not alert-shaped ⇒ no block"* instead. This is the concrete form of
+   the warning in step 2: a red is only a bug once you have checked the
+   geometry guard is not already handling it.
+
 4. **Add Cyrillic/Greek/Armenian negative cases — currently there are
    zero.** `confusable_mixed_script` (+30) and `whole_script_confusable`
    (+30) exist to judge exactly those scripts, yet `BENIGN_TITLES` has no
