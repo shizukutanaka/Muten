@@ -178,6 +178,33 @@ const BENIGN_TITLES: &[&str] = &[
     "当選者発表 - キャンペーン事務局",                 // ~ prize_lure, no claim action
     "副業・在宅ワークの求人情報",                      // ~ job_scam, no advance fee
     "仮想通貨ウォレットに接続します",                  // ~ wallet_connect, user-initiated
+    // ── Cyrillic / Greek / Armenian legitimate (DR-21) ───────────────────
+    // `confusable_mixed_script` (+30) and `whole_script_confusable` (+30)
+    // exist to judge exactly these scripts, yet the corpus contained no
+    // title in any of them — the two heaviest script signals had no
+    // false-positive guard at all. Each entry below was probed against all
+    // 68 detectors, feeding CONTENT detectors the normalized title and
+    // FORM detectors the raw one, exactly as `classify()` does.
+    "Документ 1 - Microsoft Word",
+    "Параметры",
+    "Панель управления",
+    "Корзина",
+    "Диспетчер задач",
+    "Проводник",
+    "Новая вкладка - Google Chrome", // Cyrillic+Latin across tokens, not within one
+    "Входящие - Почта",
+    "Калькулятор",
+    "Безопасность Windows",
+    "Обновление завершено",
+    "Настройки учётной записи",
+    "Έγγραφο 1 - Word",
+    "Ρυθμίσεις",
+    "Πίνακας Ελέγχου",
+    "Κάδος Ανακύκλωσης",
+    "Νέα καρτέλα - Chrome",
+    "Αριθμομηχανή",
+    "Փաստաթուղթ 1",
+    "Կարգավորումներ",
 ];
 
 fn alert_shaped(title: &str) -> OverlayWindow {

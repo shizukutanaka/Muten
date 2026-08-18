@@ -5,6 +5,28 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — Cyrillic/Greek/Armenian benign titles (was zero); corpus 68 → 132, FP rate 0.0%
+- Closed WO-12 step 4. `confusable_mixed_script` (+30) and
+  `whole_script_confusable` (+30) exist to judge Cyrillic/Greek/Armenian
+  text, yet the corpus held **no title in any of those scripts** — the
+  two heaviest script signals had no false-positive guard whatsoever.
+  Added 20 legitimate titles (`Параметры`, `Корзина`, `Диспетчер задач`,
+  `Ρυθμίσεις`, `Κάδος Ανακύκλωσης`, `Կարգավորումներ`, …).
+- **A probe bug of mine, worth recording.** The first run reported
+  **20/20 firing** `confusable_mixed_script`, which looked like a major
+  finding and was simply wrong: the probe normalized the title before
+  calling the *form* detectors, and folding Cyrillic→Latin
+  **manufactures** the very mix they look for. `classify()` feeds content
+  detectors the normalized title but form detectors the **raw** one — the
+  doc comment on `has_confusable_mixed_script` says so explicitly. With
+  the correct split all 20 are clean. The distinction is now the loudest
+  section of `scripts/fp-probe/README.md`.
+- Full corpus re-probed against **all 68** detectors with the correct
+  split: **132 titles, 0 false positives, measured FP rate 0.0%**.
+- Remaining in WO-12: the *in-test* assertion is still a boolean
+  (`benign_corpus.rs` does not print the rate), and the corpus is
+  hand-authored rather than sampled, so it bounds *imagined* FPs only.
+
 ### Added — Japanese benign corpus 10 → 54 titles, closing most of DR-21
 - DR-21 (502 Japanese detection literals guarded by 10 Japanese benign
   titles) was the largest documented unknown, and WO-12 assumed clearing

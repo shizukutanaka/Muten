@@ -606,16 +606,32 @@ actually hide (a real AV's `ウイルス定義を更新しました`, a real ban
 | | before | after |
 |---|---|---|
 | JP benign titles | 10 | **54** |
+| Cyrillic/Greek/Armenian titles | **0** | **20** |
 | ratio to 502 JP literals | 50 : 1 | **9 : 1** |
-| corpus total | 68 | **112** |
+| corpus total | 68 | **132** |
 
-The whole 112-title corpus was then re-probed against all 62 content
-detectors: **0 false positives**. The array was also compiled standalone
+**Cyrillic/Greek/Armenian negatives added too (was zero).** The two
+heaviest script signals — `confusable_mixed_script` (+30) and
+`whole_script_confusable` (+30) — exist to judge exactly those scripts
+yet had no benign guard at all. 20 legitimate Russian/Greek/Armenian
+titles (`Параметры`, `Корзина`, `Диспетчер задач`, `Ρυθμίσεις`,
+`Κάδος Ανακύκλωσης`, `Կարգավորումներ`, …) were probed and added.
+
+*A probe bug worth recording*: the first run reported **20/20 firing**
+`confusable_mixed_script`. That was wrong — the probe normalized before
+calling the form detectors, and folding Cyrillic→Latin *manufactures* the
+mix they look for. `classify()` feeds content detectors the normalized
+title but form detectors the **raw** one. With the correct split all 20
+are clean. Documented in `scripts/fp-probe/README.md`.
+
+The whole **132**-title corpus was then re-probed against **all 68**
+detectors with the correct raw/normalized split: **0 false positives,
+measured FP rate 0.0%**. The array was also compiled standalone
 with `rustc` to confirm the edit is syntactically valid, so this is not
-an unverified change. **Still open**: the FP *rate* is reported as a
-boolean rather than a number (WO-12 step 3), the corpus remains
-hand-authored rather than sampled, and Cyrillic/Greek/Armenian negatives
-are still absent (WO-12 step 4).
+an unverified change. **Still open**: the *in-test* assertion is still a boolean — the rate
+(0.0%) has been measured externally but `benign_corpus.rs` does not yet
+print it (WO-12 step 3) — and the corpus remains hand-authored rather
+than sampled from real-world data, so it bounds *imagined* FPs only.
 
 **Four probed titles fired and were deliberately NOT added** —
 `アカウントがロックされました…`, `不正なログインを検知しました…`,

@@ -668,8 +668,16 @@ worse than not writing them.
    the warning in step 2: a red is only a bug once you have checked the
    geometry guard is not already handling it.
 
-4. **Add Cyrillic/Greek/Armenian negative cases — currently there are
-   zero.** `confusable_mixed_script` (+30) and `whole_script_confusable`
+4. ~~**Add Cyrillic/Greek/Armenian negative cases**~~ — ✅ **DONE**: 20
+   legitimate Russian/Greek/Armenian titles probed and added (corpus
+   68 → 132; those scripts 0 → 20). Watch the probe trap documented in
+   `scripts/fp-probe/README.md`: form detectors take the **raw** title,
+   content detectors the **normalized** one — normalizing first makes
+   every pure-Cyrillic word look mixed-script. Original guidance kept
+   below for the remaining work:
+
+   **~~Add Cyrillic/Greek/Armenian negative cases — currently there are
+   zero.~~** `confusable_mixed_script` (+30) and `whole_script_confusable`
    (+30) exist to judge exactly those scripts, yet `BENIGN_TITLES` has no
    entry in any of them, so neither signal has an FP guard. Include
    ordinary Russian/Greek window titles (which should *not* fire, because

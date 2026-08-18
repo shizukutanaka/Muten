@@ -36,10 +36,32 @@ PY
 rustc --edition 2021 -O -o /tmp/probe /tmp/probe.rs && /tmp/probe "候補タイトル" "another title"
 ```
 
-`form` above excludes the six *evasion-form* detectors (bidi, combining
-marks, whole-script, …), which describe how text is written rather than
-what it says — the same distinction `tests/benign_corpus.rs` makes with
-its `GEOMETRY_SIGNALS` exemption.
+### ⚠ Feed the two detector families different input — `classify()` does
+
+This is the easy mistake, and it produced a completely wrong result once
+here: probing 20 legitimate Russian/Greek titles reported **20/20 firing
+`confusable_mixed_script`**, which was an artefact of the probe, not a
+finding.
+
+- **Content detectors** take the **normalized** title
+  (`normalize_for_match`), so leetspeak and homoglyph evasion are folded
+  before matching.
+- **The six evasion-FORM detectors** — `has_confusable_mixed_script`,
+  `has_whole_script_confusable`, `has_bidi_override`, `has_compat_alpha`,
+  `has_excessive_combining_marks`, `has_mixed_number_systems` — take the
+  **raw** title. `classify()` calls them on `title` directly
+  (`src/lib.rs`), and the doc comment on `has_confusable_mixed_script`
+  says why: *"Run on the raw string: `fold_confusables` erases the
+  evidence by folding everything to Latin."*
+
+Normalize first and every pure-Cyrillic word looks mixed-script, because
+folding turns some letters into Latin and leaves the rest — you
+manufacture the exact condition you are testing for. With the correct
+split, all 20 of those titles are clean.
+
+Note `tests/benign_corpus.rs` exempts `GEOMETRY_SIGNALS` (fullscreen,
+topmost, …) but **not** the form detectors, so a candidate has to be
+clean against all 68 to be safe to add there.
 
 ## Interpreting a hit — read this before "fixing" anything
 
