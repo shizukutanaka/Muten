@@ -5,6 +5,28 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Documented — the shipped blocklist has **zero `host:` rules**, which nothing said
+- Swept the remaining rule types for the dead-rule class: all 44
+  `process:` rules are distinct (0 redundant), and there are **0 `host:`
+  rules at all** — a fact that appeared nowhere in the blocklist, the
+  README, or the docs.
+- This matters because `host:` is the strongest thing in the product:
+  `classify()` returns `Decision::Block` immediately on a match,
+  short-circuiting every other signal. So the single most powerful
+  detection path ships empty, and an operator would reasonably assume
+  otherwise.
+- The emptiness is **correct** — an earlier revision carried fabricated
+  example hosts and they were removed, because a curated known-bad list
+  the authors cannot continuously verify would be stale or invented, and
+  inventing one makes the most powerful rule type the least trustworthy.
+  The problem was that this was silent.
+- Documented it prominently in the blocklist header: why it is empty,
+  that detection therefore runs entirely on the heuristic path, and how
+  to populate it from a source the operator actually trusts (DNS/proxy
+  telemetry, threat-intel feed, hosts seen in real incidents) — with the
+  warning that it is a high-privilege list, since one wrong entry
+  hard-blocks a legitimate site with no score to soften it.
+
 ### Added — `scripts/verify.sh`: one verification entrypoint, usable today
 - **Questioned the requirement instead of the blocker.** "Changes are
   verified before they land" had been conflated with "GitHub Actions runs

@@ -39,6 +39,24 @@
 # Run `installer/overlay-helper/lint-blocklist.sh <this file>` before
 # deploying — it names the offending line and exits non-zero.
 #
+# ⚠ THIS FILE SHIPS WITH **ZERO `host:` RULES** — AND THAT IS DELIBERATE.
+# A `host:` match is the strongest thing in the product: it returns
+# Decision::Block immediately, short-circuiting every other signal. Which
+# is exactly why none are shipped — a curated "known-bad domain" list that
+# muten's authors cannot continuously verify would be either stale or
+# invented, and inventing one would make the most powerful rule type the
+# least trustworthy. (An earlier revision did carry fabricated example
+# hosts; they were removed for this reason.)
+#
+# CONSEQUENCE FOR OPERATORS: out of the box, detection runs entirely on
+# the heuristic/score path below. To use the hard-block path, add your own
+# `host:` lines from a source you actually trust — your DNS/proxy
+# telemetry, your threat-intel feed, or hosts observed in real incidents
+# on your fleet:
+#     host: scam-example.test        # blocks it and every subdomain
+# Treat that as a high-privilege list: one wrong entry hard-blocks a
+# legitimate site with no score to soften it.
+#
 # SCOPE NOTE: muten's classifier blocks on a CONFIRMED host match or a
 # high heuristic score. Title patterns only CONTRIBUTE to the score —
 # they never auto-block alone, because legitimate windows can contain
