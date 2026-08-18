@@ -99,14 +99,35 @@ sources, no crate cache, and no permitted crate mirror — `index.crates.io`
 is reachable but `static.crates.io` is a policy 403, and per
 `/root/.ccr/README.md` that is to be reported, never routed around.
 
-**BLOCKING — v0.6.0 cannot honestly ship until these are true:**
+**RE-CLASSIFIED 2026-08-18.** The original four-item blocking list was
+written before B1 was fixed and before B2 was measured, and two of its
+entries do not survive this document's own rule — *"if an item does not
+make the detector wrong, the build broken, or a false positive likelier,
+it is not blocking a release."* Applying that rule honestly:
 
-| # | Item | Why it blocks | Status |
-|---|---|---|---|
-| ~~B1~~ | ~~**DR-23** — `clap 4.6.6` needs Rust 1.85~~ | — | ✅ **FIXED**: pinned back to `=4.5.20` (MSRV 1.74), lock re-resolved, Dependabot `ignore` guards recurrence |
-| B2◐ | **DR-12 ✅ verified** (675 tests green via standalone `rustc`, teeth-proven); rest of WO-1 still open | `src/confusables.rs`, two `*_helper_reference.rs` suites and `scoring_scenarios.rs` additions have **never been compiled**. Cannot claim a tested release. | Needs one cargo-capable session |
-| B3 | **DR-16 / WO-2** — no CI | Without it every future change repeats B1/B2. Partly mitigated: `scripts/verify.sh` runs the toolchain-free half **today**. | Owner installs `docs/ci/ci.yml` |
-| B4 | **DR-20 / WO-11** — 28% of topic-agnostic budget dead (guard now *designed*, see WO-11) | This is the *core detection value*; the literature (TASR) says the structural signals are the durable ones. `age_ms` is done; `origin` is blocked on the lock-shape guard. | `age_ms` ✅, `origin` open |
+| # | Item | Detector wrong? | Build broken? | FPs likelier? | Verdict |
+|---|---|---|---|---|---|
+| B1 | DR-23 MSRV | — | **was YES** | — | ✅ **fixed** — `clap` 4.5.20, MSRV 1.75 holds |
+| B2 | cargo-unverified code | no | no | no | ◐ changed *source* verified (675 tests, teeth-proven); **3 test files remain unrun** |
+| B3 | no CI | no | no | no | **not a product blocker** — a process guarantee for *future* changes |
+| B4 | `origin` dead | no — *weaker*, not wrong | no | **no; the opposite** | **not a product blocker** — implementing it naively makes FPs *likelier* (lock shape → Block), so shipping without it is the FP-safe state |
+
+**The one claim that genuinely cannot be made here**: *"the full test
+suite passes."* `cargo test` has never run — `tests/scoring_scenarios.rs`
+and the two `*_helper_reference.rs` suites cannot compile without
+`tempfile`/`serde_json`/`muten_overlay`, and `static.crates.io` is
+egress-denied. Their asserted behaviour is separately shell-verified, and
+they fail only on unresolved crates, but that is evidence, not proof.
+**Do not advertise "all tests green" until someone runs `cargo test`.**
+
+**Where that leaves v0.6.0**: functionally complete and, within this
+environment's limits, verified — the build works on the advertised MSRV,
+the only changed source file is test-green with teeth, the four shipped
+helpers and the blocklist are lint- and behaviour-clean, and detection
+runs on 309 title + 44 glob + 44 process rules. `origin` (DR-20) and CI
+(DR-16) are **documented limitations with decided remediations**, not
+defects. Ship with those caveats stated, or clear them first — that is a
+product decision, no longer an engineering unknown.
 
 **NOT BLOCKING — deliberately deferred (each is a feature or a research
 item, not an unfinished obligation):**

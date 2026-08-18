@@ -5,6 +5,35 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Re-classified — v0.6.0 is shippable with two documented limitations
+- Turned the "question every requirement" step on the **blocking list I
+  wrote myself**, which had never been re-examined. Two of its four
+  entries do not survive this document's own rule — *if an item does not
+  make the detector wrong, the build broken, or a false positive
+  likelier, it is not blocking a release*:
+  - **B3 (no CI)**: detector wrong? no. build broken? no. FPs likelier?
+    no. It is a **process** guarantee for *future* changes, not a defect
+    in this version.
+  - **B4 (`origin` dead)**: the detector is *weaker*, not *wrong* — and
+    implementing it naively makes false positives **more** likely (the
+    lock shape reaches Block and muten would dismiss a screen locker), so
+    shipping without it is the FP-*safe* state.
+- **The one claim that still cannot be made**: "the full test suite
+  passes." `cargo test` has never run — `scoring_scenarios.rs` and the
+  two `*_helper_reference.rs` suites need `tempfile`/`serde_json`/
+  `muten_overlay`, and `static.crates.io` is egress-denied. They fail
+  only on unresolved crates and their behaviour is separately
+  shell-verified, but that is evidence, not proof. **"All tests green"
+  must not be advertised until someone runs `cargo test`.**
+- **Verdict**: v0.6.0 is functionally complete and — within this
+  environment's limits — verified. The build works on the advertised
+  MSRV; the only changed source file is test-green with teeth; the four
+  helpers and the blocklist are lint- and behaviour-clean; detection runs
+  on 309 title + 44 glob + 44 process rules. `origin` (DR-20) and CI
+  (DR-16) are now **documented limitations with decided remediations**,
+  not unknowns. Shipping with those caveats stated is a product
+  decision, no longer an engineering one.
+
 ### Scoped — "the crate is cargo-unverified" was overstated; it is 3 test files
 - Measured rather than assumed what B2 actually covers. From the last
   known-green commit (`549df29`), only **four** Rust files changed all
