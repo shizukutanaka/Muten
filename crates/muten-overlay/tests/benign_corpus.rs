@@ -237,9 +237,22 @@ fn benign_corpus_fires_no_content_signal() {
             ));
         }
     }
+    // Report a RATE, not just pass/fail (DR-21). The detection literature
+    // treats a false-positive rate against a realistic corpus as a
+    // first-class result; a boolean assertion hides whether the corpus
+    // grew, shrank, or drifted. `cargo test -- --nocapture` surfaces this.
+    let rate = 100.0 * (failures.len() as f64) / (BENIGN_TITLES.len() as f64);
+    println!(
+        "benign corpus: {} titles, {} content-signal false positives ({rate:.1}%)",
+        BENIGN_TITLES.len(),
+        failures.len()
+    );
+    // The bar stays at zero — the rate is for visibility, not tolerance.
     assert!(
         failures.is_empty(),
-        "benign corpus produced content-signal false positives:\n{}",
+        "benign corpus produced content-signal false positives ({}/{}, {rate:.1}%):\n{}",
+        failures.len(),
+        BENIGN_TITLES.len(),
         failures.join("\n")
     );
 }

@@ -5,6 +5,25 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — `benign_corpus` now reports a false-positive **rate**, not a boolean
+- Closed the last actionable WO-12 item. The detection literature treats
+  an FP rate against a realistic corpus as a first-class result; a
+  pass/fail assertion hides whether the corpus grew, shrank or drifted.
+  `benign_corpus_fires_no_content_signal` now prints
+  `benign corpus: N titles, M content-signal false positives (X.X%)` and
+  includes the rate in its failure message. **The bar stays at zero** —
+  the rate is for visibility, not tolerance.
+- **Verification split, stated so nobody misreads it.** The corpus work
+  was checked two independent ways: **compilation** —
+  `tests/benign_corpus.rs` compiles cleanly with all 64 added titles and
+  the rate change, via `rustc` against a compile-only `muten_overlay`
+  stub; and **behaviour** — every title probed against the real detectors
+  in `confusables.rs`, giving **132 titles / 0 false positives / 0.0%**.
+  The stub run's own pass/fail is **not** behavioural evidence: its
+  `classify` returns an empty verdict, so the benign tests pass trivially
+  and two scam-detection tests fail as artefacts. Only a real
+  `cargo test` combines both.
+
 ### Added — Cyrillic/Greek/Armenian benign titles (was zero); corpus 68 → 132, FP rate 0.0%
 - Closed WO-12 step 4. `confusable_mixed_script` (+30) and
   `whole_script_confusable` (+30) exist to judge Cyrillic/Greek/Armenian

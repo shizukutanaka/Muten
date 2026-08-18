@@ -609,6 +609,17 @@ Do **not** let this become "add `origin` guessing heuristics" — a false
 502 Japanese detection literals are guarded by 10 Japanese benign titles
 (50:1). Read the DR-21 entry for the full measurement.
 
+**Verification split, so nobody misreads the evidence.** The corpus
+edits here were checked two independent ways: (a) **compilation** —
+`tests/benign_corpus.rs` compiles cleanly with all 64 added titles and
+the rate-reporting change, checked with `rustc` against a compile-only
+`muten_overlay` stub; (b) **behaviour** — every title probed against the
+real detectors in `confusables.rs` (`scripts/fp-probe/`), giving
+132 titles / 0 false positives / 0.0%. The stub run's own pass/fail is
+**not** behavioural evidence: its `classify` returns an empty verdict, so
+the benign tests pass trivially and two scam-detection tests fail as
+artefacts. Only a real `cargo test` combines both.
+
 **Expect red, and treat every red as the deliverable.** Adding benign
 titles is supposed to expose over-broad rules; each failure is a real
 false-positive bug to fix (usually by tightening an AND-pair, not by
@@ -630,11 +641,12 @@ worse than not writing them.
    matching while the scam phrasing still does — then confirm the
    corresponding positive test still passes. Never "fix" it by removing
    the benign title.
-3. Replace the binary assertion with a reported **rate**: count how many
-   corpus entries trigger any non-`GEOMETRY_SIGNALS` signal and print
-   `N/total`. Keep the hard assertion at 0, but emitting the number makes
-   the FP-aversion claim measurable and lets `README.md`'s stated
-   principle cite evidence.
+3. ~~Replace the binary assertion with a reported **rate**~~ — ✅ **DONE**:
+   `benign_corpus_fires_no_content_signal` now prints
+   `benign corpus: N titles, M content-signal false positives (X.X%)` and
+   includes the rate in the failure message. The bar stays at zero — the
+   rate is for visibility, not tolerance. Surface it with
+   `cargo test -- --nocapture`.
 3b. **Pre-probed Japanese candidates (2026-08) — use these, they are
    already measured.** `scripts/fp-probe/` runs a title through all 62
    content detectors with `rustc` alone (no registry). 50 realistic
