@@ -126,7 +126,7 @@ literature, and one finding drove a new signal:
   roadmap, because it says our priorities were wrong.** muten has ~6
   structural/topic-agnostic signals (125 points: `fullscreen` 30,
   `no_close` 25, `unsolicited` 25, `blocks_input` 20, `topmost` 15,
-  `very_new` 10) against ~60 vocabulary signals that each need the right
+  `very_new` 10) against 80 non-structural signals that mostly need the right
   words in English or Japanese. TASR's argument makes the small
   structural set the durable half — a scam overlay *must* cover the
   screen, resist closing, and arrive uninvited, whatever its pretext.
@@ -134,7 +134,7 @@ literature, and one finding drove a new signal:
   `"age_ms":0` unconditionally, so `unsolicited` + `very_new` — 35
   points, **28% of the topic-agnostic budget** — never fire in the
   field. Filed as **DR-20** and promoted to **WO-11**; it outranks
-  adding a 61st vocabulary signal.
+  adding an 81st vocabulary signal.
 
 - **Miramirkhani, Starov, Nikiforakis — "Dial One for Scam: A
   Large-Scale Analysis of Technical Support Scams"** (NDSS 2017,

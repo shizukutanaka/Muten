@@ -585,7 +585,7 @@ full text.
 **Applied to muten (measured, not assumed)**: muten's signal set splits
 into ~6 structural/topic-agnostic signals worth **125 points total**
 (`fullscreen` 30, `no_close` 25, `unsolicited` 25, `blocks_input` 20,
-`topmost` 15, `very_new` 10) versus **~60 topic-specific vocabulary
+`topmost` 15, `very_new` 10) versus **80 non-structural
 signals**, each of which only fires if the scam uses the expected words
 in English or Japanese. By TASR's argument the small structural set is
 the *durable* half — it describes behavior a scam overlay cannot avoid
@@ -627,7 +627,7 @@ warns against, plus three geometry signals.
 **Consequence for prioritization**: `origin`/`age_ms` inference (the
 DR-2 remainder) has been sitting in the backlog as a large, awkward
 task. The literature says it is not backlog — it is the **highest-value
-detection work left**, worth more than adding the 61st vocabulary
+detection work left**, worth more than adding the 81st vocabulary
 signal. Elevated to **WO-11**. Note this also explains a known oddity:
 the docs already concede that on real hosts the blocklist is the
 reliable path and the heuristics are weak — DR-20 is *why*.
@@ -792,7 +792,7 @@ same sweep. Prove teeth by reverting to the single strict parse.
   response latency (DR-5), blocklist hot-reload (DR-3), the X11
   `blocks_input` gap (DR-2b), the macOS `has_close_button` gap (DR-2c),
   and the macOS `blocks_input` gap (DR-2d) are all closed. The detection
-  engine (66 signals / 10 lenses / confusable-normalization pipeline) and
+  engine (89 signals / 10 lenses / confusable-normalization pipeline) and
   the audit-integrity infrastructure (hash chain + Merkle proofs) were
   already mature before this cycle began.
 - **Recommended next action**: run `cargo test`/`clippy`/`fmt` on

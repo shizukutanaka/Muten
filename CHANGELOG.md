@@ -5,6 +5,26 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Fixed (accuracy) — the signal count was stale at 66; it is **89**
+- Mechanically re-verified the project's headline claims instead of
+  trusting them. `#![forbid(unsafe_code)]` present ✓; 26 `cli_contract`
+  tests ✓; 6 direct dependencies (the "no *new* dependencies" invariant
+  is intact) ✓.
+- **Two figures were wrong.** `all_signals()` contains **89** unique
+  signal names (no duplicates), but `FEATURE_AUDIT_2026H2.md` said "66
+  signals" — and I repeated that stale number in my own DR-20 and
+  THREAT_INTEL analysis this session, describing "~60 vocabulary
+  signals". The real split is **9 structural** (geometry + origin) vs
+  **80 non-structural**. Corrected everywhere, including the derived
+  "adding the 61st vocabulary signal" phrasing → 81st.
+- The correction **strengthens DR-20 rather than weakening it**: the
+  imbalance between the durable structural signals and the brittle
+  content ones is larger than the entry claimed, not smaller.
+- Also noted: `src/` now holds 1333 `#[test]` functions against README's
+  "1331" — the two DR-12 tests that have never been compiled. Left the
+  README figure alone rather than asserting a count no one has run;
+  WO-1 updates it from real `cargo test` output.
+
 ### Documented — the shipped blocklist has **zero `host:` rules**, which nothing said
 - Swept the remaining rule types for the dead-rule class: all 44
   `process:` rules are distinct (0 redundant), and there are **0 `host:`

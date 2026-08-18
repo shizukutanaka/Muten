@@ -96,7 +96,7 @@ item, not an unfinished obligation):**
 - **Vocabulary growth** — DR-13 (IP-literal signal), DR-14 (IT-helpdesk
   generalisation), DR-8 (languages beyond EN/JP), WO-8 (intel refresh).
   Per TASR this is the *brittle* detection path, and DR-21 shows each
-  addition widens an untested FP surface. Adding the 61st vocabulary
+  addition widens an untested FP surface. Adding the 81st vocabulary
   signal is the lowest-value work available. WO-8 is recurring
   maintenance and by definition never "done".
 - **Feature expansion** — DR-7 (config file), DR-9 (BITB), DR-10 (signed
