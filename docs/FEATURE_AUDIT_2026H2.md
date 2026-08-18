@@ -362,6 +362,18 @@ integration`). Both empirically confirmed blocked, so the workflow now
 ships as **`docs/ci/ci.yml`** with install instructions in its header,
 and all three false claims were corrected to say the workflow is
 provided but not yet active.
+**Re-tested 2026-08-18** (after the owner became active and Dependabot
+landed): `actions_list` returns exactly one workflow — GitHub's
+auto-generated `dynamic/dependabot/dependabot-updates` — so CI is still
+absent. A fresh attempt to create `.github/workflows/ci.yml` through the
+contents API on the feature branch was refused again:
+`403 Resource not accessible by integration`. The limitation is the App
+token's missing `workflow` permission, not repository state, so it will
+not resolve on its own. **Partially mitigated meanwhile**:
+`scripts/verify.sh` runs the toolchain-free half of CI on any machine
+today, and `docs/ci/ci.yml`'s `verify` job invokes the same script so the
+two cannot drift.
+
 **Remaining action (repository owner, one manual step)**: copy
 `docs/ci/ci.yml` to `.github/workflows/ci.yml` (web UI "Add file" or a
 push with normal user credentials — user tokens have the `workflow`

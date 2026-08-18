@@ -5,6 +5,39 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Fixed — DR-23 resolved: `clap` pinned back to 4.5.20, MSRV 1.75 restored
+- **The "cannot do cargo work here" conclusion was wrong, and it was mine.**
+  Registry work had been written off from 403 errors without ever running
+  the documented diagnosis. `curl -sS "$HTTPS_PROXY/__agentproxy/status"`
+  shows **`index.crates.io` sits in `noProxy`** — directly reachable —
+  and only **`static.crates.io`** is policy-denied. `cargo update` needs
+  only the registry *index*; only `.crate` tarballs come from the static
+  host. The lock could be re-resolved here all along.
+- Pinned `clap` back and let cargo re-resolve from the index:
+  `clap` 4.6.6→**4.5.20** (MSRV 1.85→**1.74**), `clap_builder` 4.5.20,
+  `clap_derive` 4.5.18, `clap_lex` 0.7.7, `anstream` 1.0.0→0.6.21
+  (MSRV 1.66), `anstyle-parse` 0.2.7. No direct dependency now declares
+  an MSRV above 1.74, so `rust-version = "1.75.0"` holds again, and the
+  Dependabot `ignore` for `clap >=4.6.0` stops the bump returning.
+  `verify.sh` confirms `Cargo.lock` ↔ `Cargo.toml` agree.
+- Caveat kept explicit rather than glossed: this rests on crates.io
+  `rust_version` metadata. An actual `cargo build` on a 1.75 toolchain
+  still needs `static.crates.io`, which egress policy blocks — and per
+  `/root/.ccr/README.md` a 403 is a policy denial to **report, not route
+  around**. So B2 (cargo-unverified code) remains genuinely blocked.
+- Added a pre-flight note at the top of `WORK_ORDERS.md` so no future
+  session repeats the mistake of inferring "no registry access" from a
+  403 without checking *which host* was denied.
+
+### Verified — DR-16 re-tested: CI still cannot be installed by this token
+- Re-checked now that the owner is active: `actions_list` returns only
+  GitHub's auto-generated `dependabot-updates` workflow, and a fresh
+  attempt to create `.github/workflows/ci.yml` via the contents API was
+  refused with **`403 Resource not accessible by integration`**. The
+  blocker is the App token's missing `workflow` permission, not
+  repository state, so it will not clear on its own — it needs a human
+  with normal repo access.
+
 ### Fixed (accuracy) — the signal count was stale at 66; it is **89**
 - Mechanically re-verified the project's headline claims instead of
   trusting them. `#![forbid(unsafe_code)]` present ✓; 26 `cli_contract`
