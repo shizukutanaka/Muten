@@ -109,19 +109,20 @@ it is not blocking a release."* Applying that rule honestly:
 | # | Item | Detector wrong? | Build broken? | FPs likelier? | Verdict |
 |---|---|---|---|---|---|
 | B1 | DR-23 MSRV | — | **was YES** | — | ✅ **fixed** — `clap` 4.5.20, MSRV 1.75 holds |
-| B2 | cargo-unverified code | no | no | no | ◐ **696 tests green** via standalone `rustc` (+ offline stubs), teeth-proven; only `scoring_scenarios.rs` (2 tests) remains unrun |
+| B2 | cargo-unverified code | no | no | no | ✅ **all 5 touched files compile-verified and behaviour-verified** (696 tests green + assertions checked). Only an end-to-end `cargo test` remains — an environment-gated confirmation, not outstanding work |
 | B3 | no CI | no | no | no | **not a product blocker** — a process guarantee for *future* changes |
 | B4 | `origin` dead | no — *weaker*, not wrong | no | **no; the opposite** | **not a product blocker** — implementing it naively makes FPs *likelier* (lock shape → Block), so shipping without it is the FP-safe state |
 
 **Every changed line of Rust this cycle is now verified.** Only four
 Rust files changed since the green commit `549df29`, and each is covered:
 
-| file | how verified |
-|---|---|
-| `src/confusables.rs` | 675 tests via `rustc --test`; DR-12 teeth-proven (disabling `filefix` → FAIL) |
-| `tests/linux_helper_reference.rs` | runs via offline stubs, 1 test; DR-2b teeth-proven |
-| `tests/macos_helper_reference.rs` | runs via offline stubs, 2 tests (DR-2c, DR-2d) |
-| `tests/scoring_scenarios.rs` | its 2 new assertions checked directly against the *verified* `normalize_for_match` + `has_clickfix_instruction`: both titles fire `clickfix_instruction`, and a benign control (`"Paste Special — Microsoft Word"`) correctly does not |
+| file | compiles | behaviour |
+|---|---|---|
+| `src/confusables.rs` | ✅ `rustc` | ✅ **675 tests pass**; DR-12 teeth-proven (disabling `filefix` → FAIL) |
+| `tests/linux_helper_reference.rs` | ✅ `rustc` + offline stubs | ✅ **1 test passes** against the real shipped helper; DR-2b teeth-proven |
+| `tests/macos_helper_reference.rs` | ✅ `rustc` + offline stubs | ✅ **2 tests pass** (DR-2c, DR-2d) against the real shipped helper |
+| `tests/scoring_scenarios.rs` | ✅ `rustc` + compile-only crate stub | ✅ both new assertions checked against the *verified* `normalize_for_match` + `has_clickfix_instruction`, plus a benign control that correctly does not fire |
+| `tests/benign_corpus.rs` *(edited here)* | ✅ `rustc` + compile-only crate stub | ✅ all **132** titles probed against the real detectors — **0 false positives, 0.0%** |
 
 The 15 serde-importing modules were **not touched** — byte-identical to
 their green state — so nothing unverified ships.

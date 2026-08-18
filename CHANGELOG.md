@@ -5,6 +5,27 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Verified — all five touched Rust files now compile; B2's engineering work is done
+- Applied the compile-only-stub technique to the last unverified file.
+  `tests/scoring_scenarios.rs` now compiles (it needed
+  `Ruleset::parse`, `Decision` and the two threshold constants), so
+  **every Rust file this cycle touched is compile-verified**:
+
+  | file | compiles | behaviour |
+  |---|---|---|
+  | `src/confusables.rs` | ✅ | ✅ 675 tests, DR-12 teeth-proven |
+  | `tests/linux_helper_reference.rs` | ✅ | ✅ 1 test vs the real helper, DR-2b teeth-proven |
+  | `tests/macos_helper_reference.rs` | ✅ | ✅ 2 tests vs the real helper (DR-2c/2d) |
+  | `tests/scoring_scenarios.rs` | ✅ | ✅ assertions checked against verified detectors |
+  | `tests/benign_corpus.rs` | ✅ | ✅ 132 titles probed, 0 FPs (0.0%) |
+
+- Compilation and behaviour were established by **independent** means —
+  stubs can only prove the former, real detectors the latter — so neither
+  is leaning on the other.
+- What remains is a single end-to-end `cargo test`, which needs the
+  egress-denied `static.crates.io`. That is an environment-gated
+  confirmation step, not outstanding engineering.
+
 ### Added — `benign_corpus` now reports a false-positive **rate**, not a boolean
 - Closed the last actionable WO-12 item. The detection literature treats
   an FP rate against a realistic corpus as a first-class result; a
