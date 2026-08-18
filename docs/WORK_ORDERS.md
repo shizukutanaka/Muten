@@ -92,6 +92,13 @@ backlog turns out not to gate completion. Work the four blockers; do the
 rest because you want the feature, not because the product is unfinished
 without it.
 
+**Status as of 2026-08-18**: B1 cleared; B2 largely cleared (693 tests
+now verified without a registry); B3 and B4 blocked by environment
+policy, not by unfinished work. Confirmed exhaustively: no vendored
+sources, no crate cache, and no permitted crate mirror — `index.crates.io`
+is reachable but `static.crates.io` is a policy 403, and per
+`/root/.ccr/README.md` that is to be reported, never routed around.
+
 **BLOCKING — v0.6.0 cannot honestly ship until these are true:**
 
 | # | Item | Why it blocks | Status |
@@ -99,7 +106,7 @@ without it.
 | ~~B1~~ | ~~**DR-23** — `clap 4.6.6` needs Rust 1.85~~ | — | ✅ **FIXED**: pinned back to `=4.5.20` (MSRV 1.74), lock re-resolved, Dependabot `ignore` guards recurrence |
 | B2◐ | **DR-12 ✅ verified** (675 tests green via standalone `rustc`, teeth-proven); rest of WO-1 still open | `src/confusables.rs`, two `*_helper_reference.rs` suites and `scoring_scenarios.rs` additions have **never been compiled**. Cannot claim a tested release. | Needs one cargo-capable session |
 | B3 | **DR-16 / WO-2** — no CI | Without it every future change repeats B1/B2. Partly mitigated: `scripts/verify.sh` runs the toolchain-free half **today**. | Owner installs `docs/ci/ci.yml` |
-| B4 | **DR-20 / WO-11** — 28% of topic-agnostic budget dead | This is the *core detection value*; the literature (TASR) says the structural signals are the durable ones. `age_ms` is done; `origin` is blocked on the lock-shape guard. | `age_ms` ✅, `origin` open |
+| B4 | **DR-20 / WO-11** — 28% of topic-agnostic budget dead (guard now *designed*, see WO-11) | This is the *core detection value*; the literature (TASR) says the structural signals are the durable ones. `age_ms` is done; `origin` is blocked on the lock-shape guard. | `age_ms` ✅, `origin` open |
 
 **NOT BLOCKING — deliberately deferred (each is a feature or a research
 item, not an unfinished obligation):**
