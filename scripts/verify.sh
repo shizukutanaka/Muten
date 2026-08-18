@@ -157,8 +157,42 @@ if command -v rustc >/dev/null 2>&1; then
             bad "rustc failed to compile $_m.rs standalone"
         fi
     done
+    # The two helper_reference suites touch only tempfile::tempdir and
+    # serde_json::from_str, so scripts/offline-stubs/ lets the UNMODIFIED
+    # test files run here too. They shell out to the real shipped helpers,
+    # so what they verify is helper behaviour — see that dir's README for
+    # exactly what this does and does not prove.
+    _stub="$ROOT/scripts/offline-stubs"
+    if [ -d "$_stub" ]; then
+        _tmp2="${TMPDIR:-/tmp}/muten-stub-$$"
+        mkdir -p "$_tmp2"
+        if rustc --edition 2021 --crate-type lib --crate-name tempfile \
+                 -o "$_tmp2/libtempfile.rlib" "$_stub/tempfile.rs" >/dev/null 2>&1 &&
+           rustc --edition 2021 --crate-type lib --crate-name serde_json \
+                 -o "$_tmp2/libserde_json.rlib" "$_stub/serde_json.rs" >/dev/null 2>&1; then
+            for _t in linux_helper_reference macos_helper_reference; do
+                [ -f "$CRATE/tests/$_t.rs" ] || continue
+                if (cd "$CRATE" && CARGO_MANIFEST_DIR="$CRATE" rustc --edition 2021 --test -O \
+                        --extern tempfile="$_tmp2/libtempfile.rlib" \
+                        --extern serde_json="$_tmp2/libserde_json.rlib" \
+                        -o "$_tmp2/t_$_t" "tests/$_t.rs" >/dev/null 2>&1); then
+                    _r=$("$_tmp2/t_$_t" 2>&1 | grep -m1 'test result')
+                    case "$_r" in
+                        *"0 failed"*) ok "rustc --test $_t (offline stubs) — ${_r#test result: }" ;;
+                        *)            bad "rustc --test $_t — ${_r:-no result}" ;;
+                    esac
+                else
+                    bad "could not compile $_t against offline stubs"
+                fi
+            done
+        else
+            skp "helper_reference suites" "offline stubs failed to build"
+        fi
+        rm -rf "$_tmp2"
+    fi
+
     rm -rf "$_tmp"
-    skp "the other 15 modules" "they import serde/serde_json/sha2 — need cargo + registry"
+    skp "scoring_scenarios.rs + the 15 serde modules" "need the real crate graph — cargo + registry"
 else
     skp "standalone rustc module tests" "rustc not installed"
 fi

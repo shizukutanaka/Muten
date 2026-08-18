@@ -108,17 +108,21 @@ it is not blocking a release."* Applying that rule honestly:
 | # | Item | Detector wrong? | Build broken? | FPs likelier? | Verdict |
 |---|---|---|---|---|---|
 | B1 | DR-23 MSRV | — | **was YES** | — | ✅ **fixed** — `clap` 4.5.20, MSRV 1.75 holds |
-| B2 | cargo-unverified code | no | no | no | ◐ changed *source* verified (675 tests, teeth-proven); **3 test files remain unrun** |
+| B2 | cargo-unverified code | no | no | no | ◐ **696 tests green** via standalone `rustc` (+ offline stubs), teeth-proven; only `scoring_scenarios.rs` (2 tests) remains unrun |
 | B3 | no CI | no | no | no | **not a product blocker** — a process guarantee for *future* changes |
 | B4 | `origin` dead | no — *weaker*, not wrong | no | **no; the opposite** | **not a product blocker** — implementing it naively makes FPs *likelier* (lock shape → Block), so shipping without it is the FP-safe state |
 
 **The one claim that genuinely cannot be made here**: *"the full test
-suite passes."* `cargo test` has never run — `tests/scoring_scenarios.rs`
-and the two `*_helper_reference.rs` suites cannot compile without
-`tempfile`/`serde_json`/`muten_overlay`, and `static.crates.io` is
-egress-denied. Their asserted behaviour is separately shell-verified, and
-they fail only on unresolved crates, but that is evidence, not proof.
-**Do not advertise "all tests green" until someone runs `cargo test`.**
+suite passes."* `cargo test` has never run. **696 of the changed-code
+tests now do run** — `confusables.rs` 675, `fingerprint.rs` 12,
+`mitre.rs` 6, and the two `*_helper_reference.rs` suites (3) via
+`scripts/offline-stubs/` — all teeth-proven. What remains unrun is
+`tests/scoring_scenarios.rs` (2 tests), which needs the full
+`muten_overlay` crate graph and hence `serde`/`sha2` from the
+egress-denied `static.crates.io`. The helper suites additionally run
+against *stub* `tempfile`/`serde_json`, so they verify **helper
+behaviour**, not serde integration. **Do not advertise "all tests green"
+until someone runs a real `cargo test`.**
 
 **Where that leaves v0.6.0**: functionally complete and, within this
 environment's limits, verified — the build works on the advertised MSRV,

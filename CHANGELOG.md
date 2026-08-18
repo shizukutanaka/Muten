@@ -5,6 +5,32 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Verified — the DR-2b/2c/2d helper tests now run too: **696 tests green**
+- The last unverified suites were blocked on two tiny external calls:
+  `tempfile::tempdir` and `serde_json::from_str`. Since those tests shell
+  out to the **real shipped helper scripts** and assert on the JSON they
+  print, what they actually verify is *helper behaviour*, not serde
+  integration — so a minimal stand-in suffices to run them.
+- Added `scripts/offline-stubs/`: a `tempfile` shim and a small but
+  **correct** JSON parser (it rejects raw control characters per RFC 8259
+  — the DR-17 property). The **unmodified** test files compile and run
+  against them with `rustc` alone.
+- Result: `linux_helper_reference` 1 test and `macos_helper_reference` 2
+  tests **pass** — `enumerate_reports_blocks_input_from_net_wm_state_modal`
+  (DR-2b), `..._from_axdialog_subrole` (DR-2d) and
+  `..._has_close_button_from_button_1_existence` (DR-2c), none of which
+  had ever been executed. **Teeth-proven**: forcing the Linux helper's
+  `blocks_input` to `false` makes the DR-2b test FAIL; restored after.
+- Running total verified without a registry: **696 tests**
+  (confusables 675 + fingerprint 12 + mitre 6 + helpers 3), all wired
+  into `scripts/verify.sh` phase [2b/3] so any session reproduces them.
+- Honest boundary, stated in the stubs' README and the DoD: this proves
+  the test logic and the helpers' behaviour, **not** integration with the
+  real `serde_json`/`tempfile`. `tests/scoring_scenarios.rs` (2 tests)
+  still cannot run — it needs the full crate graph, hence `serde`/`sha2`
+  from the egress-denied `static.crates.io`. A real `cargo test` remains
+  the authority.
+
 ### Re-classified — v0.6.0 is shippable with two documented limitations
 - Turned the "question every requirement" step on the **blocking list I
   wrote myself**, which had never been re-examined. Two of its four
