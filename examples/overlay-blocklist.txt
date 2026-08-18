@@ -56,14 +56,12 @@ title: your system is infected
 title: viruses detected
 title: virus detected
 title: threat detected
-title: critical threat detected
 title: critical error
 title: security alert
 title: your computer has been blocked
 title: your computer has been locked
 title: access to this pc has been blocked
 title: windows defender alert
-title: windows security alert
 title: microsoft warning alert
 title: virus alert from microsoft
 # CypherLoc browser-locking scareware (Barracuda 2026-05; ~2.8M attacks
@@ -268,7 +266,6 @@ glob: * invoice * if you did not authorize *
 # ─────────────────────────────────────────────────────────────────
 title: you are a beneficiary of the estate advance fee to release the funds
 title: unclaimed funds in your name processing fee required
-title: you won the lottery customs fee to claim your prize
 title: your inheritance awaits legal fee required to release
 title: next of kin to deceased account advance fee to receive funds
 title: 遺産の受益者に選ばれました手数料をお支払いください                   # JP: beneficiary of estate, pay fee
@@ -283,11 +280,9 @@ glob: * unclaimed * funds * advance fee *
 # number.  Heuristic: has_fake_bsod_lure.  Sources: FBI IC3 2025
 # tech-support fraud category, Microsoft MSTIC (FakeBlue campaign 2025).
 # ─────────────────────────────────────────────────────────────────
-title: windows has been blocked call microsoft support immediately
 title: stop code memory management call microsoft certified technician
 title: your pc is blocked do not restart call microsoft
 title: critical stop kernel security check failure call windows helpline
-title: blue screen error do not turn off call microsoft support
 title: カーネルパニック マイクロソフトサポートに電話してください           # JP: kernel panic, call Microsoft support
 title: ブルースクリーンが発生しました再起動しないでください                 # JP: BSOD occurred, do not restart
 glob: * stop code * call microsoft *
@@ -397,7 +392,6 @@ title: update your payment information now
 # authority_lure heuristic (E17) catches novel LEA phrasing; the
 # list below anchors known high-volume exact phrases.
 # ─────────────────────────────────────────────────────────────────
-title: your computer has been locked by
 title: this device has been locked for security
 title: illegal activity has been detected
 title: illegal content detected
@@ -412,7 +406,6 @@ title: ip address blocked
 title: your ip has been reported to the authorities
 title: federal bureau of investigation
 title: department of justice
-title: your computer has been blocked for legal reasons
 title: pay the fine to unlock
 title: penalty must be paid
 title: cybercrime unit warning
@@ -453,7 +446,6 @@ title: 今すぐお電話
 title: サポートセンターに電話
 title: マイクロソフトサポートに連絡
 title: セキュリティ警告
-title: 重大なセキュリティ警告
 title: お使いのコンピュータは危険
 title: すべてのファイルが削除されます
 title: 個人情報が漏洩
@@ -818,7 +810,6 @@ phone: +81-120-000-000
 # specific combination higher than the sum of its parts without waiting
 # for a code release.
 composite: fullscreen_phone_lockdown 15 fullscreen topmost has_phone_number no_close_button
-composite: unsolicited_blocklist_hit 10 unsolicited has_blocklist_title
 
 # weight: override a built-in signal's default score contribution, e.g.
 # to soften a signal that is firing too aggressively in your fleet, or

@@ -144,29 +144,32 @@ if command -v python3 >/dev/null 2>&1; then
 import re, sys
 from collections import Counter
 
-titles = []
-for raw in open(sys.argv[1], encoding='utf-8', errors='replace'):
-    body = raw.split('#', 1)[0].strip()
-    if body.startswith('title:'):
-        v = body[len('title:'):].strip()
-        if v:
-            titles.append(v)
-
 def approx(s):
     return re.sub(r'\s+', ' ', s.strip().lower())
 
-keys = [approx(t) for t in titles]
+# Preserve FILE ORDER: Ruleset::match_title uses `.find()`, which returns the
+# FIRST pattern (in insertion = file order) whose key is a substring of the
+# title. A longer rule is therefore only unreachable if a shorter rule that
+# it contains appears EARLIER in the file. Comparing by length alone would
+# report false alarms.
+entries = []   # (file_order, lineno, key)
+for lineno, raw in enumerate(open(sys.argv[1], encoding='utf-8', errors='replace'), 1):
+    body = raw.split('#', 1)[0].strip()
+    if body.startswith('title:'):
+        v = approx(body[len('title:'):])
+        if v:
+            entries.append((len(entries), lineno, v))
 
-for k, c in Counter(keys).items():
+for k, c in Counter(e[2] for e in entries).items():
     if c > 1:
         print(f"INFO  duplicate 'title:' pattern appears {c}x: {k!r}")
 
-uniq = sorted(set(keys), key=len)
-for i, b in enumerate(uniq):
-    for a in uniq[:i]:
-        if a != b and a in b:
-            print(f"INFO  'title: {b}' is shadowed by shorter 'title: {a}' "
-                  f"(substring match makes the longer rule unreachable)")
+for order, lineno, key in entries:
+    for order2, lineno2, key2 in entries:
+        if key2 != key and key2 in key and order2 < order:
+            print(f"INFO  line {lineno}: 'title: {key}' is unreachable — shorter "
+                  f"'title: {key2}' at line {lineno2} appears earlier and always "
+                  f"matches first")
             break
 PY
 else

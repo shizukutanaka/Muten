@@ -5,6 +5,31 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Removed — deleted 9 provably-dead blocklist rules (317→309 titles, 2→1 composites)
+- Applied "question every requirement, then delete" to the shipped
+  blocklist. First it questioned the tool: the linter's shadow check
+  compared rules **by length**, but `match_title` returns the first match
+  in **file order**, so a longer rule is only unreachable when a shorter
+  one it contains appears *earlier*. Fixing that turned 9 reported
+  shadows into **8 real ones plus 1 false alarm**
+  (`your ip address blocked` at line 410 is reachable, because
+  `ip address blocked` sits at line 411 — later). The linter now tracks
+  file order and has an order-sensitivity negative test.
+- Deleted the 8 genuinely unreachable `title:` rules and the dead
+  `composite: unsolicited_blocklist_hit` (its `unsolicited` condition can
+  never hold while helpers report `origin: unknown`).
+- **Proved behaviour-preserving rather than assuming it**: each deleted
+  phrase is still matched by the surviving shorter rule that was already
+  winning (`critical threat detected` → `threat detected`,
+  `重大なセキュリティ警告` → `セキュリティ警告`, …), so the same
+  `blocklist_title` (+40) still fires with the same `matched_rule` text
+  as before. The pruned file lints completely clean (0 warnings, 0 INFO).
+- **Root cause, now documented in `SPECIFICATION.md` §5**: `title:` is
+  substring + first-match-wins, so **any rule containing an existing
+  shorter rule is dead on arrival** — specificity is simply unachievable
+  through `title:`, which is why these accumulated silently. Authors
+  wanting position or whole-string specificity must use `glob:` (§5.1).
+
 ### Audited (UTS #39) — normalization core is sound; found zero benign coverage for the script signals
 - Audited muten's core claim — evasion-resistant Unicode normalization —
   against **UTS #39 (Unicode Security Mechanisms)**, starting from a

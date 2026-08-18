@@ -171,6 +171,18 @@ be skipped, never abort the load. Prefixes:
 The **original authored** rule text is returned as `matched_rule` for audit
 readability.
 
+**`title:` is first-match-wins, so a more specific rule can be dead on
+arrival.** `match_title` returns the **first** pattern *in file order*
+whose key is a substring of the normalized title. Consequently a longer
+rule is unreachable whenever any shorter rule it contains appears earlier
+in the file — `title: windows security alert` can never match if
+`title: security alert` precedes it. Adding specificity through `title:`
+therefore does not work; the specific rule contributes nothing and only
+the shorter rule's text is ever reported as `matched_rule`. **Use
+`glob:` when position or whole-string specificity is the point** (§5.1),
+since glob matching is full-string. `lint-blocklist.sh` reports
+unreachable `title:` rules, taking file order into account.
+
 **Authoring hazards (normative).** Three loader behaviours fail *silently*,
 so a mis-authored rule yields no diagnostic and simply never matches:
 
