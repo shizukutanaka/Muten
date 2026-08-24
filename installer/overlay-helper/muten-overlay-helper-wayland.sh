@@ -137,9 +137,19 @@ enumerate() {
         # lswt -j emits JSON lines/array; fall back to plain parse.
         # Plain `lswt` prints blocks; the "title:" / "app-id:" lines are
         # what we need. We key the id on app-id + title.
+        #
+        # The injected `printf '\n\n'` guarantees the LAST block always
+        # hits the "" (end-of-block) case below. Without it, output that
+        # does not end in a blank line silently drops the final toplevel
+        # — and a scam overlay enumerated last would escape detection
+        # entirely. Two newlines, not one: the first terminates a final
+        # line that lacks its own newline (`read` would otherwise see it
+        # only at EOF), the second forms the blank line. Idempotent when
+        # the output already ends blank: a "" with empty title/appid
+        # emits nothing.
         appid=""
         title=""
-        lswt 2>/dev/null | while IFS= read -r line; do
+        { lswt 2>/dev/null; printf '\n\n'; } | while IFS= read -r line; do
             case "$line" in
                 "title: "*)  title=${line#title: } ;;
                 "app-id: "*) appid=${line#app-id: } ;;
@@ -152,7 +162,10 @@ enumerate() {
                     ;;
             esac
         done
-        # flush last block if no trailing blank line
+        # (final-block flush is handled by the injected trailing `echo`
+        # on the pipeline above — no post-loop code can do it, because
+        # the `while` runs in a pipeline subshell whose title/appid are
+        # invisible here)
     else
         # wlrctl toplevel list → lines like "app_id: Title"
         wlrctl toplevel list 2>/dev/null | while IFS= read -r line; do

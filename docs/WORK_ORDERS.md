@@ -73,13 +73,13 @@ disagree, the audit doc is authoritative. 日本語補足: 上段=壊しては
 | CI claimed-then-shipped but not installed (DR-16) | no automated verification channel | **WO-2** (owner step) |
 | No signal for a bare IP literal shown in an alert (DR-13, CypherLoc trick) | detection gap on a live 2.8M-victim kit | **WO-3** |
 | IT-helpdesk impersonation only covered by verbatim blocklist rules (DR-14) | generalization gap (low — exact phrasings blocked) | **WO-4** |
-| Wayland lswt parser: probe/enumerate mode mismatch + missing last-block flush (confirmed from code) | lswt hosts silently fall back / drop a window | **WO-5** |
+| Wayland lswt parser: probe/enumerate mode mismatch (~~last-block drop~~ ✅ fixed 2026-08) | plain-lswt scrape may not match real output — `-j` migration needs a real host | **WO-5** |
 | No fault isolation in `enumerate` parsing (DR-18): one malformed element blinds the entire sweep | worst-case failure mode; helper bugs / custom helpers see *nothing* instead of missing one window | **WO-9** |
 | Failed dismiss audited identically to a self-closed window (DR-19) | a broken dismissal path across a fleet is invisible — looks like scams closing themselves | **WO-10** |
 | **502 Japanese detection literals guarded by 10 Japanese benign titles (DR-21)** | the largest body of detection logic is the least FP-tested, in the primary market; no FP *rate* is reported at all | **WO-12** |
 | Blocklist loader drops mis-authored rules with no diagnostic (DR-22) | a hot-reloaded, operator-edited rule that fails to load is an unannounced detection hole | **WO-13** (shell linter shipped) |
 | Audit log grows unbounded; no rotation (DR-4) | multi-week deployments | **WO-6** |
-| **28% of the topic-agnostic detection budget is dead (DR-20)**: `origin` and `age_ms` are hard-coded on all 4 helpers, so `unsolicited` (25) + `very_new` (10) never fire | leaves only the vocabulary path that the TSS literature (TASR) identifies as the brittle one | **WO-11** |
+| **DR-20 remainder**: `origin` still hard-coded `unknown` (~~`age_ms`~~ ✅ real on all 4 helpers since 2026-08), so `unsolicited` (25) never fires | deliberately unimplemented until the lock-shape guard lands — naive `origin` would *dismiss screen lockers* | **WO-11** (guard designed) |
 | Detection vocabulary EN+JP only (DR-8) | non-EN/JP fleets under-detect | Backlog |
 
 ## 1.5 Definition of Done — what actually blocks v0.6.0
@@ -342,10 +342,12 @@ worth it.
 
 ### WO-5 — Wayland lswt parser fix 【model: Sonnet | needs: real wlroots compositor + lswt】
 
-Two bugs are already confirmed from the script alone (see the DR-2
-Wayland note in the audit doc): `pick_tool` validates `lswt -j` but
-`enumerate` parses plain `lswt`; and the plain-lswt loop drops the last
-toplevel (no final-block flush). **Procedure order matters**: first
+Two bugs were confirmed from the script alone (see the DR-2 Wayland
+note in the audit doc). **The last-toplevel drop is FIXED** (2026-08:
+`{ lswt; printf '\n\n'; }` injection, four termination cases verified,
+teeth-proven — see the audit note; "needs a real host" did not actually
+apply to that half). **What remains here is only the mode mismatch**:
+`pick_tool` validates `lswt -j` but `enumerate` parses plain `lswt`. **Procedure order matters**: first
 capture real `lswt -j` output on the target compositor, THEN rewrite
 `enumerate`'s lswt branch to `lswt -j` + `jq` (gated on `have jq`),
 then build the fake-lswt e2e stub from the *captured* format — never a

@@ -188,10 +188,25 @@ plain **`lswt`** (no `-j`, line 96) and scrapes a `title:`/`app-id:`
 multi-line block format. So even setting aside whether that block format
 matches real lswt output, the two functions disagree about which lswt
 mode they use — `pick_tool` proves JSON works, `enumerate` ignores JSON.
-Additionally, the plain-lswt loop has no final-block flush (line ~109's
-own comment says "flush last block if no trailing blank line" but no code
-does it), so the last toplevel is dropped whenever lswt's output doesn't
-end in a blank line. **Recommended concrete fix for the next
+Additionally, the plain-lswt loop had no final-block flush (its own
+comment said "flush last block if no trailing blank line" but no code did
+it), so the last toplevel was dropped whenever lswt's output didn't end
+in a blank line. **The flush half is FIXED (2026-08)** — "needs a real
+Wayland host" turned out not to apply to it: the flush omission is a pure
+shell-logic bug, fixable and testable against whatever block format the
+parser targets. The pipeline now reads
+`{ lswt 2>/dev/null; printf '\n\n'; } | while …`, injecting two newlines
+(the first terminates a final line that lacks its own newline — one
+`echo` proved insufficient in testing exactly because of that case — the
+second forms the blank line that triggers the existing end-of-block arm).
+Verified against a stub lswt across all four termination cases
+(unterminated final line / newline-terminated / already-blank-terminated
+/ empty output), teeth-proven (reverting the pipeline drops the
+final-block scam window again), and regression-checked (DR-17
+control-char stripping and the `age_ms` lifecycle both hold through the
+lswt branch — the first e2e exercise that branch has ever had). The
+**mode-mismatch half remains open** and still genuinely needs a real
+host, because writing the `-j` parser requires the real JSON schema. **Recommended concrete fix for the next
 Wayland-capable session**: switch `enumerate`'s lswt branch to consume
 `lswt -j` (the mode `pick_tool` already validates) and parse it with
 `jq` (checking `have jq` first, matching the existing `have`-gated tool

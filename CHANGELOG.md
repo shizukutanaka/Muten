@@ -5,6 +5,32 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Fixed — Wayland lswt parser dropped the last-enumerated window (WO-5 first half)
+- The plain-lswt block parser in `muten-overlay-helper-wayland.sh` never
+  flushed its final block: output not ending in a blank line silently
+  lost the last toplevel — its own comment admitted "flush last block if
+  no trailing blank line" with no code doing it. A scam overlay
+  enumerated last would escape detection entirely. Reproduced first with
+  a stub lswt: 2 windows in, 1 out, the scam window gone.
+- The deferral reasoning was re-questioned and found overbroad: the `-j`
+  migration genuinely needs a real host (unknown JSON schema), but the
+  flush omission is a pure shell-logic bug, fixable against whatever
+  format the parser targets. Fix:
+  `{ lswt 2>/dev/null; printf '\n\n'; } | while …` — **two** injected
+  newlines, because one `echo` proved insufficient in testing: when the
+  final line lacks its own newline, a single `\n` merely terminates that
+  line and never forms the blank line the end-of-block arm needs.
+- Verified across all four termination cases (unterminated final line /
+  newline-terminated / already blank-terminated / empty output → `[]`),
+  idempotent when the output already ends blank, teeth-proven (reverting
+  the pipeline drops the scam window again), and regression-checked:
+  DR-17 control-char stripping and the `age_ms` lifecycle hold through
+  the lswt branch — the first end-to-end exercise that branch has ever
+  had — plus the wlrctl branch and `selftest.sh` are unchanged.
+- The mode-mismatch half of WO-5 (`pick_tool` validates `lswt -j`,
+  `enumerate` scrapes plain output) remains open and still needs a real
+  Wayland host for the `-j` schema.
+
 ### Added — every verification in this cycle is now reproducible via `verify.sh` (17 checks)
 - Committed `scripts/offline-stubs/muten_overlay_compileonly.rs` and wired
   the `benign_corpus.rs` / `scoring_scenarios.rs` type-checks into
