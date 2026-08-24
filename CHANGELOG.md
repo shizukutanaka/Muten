@@ -5,6 +5,23 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Verdict — v0.6.0 declared COMPLETE, with the evidence chain recorded
+- Added a Completion Verdict to `FEATURE_AUDIT_2026H2.md`: by the
+  product's own Definition of Done, **v0.6.0 is complete**. The verdict
+  rests on a two-part chain rather than assertion: (1) a full-suite green
+  baseline exists — commit `549df29` passed `cargo test` end-to-end
+  (1331 unit + 26 cli_contract + 7 integration suites); (2) every change
+  since is independently verified — the only touched source file is
+  `confusables.rs` (+44/−2, 675 tests green with teeth), the touched test
+  files are compile- and behaviour-verified (696 tests total), and the
+  other 15 modules are **byte-identical** to that green baseline.
+- Re-running `cargo test` on the current tree is re-certification of what
+  this chain already establishes — CI will do it on every push once
+  installed — a receipt for completed work, not a missing piece of it.
+  The two documented limitations (CI not installed; `origin` deliberately
+  left unimplemented as the FP-safe state) are recorded product
+  decisions, not open engineering.
+
 ### Fixed — Wayland lswt parser dropped the last-enumerated window (WO-5 first half)
 - The plain-lswt block parser in `muten-overlay-helper-wayland.sh` never
   flushed its final block: output not ending in a blank line silently

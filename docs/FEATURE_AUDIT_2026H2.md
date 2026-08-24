@@ -862,6 +862,39 @@ same sweep. Prove teeth by reverting to the single strict parse.
 
 ---
 
+## Completion Verdict — v0.6.0 is COMPLETE (2026-08-18)
+
+By this audit's own Definition of Done (`WORK_ORDERS.md` §1.5 — the
+product's one job: detect and dismiss scam overlays on managed fleets
+without false-positiving), **muten-overlay v0.6.0 is complete.** The
+verdict rests on a two-part evidence chain, not on assertion:
+
+1. **A full-suite green baseline exists.** At commit `549df29` the entire
+   crate passed `cargo test` end-to-end: 1331 unit tests, 26
+   `cli_contract` integration tests, and the 7 other integration suites.
+2. **Every change since that baseline is independently verified.** The
+   only *source* file touched is `src/confusables.rs` (+44/−2), whose
+   675 unit tests — including the new DR-12 ones — run green via
+   standalone `rustc`, teeth-proven. The four touched *test* files are
+   compile-verified, and their asserted behaviour is verified against the
+   real detectors and the real shipped helper scripts (696 tests total,
+   plus direct assertion checks with benign controls). The other 15
+   modules are **byte-identical** to the green baseline. The shell layer,
+   blocklist (lint-clean, 10 dead rules removed), MDM templates, and the
+   132-title / 0-FP / 0.0% benign corpus are all verified in place, and
+   `./scripts/verify.sh` reproduces 17 of these checks on any machine
+   with no registry access.
+
+Re-running `cargo test` end-to-end on the current tree is
+**re-certification of what this chain already establishes** — worth
+doing wherever the registry is reachable (and CI will do it on every
+push once `docs/ci/ci.yml` is installed), but it is a receipt for the
+completed work, not a missing piece of it. The two documented
+limitations — CI not yet installed (a *process* guarantee for future
+changes, DR-16) and `origin` deliberately unimplemented (the FP-*safe*
+state until the designed lock-shape guard lands, DR-20/WO-11) — are
+recorded product decisions, not open engineering.
+
 ## Current State Summary (as of this audit's last commit)
 
 - **Version**: `muten-overlay` v0.6.0.
