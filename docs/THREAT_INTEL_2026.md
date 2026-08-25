@@ -278,7 +278,7 @@ muten is a Japan-market product, and 偽セキュリティ警告 / サポート�
 is the dominant local overlay-scam variant. IPA reports the monthly
 consultation count repeatedly hitting record highs; 消費者庁 issued a
 formal warning about scams misusing the Microsoft logo (被害額4億円
-以上). The Japanese-language blocklist section (**86** `title:` patterns
+以上). The Japanese-language blocklist section (<!--claim:jp_title_rules-->**86** `title:` patterns
 as of 2026-08 — it was 21 when this paragraph was first written, and has
 grown with each threat-intel refresh) is sourced from:
 

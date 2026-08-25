@@ -48,7 +48,7 @@ disagree, the audit doc is authoritative. 日本語補足: 上段=壊しては
 
 **Strengths — assets your change must not degrade:**
 
-- 89-signal / 10-lens detection engine with the evasion-resistant
+- <!--claim:signals-->89-signal / 10-lens detection engine with the evasion-resistant
   Unicode-confusable normalization pipeline (`src/confusables.rs`) —
   the product's core value.
 - Tamper-evident SHA-256 audit chain with RFC 6962 Merkle anchoring
@@ -142,7 +142,7 @@ until someone runs a real `cargo test`.**
 environment's limits, verified — the build works on the advertised MSRV,
 the only changed source file is test-green with teeth, the four shipped
 helpers and the blocklist are lint- and behaviour-clean, and detection
-runs on 309 title + 44 glob + 44 process rules. `origin` (DR-20) and CI
+runs on <!--claim:title_rules-->309 title + <!--claim:glob_rules-->44 glob + <!--claim:process_rules-->44 process rules. `origin` (DR-20) and CI
 (DR-16) are **documented limitations with decided remediations**, not
 defects. Ship with those caveats stated, or clear them first — that is a
 product decision, no longer an engineering unknown.

@@ -5,6 +5,35 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — `scripts/check-doc-claims.sh`: stop prose from going quietly false
+- The most frequently recurring defect this cycle was never a code bug —
+  it was **documentation drifting into falsehood as the product grew**.
+  Five separate claims had to be caught by hand: the advertised MSRV
+  (broken by a dependency bump), the signal count (66 → 89), the unit-test
+  count (1331 → 1333), the Japanese blocklist size (21 → 86), and "all
+  four helpers emit `age_ms:0`" (fixed long before the sentence was).
+  Fixing instances is not the answer; **relying on someone re-auditing by
+  hand is itself the defect.** This automates it.
+- **Opt-in markers, deliberately — not pattern matching.** A naive
+  `grep "N unit tests"` would fire on claims that are *correct*: the 1331
+  describing the `549df29` baseline, the 675 describing `confusables.rs`
+  alone, the per-fix counts in `GAP_ANALYSIS`. **A check that cries wolf
+  gets ignored, which is worse than no check.** So only claims carrying an
+  explicit `<!--claim:KEY-->` marker are validated — invisible in rendered
+  Markdown, and marking one is a deliberate act. Historical statements
+  simply carry no marker and are verified to remain unmarked.
+- Six claims are now enforced against measured ground truth: unit tests,
+  signal count, `title:`/`glob:`/`process:` rule counts, and the Japanese
+  `title:` count. `benign_titles` is reported as measurable-but-unmarked
+  (INFO, not enforced), so the gap is visible without being nagging.
+- **Teeth-tested both failure modes**: drifting a claimed number
+  (`1,333` → `1,300`) fails with `claim:unit_tests says 1,300 but the tree
+  measures 1,333`; an unknown key fails telling you to add it to
+  `ground_truth`. Restored, and confirmed the historical numbers raise no
+  false alarm.
+- Wired into `scripts/verify.sh` as check 1e, so it runs offline on any
+  machine and in CI via the `verify` job.
+
 ### Fixed (accuracy) — two more stale claims found by a mechanical doc audit
 - Swept every *mechanically checkable* claim in the docs, the technique
   that already caught the false MSRV, the 66-signal count and the 1331

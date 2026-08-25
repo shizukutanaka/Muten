@@ -94,6 +94,22 @@ else
     skp "dependabot.yml check" "file absent"
 fi
 
+# 1e. Numeric claims in the docs must still match the tree. Prose goes
+#     quietly false as a product grows — five separate claims had drifted
+#     before this check existed. Only claims carrying an explicit
+#     <!--claim:KEY--> marker are validated, so correct historical
+#     statements never raise a false alarm.
+if [ -x "$ROOT/scripts/check-doc-claims.sh" ]; then
+    if _out=$("$ROOT/scripts/check-doc-claims.sh" 2>&1); then
+        ok "doc claims match the tree — $(printf '%s' "$_out" | grep -o '[0-9]* marked claim.*' | head -1)"
+    else
+        bad "doc claims drifted:"
+        printf '%s\n' "$_out" | grep '  ERROR' | sed 's/^/      /'
+    fi
+else
+    skp "doc-claim check" "scripts/check-doc-claims.sh not executable"
+fi
+
 echo
 echo "[2/3] Rust checks"
 

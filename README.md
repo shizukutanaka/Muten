@@ -98,7 +98,7 @@ produces these.
 
 ## Status
 
-**`muten-overlay` v0.6.0 — complete.** 1,333 unit tests + 26
+**`muten-overlay` v0.6.0 — complete.** <!--claim:unit_tests-->1,333 unit tests + 26
 `cli_contract` integration tests + 7 further integration suites;
 `clippy -D warnings` clean.
 
