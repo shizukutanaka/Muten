@@ -689,11 +689,18 @@ the *durable* half — it describes behavior a scam overlay cannot avoid
 uninvited) regardless of whether the pretext is antivirus, tax, crypto,
 or something not yet invented.
 
-The problem: **`grep` over all four shipped helpers returns
-`"origin":"unknown"` and `"age_ms":0` in 6/6 occurrences — both are
-emitted unconditionally.** So `unsolicited` (25) and `very_new` (10) —
-**35 of those 125 points, 28% of the entire topic-agnostic budget** —
-can never fire on any real deployment.
+The problem **as originally measured**: `grep` over all four shipped
+helpers returned `"origin":"unknown"` and `"age_ms":0` in 6/6
+occurrences — both emitted unconditionally. So `unsolicited` (25) and
+`very_new` (10) — **35 of those 125 points, 28% of the entire
+topic-agnostic budget** — could never fire on any real deployment.
+
+**Status now (2026-08): half recovered.** `age_ms` is real on all four
+helpers via a first-seen state file persisted across the per-sweep
+respawn, so `very_new` is reachable wherever the daemon sweeps faster
+than its 1000 ms default (measured: 500 ms → `age_ms` 589 → fires;
+1000 ms → 1142 → does not). `origin` remains `unknown` **by decision,
+not omission** — see the lock-shape trap below.
 
 **Correction (this figure was understated).** Tracing every consumer of
 `origin` in `classify()` shows the dead surface is larger, because two

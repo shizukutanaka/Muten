@@ -130,11 +130,18 @@ literature, and one finding drove a new signal:
   words in English or Japanese. TASR's argument makes the small
   structural set the durable half — a scam overlay *must* cover the
   screen, resist closing, and arrive uninvited, whatever its pretext.
-  Yet all four shipped helpers emit `"origin":"unknown"` and
-  `"age_ms":0` unconditionally, so `unsolicited` + `very_new` — 35
-  points, **28% of the topic-agnostic budget** — never fire in the
-  field. Filed as **DR-20** and promoted to **WO-11**; it outranks
-  adding an 81st vocabulary signal.
+  When this was written all four shipped helpers emitted
+  `"origin":"unknown"` and `"age_ms":0` unconditionally, so
+  `unsolicited` + `very_new` — 35 points, **28% of the topic-agnostic
+  budget** — could never fire in the field. Filed as **DR-20** and
+  promoted to **WO-11**; it outranks adding an 81st vocabulary signal.
+  **Since then `age_ms` is real on all four helpers** (a first-seen state
+  file persisted across the per-sweep respawn), so `very_new` is
+  reachable wherever the daemon sweeps faster than its 1000 ms default.
+  `origin` is still `unknown` **deliberately**: supplying `Unsolicited`
+  naively would take the bare lock shape from 95 to 120 and make muten
+  *dismiss screen lockers*, so it waits on the designed guard in WO-11 —
+  the FP-safe state, not an oversight.
 
 - **Miramirkhani, Starov, Nikiforakis — "Dial One for Scam: A
   Large-Scale Analysis of Technical Support Scams"** (NDSS 2017,
@@ -271,8 +278,9 @@ muten is a Japan-market product, and 偽セキュリティ警告 / サポート�
 is the dominant local overlay-scam variant. IPA reports the monthly
 consultation count repeatedly hitting record highs; 消費者庁 issued a
 formal warning about scams misusing the Microsoft logo (被害額4億円
-以上). The Japanese-language blocklist section (21 title patterns) is
-sourced from:
+以上). The Japanese-language blocklist section (**86** `title:` patterns
+as of 2026-08 — it was 21 when this paragraph was first written, and has
+grown with each threat-intel refresh) is sourced from:
 
 - IPA 安心相談窓口だより (2024-11 / updated 2025-04) — the canonical
   Japanese fake-warning wording ("ウイルスに感染しています", "今すぐ

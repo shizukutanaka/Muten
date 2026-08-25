@@ -5,6 +5,28 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Fixed (accuracy) — two more stale claims found by a mechanical doc audit
+- Swept every *mechanically checkable* claim in the docs, the technique
+  that already caught the false MSRV, the 66-signal count and the 1331
+  test count. Two more had drifted:
+  - **`THREAT_INTEL_2026.md`: "The Japanese-language blocklist section
+    (21 title patterns)"** — it is **86**. Corrected, and phrased so it
+    stays honest as the list grows ("86 as of 2026-08 — it was 21 when
+    this paragraph was written").
+  - **`THREAT_INTEL_2026.md` and `FEATURE_AUDIT_2026H2.md` both still
+    asserted all four helpers emit `"age_ms":0` unconditionally.** False
+    since the first-seen state file landed. Both now state the original
+    measurement as history and the current position plainly: `age_ms` is
+    real on all four helpers, so `very_new` is reachable below the
+    1000 ms default sweep (measured 500 ms → 589 → fires; 1000 ms →
+    1142 → does not), while `origin` stays `unknown` **by decision** —
+    supplying `Unsolicited` naively takes the bare lock shape from 95 to
+    120 and would make muten dismiss screen lockers.
+- Verified the counts that were *not* wrong rather than assuming: the
+  "44 process rules" claim matches exactly, and `GAP_ANALYSIS`'s
+  "Added 14 title patterns" is a historical record of one refresh, not a
+  current total.
+
 ### Fixed (accuracy) — purged claims that contradicted the completion verdict
 - The Completion Verdict was recorded, but two blocks written *before* it
   still contradicted it. Same docs-match-reality discipline that caught
