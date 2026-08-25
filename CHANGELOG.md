@@ -5,6 +5,32 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Fixed (accuracy) — purged claims that contradicted the completion verdict
+- The Completion Verdict was recorded, but two blocks written *before* it
+  still contradicted it. Same docs-match-reality discipline that caught
+  the earlier false MSRV and 66-signal claims, applied one last time.
+- **`README.md` Status**: test count 1,331 → **1,333** (measured:
+  `#[test]` total is 1333, all of the increase from `confusables.rs`
+  673 → 675, i.e. the two DR-12 additions). Removed the now-false caveat
+  "the test/clippy figures above were last verified before the current
+  cargo-unverified changes landed — see DR-12 / WO-1"; DR-12 is resolved
+  and those tests are green. Replaced with a pointer to the Completion
+  Verdict and its evidence chain.
+- **`FEATURE_AUDIT_2026H2.md` Current State Summary** carried three
+  inaccuracies, now corrected in place with the correction stated rather
+  than silently overwritten:
+  - test count 1331 → 1,333, with the baseline/delta split made explicit;
+  - *"the two `*_helper_reference` suites' Rust compilation is
+    **unverified** this round"* — **false**: both are compile-verified
+    and executed (1 + 2 tests green via `scripts/offline-stubs/`, DR-2b
+    teeth-proven);
+  - *"MSRV 1.75 preserved throughout"* — **inaccurate**: it was broken
+    mid-cycle by the auto-merged `clap` 4.6.6 bump and *restored* by
+    pinning back to 4.5.20. It holds now, but it was not unbroken, and
+    erasing that would erase DR-23's whole lesson.
+- Verified afterwards that the only surviving `1331` in the tree is the
+  one correctly describing the `549df29` baseline.
+
 ### Verdict — v0.6.0 declared COMPLETE, with the evidence chain recorded
 - Added a Completion Verdict to `FEATURE_AUDIT_2026H2.md`: by the
   product's own Definition of Done, **v0.6.0 is complete**. The verdict

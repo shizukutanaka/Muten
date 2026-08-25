@@ -898,16 +898,27 @@ recorded product decisions, not open engineering.
 ## Current State Summary (as of this audit's last commit)
 
 - **Version**: `muten-overlay` v0.6.0.
-- **Tests**: 1331 unit tests + 26 `cli_contract` integration tests + 7
-  other integration suites (helper_contract, linux_helper_reference,
+- **Tests**: **1,333** unit tests + 26 `cli_contract` integration tests
+  + 7 other integration suites (helper_contract, linux_helper_reference,
   macos_helper_reference, monitor_properties, scoring_scenarios,
-  benign_corpus, composed_evasion, scareware_properties). All previously
-  green as of commit `549df29`; the two new `*_helper_reference` suites
-  (DR-2b/DR-2d in `linux_helper_reference.rs` and
-  `macos_helper_reference.rs`) are each verified end-to-end at the
-  shell-script level but their Rust compilation is **unverified** this
-  round — see the DR-2b/DR-2c/DR-2d caveats above. Zero new dependencies
-  added across this entire audit cycle. MSRV 1.75 preserved throughout.
+  benign_corpus, composed_evasion, scareware_properties). 1,331 of the
+  unit tests and every integration suite were measured green by an
+  end-to-end `cargo test` at commit `549df29`; the +2 are the DR-12
+  additions in `confusables.rs` (673 → 675), which run green via
+  standalone `rustc` and are teeth-proven.
+  **Correction to an earlier version of this line**, which said the two
+  `*_helper_reference` suites' "Rust compilation is unverified this
+  round": they are now **compile-verified and executed** —
+  `linux_helper_reference` 1 test and `macos_helper_reference` 2 tests
+  pass via `scripts/offline-stubs/`, with DR-2b teeth-proven (forcing
+  the helper's `blocks_input` to `false` turns it red).
+  `benign_corpus.rs` and `scoring_scenarios.rs` are compile-verified,
+  their behaviour checked against the real detectors.
+  Zero new dependencies added across this entire audit cycle.
+  **MSRV 1.75**: broken mid-cycle by an auto-merged Dependabot bump to
+  `clap` 4.6.6 (MSRV 1.85) and **restored** by pinning back to 4.5.20
+  (MSRV 1.74) with a Dependabot `ignore` guarding recurrence — see
+  DR-23. It holds now; it was not preserved unbroken throughout.
 - **Shell-helper verification (re-run 2026-07 on the final HEAD)**: all
   three POSIX-shell helpers pass `sh -n`, and all three were re-driven
   end-to-end on the current committed scripts with stubbed OS tools on

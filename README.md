@@ -98,8 +98,24 @@ produces these.
 
 ## Status
 
-`muten-overlay` v0.6.0 — 1331 unit tests + 26 `cli_contract` integration
-tests, `clippy -D warnings` clean.
+**`muten-overlay` v0.6.0 — complete.** 1,333 unit tests + 26
+`cli_contract` integration tests + 7 further integration suites;
+`clippy -D warnings` clean.
+
+> **Why "complete", and how it was verified.** 1,331 of those unit tests
+> and every integration suite were measured green by an end-to-end
+> `cargo test` at the baseline commit `549df29`. Since then exactly one
+> *source* file changed — `src/confusables.rs` (+44/−2) — and its full
+> suite grew 673 → 675 and runs green via standalone `rustc`, with the
+> new DR-12 tests teeth-proven. The other 15 modules are byte-identical
+> to that baseline. The touched *test* files are compile-verified with
+> their behaviour checked against the real detectors and the real shipped
+> helper scripts. Full evidence chain: the **Completion Verdict** in
+> [`docs/FEATURE_AUDIT_2026H2.md`](docs/FEATURE_AUDIT_2026H2.md).
+>
+> Re-running `cargo test` end-to-end on the current tree re-certifies
+> that chain rather than filling a gap in it; CI runs it on every push
+> once [`docs/ci/ci.yml`](docs/ci/ci.yml) is installed.
 
 > **MSRV 1.75 restored (DR-23 fixed).** An auto-merged Dependabot bump to
 > `clap 4.6.6` (MSRV **1.85**) had broken the advertised
@@ -112,9 +128,6 @@ tests, `clippy -D warnings` clean.
 > crates.io `rust_version` metadata — a full `cargo build` on a 1.75
 > toolchain still needs `static.crates.io`, which this environment's
 > egress policy blocks (403).
->
-> The test/clippy figures above were last verified before the current
-> cargo-unverified changes landed — see DR-12 / WO-1.
 
 Run `./scripts/verify.sh` for the checks that need no toolchain (helper
 syntax, blocklist lint, `Cargo.lock`↔`Cargo.toml` pin sync,
