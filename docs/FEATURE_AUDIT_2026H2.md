@@ -623,7 +623,7 @@ actually hide (a real AV's `ウイルス定義を更新しました`, a real ban
 | JP benign titles | 10 | **54** |
 | Cyrillic/Greek/Armenian titles | **0** | **20** |
 | ratio to 502 JP literals | 50 : 1 | **9 : 1** |
-| corpus total | 68 | **132** |
+| corpus total | 68 | <!--claim:benign_titles-->**132** |
 
 **Cyrillic/Greek/Armenian negatives added too (was zero).** The two
 heaviest script signals — `confusable_mixed_script` (+30) and

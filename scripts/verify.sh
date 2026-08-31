@@ -110,6 +110,21 @@ else
     skp "doc-claim check" "scripts/check-doc-claims.sh not executable"
 fi
 
+# 1f. MDM deployment templates: XML/INI well-formed, referenced helper
+#     files exist, and every CLI flag they pass maps to a real cli.rs
+#     field. A rename on either side breaks deployment silently — the
+#     cross-artifact gap no other test covers.
+if [ -x "$ROOT/scripts/check-mdm-templates.sh" ]; then
+    if _out=$("$ROOT/scripts/check-mdm-templates.sh" 2>&1); then
+        ok "MDM templates valid — $_out"
+    else
+        bad "MDM templates:"
+        printf '%s\n' "$_out" | sed 's/^/      /'
+    fi
+else
+    skp "MDM template check" "scripts/check-mdm-templates.sh not executable"
+fi
+
 echo
 echo "[2/3] Rust checks"
 

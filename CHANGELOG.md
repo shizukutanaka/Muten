@@ -5,6 +5,41 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — `scripts/check-mdm-templates.sh`: the cross-artifact deployment gate
+- The three MDM templates (launchd plist, Task Scheduler XML, systemd
+  unit) are deploy-critical — if one breaks, the daemon never starts,
+  however healthy the detector is — yet nothing verified them after the
+  one manual pass early in the cycle. Worse, they depend on **other
+  artifacts**: they name helper script files and pass CLI flags, so a
+  rename on either side breaks deployment silently, and neither the
+  crate's tests nor the shell tests would notice.
+- The checker validates, per template: (1) XML/INI **well-formedness**
+  (including the required `[Unit]/[Service]/[Install]` sections);
+  (2) every referenced `muten-overlay-helper-*.{sh,ps1}` **exists**;
+  (3) every `--flag` passed maps to a real snake_case field in
+  `src/bin/cli.rs` — the reverse of clap's derive naming, so a CLI field
+  rename that would kill the daemon at startup with an argument error is
+  caught at verify time instead.
+- **False-alarm design carried over from the doc-claim checker**: flags
+  are read only from executable directives (`ProgramArguments`,
+  `<Arguments>`, `Exec*` lines), never from comments —
+  `muten-overlay.service`'s comments legitimately mention
+  `systemctl enable --now` and `systemctl --user`, which are not muten
+  flags. Verified they raise nothing.
+- **Teeth-tested all three failure classes**: a renamed helper in
+  `ExecStart` → *"references muten-overlay-helper-renamed.sh, which does
+  not exist"*; `--interval-ms` → `--interval-msec` → *"cli.rs has no
+  `interval_msec` field"*; a broken plist tag → *"not well-formed XML"*.
+  All restored; clean tree passes.
+- Wired into `verify.sh` as check 1f (21 checks total now), and the
+  last measurable-but-unmarked doc claim (`benign_titles` = 132) is now
+  marked, making the doc-claim checker 7/7 enforced with no INFO noise.
+- Implementation note, honestly recorded: the first attempt embedded this
+  as a Python heredoc inside a Python heredoc editing `verify.sh`, and
+  the identical `PY` terminators collided. The fix was also the better
+  design — a standalone script, consistent with `check-doc-claims.sh`,
+  independently runnable and teeth-testable.
+
 ### Added — `scripts/check-doc-claims.sh`: stop prose from going quietly false
 - The most frequently recurring defect this cycle was never a code bug —
   it was **documentation drifting into falsehood as the product grew**.
