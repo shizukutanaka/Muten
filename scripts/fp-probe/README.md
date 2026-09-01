@@ -88,3 +88,31 @@ job. They belong in a test asserting *"not alert-shaped ⇒ no block"*
 instead.
 
 The other 46 probed clean and are safe to add to `BENIGN_TITLES` as-is.
+
+
+## ⚠ This probe measures only HALF the detection path
+
+muten detects along two independent paths:
+
+| path | what it catches |
+|---|---|
+| **heuristic** — the `has_*` detectors in `confusables.rs` | novel variants of a structural technique |
+| **blocklist** — `title:` rules in `examples/overlay-blocklist.txt` | known exact phrasings |
+
+**This probe only runs the heuristic half.** A `clean` result therefore
+means *"no content detector fires"* — it does **not** mean *"muten would
+not detect this"*.
+
+That distinction is not hypothetical; it produced a wrong conclusion here
+once. Probing six representative 2026 scam families reported three as
+firing nothing, which read like a serious detection gap. It was not: the
+Azure-blob TSS sample is caught by `title: your computer is infected`,
+CypherLoc by `title: contact your it helpdesk`, and the Japanese support
+scam by `title: ウイルスに感染` (deliberately shortened so it covers
+「…しています/しました」). All three were detected the whole time, via the
+path the probe does not look at.
+
+**For positive samples use `scripts/check-detection.sh` instead** — it
+checks both paths and reports which one caught each sample. Use this
+probe for *benign* candidates, where the question genuinely is "does any
+content detector fire?".

@@ -125,6 +125,23 @@ else
     skp "MDM template check" "scripts/check-mdm-templates.sh not executable"
 fi
 
+# 1g. Positive-detection guard — the mirror of benign_corpus.rs. The
+#     benign side had a corpus; the positive side had nothing, so
+#     deleting a LIVE blocklist rule (this cycle deleted 10 dead ones)
+#     would remove real detection unnoticed. Asserts each representative
+#     scam family still fires a heuristic OR matches a blocklist rule,
+#     and prints which path caught it.
+if [ -x "$ROOT/scripts/check-detection.sh" ]; then
+    if _out=$("$ROOT/scripts/check-detection.sh" 2>&1); then
+        ok "positive detection — $(printf '%s' "$_out" | grep -o '[0-9]* families checked.*' | head -1)"
+    else
+        bad "positive detection regressed:"
+        printf '%s\n' "$_out" | grep -E 'MISS|title:' | sed 's/^/      /'
+    fi
+else
+    skp "positive-detection check" "scripts/check-detection.sh not executable"
+fi
+
 echo
 echo "[2/3] Rust checks"
 

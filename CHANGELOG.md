@@ -40,6 +40,43 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
   design — a standalone script, consistent with `check-doc-claims.sh`,
   independently runnable and teeth-testable.
 
+### Added — `scripts/check-detection.sh`: a standing guard for the *positive* side
+- **Socratic question that produced this**: the benign side had been
+  evidenced (132 titles, 0 FPs, 0.0%) — but was the *positive* claim
+  ("2026 samples score ~165 → Block") evidence, or an unverified
+  assertion? Probing six representative families against every content
+  detector reported **three firing nothing**, which read like a serious
+  detection gap.
+- **The counter-question mattered more**: does "no content detector
+  fires" mean "not detected"? **No** — the probe measured only *half* the
+  detection path. The Azure-blob TSS sample is caught by
+  `title: your computer is infected`, CypherLoc by
+  `title: contact your it helpdesk`, and the Japanese support scam by
+  `title: ウイルスに感染` (deliberately shortened so it covers
+  「…しています/しました」). **All six were detected all along.** Not a
+  defect — the two paths are complementary by design: heuristics catch
+  novel structural variants, the blocklist catches known exact phrasings.
+- **But the exercise exposed two real weaknesses, now fixed:**
+  - **No standing guard on the positive side.** `benign_corpus.rs` guards
+    against false positives; nothing guarded against *losing detection*.
+    That is not hypothetical — this cycle deleted 10 blocklist rules after
+    proving each unreachable, and the same procedure applied to a **live**
+    rule would have removed real detection silently.
+    `check-detection.sh` now asserts each of **8** representative families
+    still fires a heuristic **or** matches a blocklist rule, and prints
+    *which path* caught it, so a sample migrating between paths stays
+    visible. Wired into `verify.sh` as check 1g.
+  - **`scripts/fp-probe/README.md` never mentioned the blocklist** — the
+    tool measures only the heuristic half but did not say so, which is
+    exactly the trap I fell into. It now states that a `clean` result does
+    **not** mean "undetected", documents this misdiagnosis as the worked
+    example, and points positive-sample work at `check-detection.sh`.
+- **Teeth-tested both regressions it exists to catch**: deleting the live
+  `title: ウイルスに感染` rule makes the JP family report
+  `MISS … NO heuristic and NO blocklist rule matches`; disabling the
+  ClickFix heuristic together with its blocklist backstop fails two
+  families. Both restored; the tree verifies clean at **23 checks**.
+
 ### Added — `scripts/check-doc-claims.sh`: stop prose from going quietly false
 - The most frequently recurring defect this cycle was never a code bug —
   it was **documentation drifting into falsehood as the product grew**.
