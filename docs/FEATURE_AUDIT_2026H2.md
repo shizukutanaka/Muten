@@ -869,6 +869,30 @@ same sweep. Prove teeth by reverting to the single strict parse.
 
 ---
 
+## Strengths — measured, not asserted (2026-08-18)
+
+A completion verdict is only meaningful if the *strengths* are evidenced
+to the same standard the weaknesses were. Each row below was measured
+from the tree by a command, not claimed; every number is enforced by
+`scripts/check-doc-claims.sh` or reproducible via `scripts/verify.sh`.
+
+| # | Strength | Evidence |
+|---|---|---|
+| S1 | **Detection breadth** — 89 named signals across 10 analytical lenses, plus 309 `title:` / 44 `glob:` / 44 `process:` blocklist rules, over **two complementary paths**: heuristics catch novel structural variants, the blocklist catches known exact phrasings | `all_signals()` count; blocklist counts; both enforced as marked doc-claims |
+| S2 | **False-positive aversion that is measured, not asserted** — 132-title benign corpus at **0 FPs / 0.0%**, weighted toward adversarial-benign cases that reuse scam vocabulary legitimately (a real AV's `ウイルス定義を更新しました`, a real bank's `重要なお知らせ`) | `tests/benign_corpus.rs` + `scripts/fp-probe/`, re-probed against all 68 detectors |
+| S3 | **Positive detection guarded too** — 8 representative 2026 scam families verified still caught, each reporting *which* path caught it | `scripts/check-detection.sh`, teeth-proven by deleting a live rule |
+| S4 | **Reproducible verification without a registry** — **23 checks** run on any machine offline, including 696 real tests via standalone `rustc`; a skip is never counted as a pass | `./scripts/verify.sh --offline` |
+| S5 | **Self-defending documentation** — numeric claims carry machine-checked markers, so prose cannot quietly go false as the product grows | `scripts/check-doc-claims.sh`, 7 claims enforced |
+| S6 | **Small, safe supply chain** — `#![forbid(unsafe_code)]`, **6** direct dependencies, MSRV 1.75 held, `Cargo.lock`↔`Cargo.toml` pin sync enforced, Dependabot config validated | `verify.sh` checks 1c/1d + `Cargo.toml` |
+| S7 | **Cross-artifact deployment integrity** — 4 OS helpers and 3 MDM templates, with template→helper and template→CLI-flag references machine-verified | `scripts/check-mdm-templates.sh`, teeth-proven |
+| S8 | **Explainable by construction** — additive named signals with a tamper-evident SHA-256 audit chain (RFC 6962 Merkle root + inclusion proofs); every verdict states *why* | `src/lib.rs` / `src/sink.rs`; validated against the ROBOVIC precedent (NDSS 2017) |
+
+**The strength that matters most is structural**: the FP-safe posture is
+not a habit but an enforced invariant. `origin` remains unimplemented
+*deliberately* — supplying it naively would take the bare lock shape from
+95 to 120 and make muten dismiss a user's screen locker — so the product
+declines a capability rather than risk destroying what it protects.
+
 ## Completion Verdict — v0.6.0 is COMPLETE (2026-08-18)
 
 By this audit's own Definition of Done (`WORK_ORDERS.md` §1.5 — the

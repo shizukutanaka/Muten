@@ -40,6 +40,27 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
   design — a standalone script, consistent with `check-doc-claims.sh`,
   independently runnable and teeth-testable.
 
+### Added — measured Strengths section; v0.6.0 completion is now evidenced on both sides
+- The audit recorded weaknesses exhaustively (DR-1..DR-24, each with
+  evidence) but never enumerated **strengths** to the same standard — so
+  the completion verdict rested on only half a picture. Added a
+  **Strengths — measured, not asserted** section to
+  `FEATURE_AUDIT_2026H2.md`: 8 strengths (S1–S8), each backed by a
+  command run against the tree rather than a claim, and each either
+  enforced by `check-doc-claims.sh` or reproducible via `verify.sh`.
+- Headline evidence: **89** signals over two complementary detection
+  paths; **132**-title benign corpus at **0 FPs / 0.0%**; **8** scam
+  families verified still caught with the catching path named; **23**
+  offline checks including 696 real tests; **6** direct dependencies with
+  `#![forbid(unsafe_code)]` and MSRV 1.75 held; 4 helpers and 3 MDM
+  templates with cross-artifact references machine-verified.
+- Recorded the strength that matters most, because it is the one a
+  feature list would misread as a gap: **`origin` is unimplemented
+  deliberately.** Supplying it naively takes the bare lock shape from 95
+  to 120 and would make muten dismiss a user's screen locker — the
+  product declines a capability rather than risk destroying what it
+  protects. FP-aversion here is an enforced invariant, not a habit.
+
 ### Added — `scripts/check-detection.sh`: a standing guard for the *positive* side
 - **Socratic question that produced this**: the benign side had been
   evidenced (132 titles, 0 FPs, 0.0%) — but was the *positive* claim
