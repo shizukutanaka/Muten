@@ -869,6 +869,56 @@ same sweep. Prove teeth by reverting to the single strict parse.
 
 ---
 
+### [OPEN ★★] DR-25: the URL-driven signals have **zero** benign coverage
+**How this was found**: by turning the Socratic question on a strength
+this audit had just claimed. S2 asserts "132-title benign corpus, 0 FPs,
+0.0%" as evidence of FP-aversion — but `classify()` also takes a `url`,
+and the corpus supplies **none**: `grep -c "url: Some" tests/benign_corpus.rs`
+returns **0**. Every benign window is `url: None`, so seven signals
+weighted 20–40 have never been exercised against a legitimate URL.
+
+| signal | weight | `alert_shaped`-gated? |
+|---|---|---|
+| `brand_impersonation` | **40** | **no** — fires on the URL alone |
+| `ip_host_url` | 35 | yes |
+| `combosquat_brand` | 30 | **no** |
+| `typosquat_brand` | 25 | **no** |
+| `data_uri_page` | 25 | yes |
+| `cloud_storage_abuse` | 20 | yes |
+| `url_path_lure` | 20 | yes |
+
+**This is not evidence of a bug — it is the absence of evidence.** Each
+of the three ungated signals carries explicit false-positive reasoning in
+its own comment: `brand_impersonation` needs the label's *skeleton* to
+equal a brand while differing from it ("The literal brand never fires"),
+`combosquat_brand` requires hyphen-delimited brand+lure so legitimate
+concatenations like `windowsupdate.com` are spared, and `typosquat_brand`
+fires only at Levenshtein distance **exactly 1** (distance 0 being the
+real brand). The design is careful. **What is missing is that none of
+that careful reasoning is checked by anything executable.**
+
+**Where the test belongs** — and this matters, because the obvious place
+is wrong. `benign_corpus_fires_no_content_signal` deliberately evaluates
+in an **alert-shaped** profile to isolate content FPs; dropping benign
+URLs there would make `ip_host_url` and `data_uri_page` fire and the test
+go red, and that red would be **incorrect** — those two are gated
+precisely so a closable, user-initiated intranet page never reaches them
+(the `ip_host_url` comment reasons about enterprise raw-IP intranet pages
+explicitly). The right home is the existing
+**`benign_corpus_in_normal_geometry_is_allow`** (coverage 35, closable,
+non-modal, `UserInitiated`), which is the same conclusion reached for the
+four Japanese `credential_harvest` titles.
+
+**Why this was filed rather than fixed here.** The URL signal
+implementations live in `src/lib.rs`, which imports `serde` and therefore
+cannot be compiled or run in this environment. Unlike the Japanese
+titles — which were *pre-screened against the real detectors* in
+`confusables.rs` before being added — candidate URLs cannot be screened
+here at all. Adding tests whose outcome nobody can observe would make any
+future red ambiguous between "a real false positive" and "a badly chosen
+candidate", which is the precise failure this cycle has avoided
+throughout. See **WO-12 step 6** for the candidate set and procedure.
+
 ## Strengths — measured, not asserted (2026-08-18)
 
 A completion verdict is only meaningful if the *strengths* are evidenced
@@ -879,7 +929,7 @@ from the tree by a command, not claimed; every number is enforced by
 | # | Strength | Evidence |
 |---|---|---|
 | S1 | **Detection breadth** — 89 named signals across 10 analytical lenses, plus 309 `title:` / 44 `glob:` / 44 `process:` blocklist rules, over **two complementary paths**: heuristics catch novel structural variants, the blocklist catches known exact phrasings | `all_signals()` count; blocklist counts; both enforced as marked doc-claims |
-| S2 | **False-positive aversion that is measured, not asserted** — 132-title benign corpus at **0 FPs / 0.0%**, weighted toward adversarial-benign cases that reuse scam vocabulary legitimately (a real AV's `ウイルス定義を更新しました`, a real bank's `重要なお知らせ`) | `tests/benign_corpus.rs` + `scripts/fp-probe/`, re-probed against all 68 detectors |
+| S2 | **False-positive aversion that is measured, not asserted** — *on the title surface*; the URL surface is **not yet measured** (DR-25) — 132-title benign corpus at **0 FPs / 0.0%**, weighted toward adversarial-benign cases that reuse scam vocabulary legitimately (a real AV's `ウイルス定義を更新しました`, a real bank's `重要なお知らせ`) | `tests/benign_corpus.rs` + `scripts/fp-probe/`, re-probed against all 68 detectors |
 | S3 | **Positive detection guarded too** — 8 representative 2026 scam families verified still caught, each reporting *which* path caught it | `scripts/check-detection.sh`, teeth-proven by deleting a live rule |
 | S4 | **Reproducible verification without a registry** — **23 checks** run on any machine offline, including 696 real tests via standalone `rustc`; a skip is never counted as a pass | `./scripts/verify.sh --offline` |
 | S5 | **Self-defending documentation** — numeric claims carry machine-checked markers, so prose cannot quietly go false as the product grows | `scripts/check-doc-claims.sh`, 7 claims enforced |

@@ -76,7 +76,7 @@ disagree, the audit doc is authoritative. 日本語補足: 上段=壊しては
 | Wayland lswt parser: probe/enumerate mode mismatch (~~last-block drop~~ ✅ fixed 2026-08) | plain-lswt scrape may not match real output — `-j` migration needs a real host | **WO-5** |
 | No fault isolation in `enumerate` parsing (DR-18): one malformed element blinds the entire sweep | worst-case failure mode; helper bugs / custom helpers see *nothing* instead of missing one window | **WO-9** |
 | Failed dismiss audited identically to a self-closed window (DR-19) | a broken dismissal path across a fleet is invisible — looks like scams closing themselves | **WO-10** |
-| **502 Japanese detection literals guarded by 10 Japanese benign titles (DR-21)** | the largest body of detection logic is the least FP-tested, in the primary market; no FP *rate* is reported at all | **WO-12** |
+| ~~502 JP literals vs 10 JP benign titles~~ ✅ **9:1**, FP rate 0.0% measured (DR-21); **but 7 URL-driven signals (20–40 pts) still have ZERO benign URL coverage (DR-25)** | the URL surface's FP-safety rests on code comments, with nothing executable checking it | **WO-12** step 6 |
 | Blocklist loader drops mis-authored rules with no diagnostic (DR-22) | a hot-reloaded, operator-edited rule that fails to load is an unannounced detection hole | **WO-13** (shell linter shipped) |
 | Audit log grows unbounded; no rotation (DR-4) | multi-week deployments | **WO-6** |
 | **DR-20 remainder**: `origin` still hard-coded `unknown` (~~`age_ms`~~ ✅ real on all 4 helpers since 2026-08), so `unsolicited` (25) never fires | deliberately unimplemented until the lock-shape guard lands — naive `origin` would *dismiss screen lockers* | **WO-11** (guard designed) |
@@ -702,6 +702,34 @@ worse than not writing them.
    (it is bounded — +30 alone is under `SUSPICIOUS_THRESHOLD`, but
    `fullscreen` + this = 60 → Suspicious) and pin the decision with a
    test either way.
+6. **Give the URL signals their first benign coverage (DR-25).** Seven
+   signals weighted 20–40 have **zero** benign URL coverage —
+   `grep -c "url: Some" tests/benign_corpus.rs` returns 0. Add a
+   `BENIGN_URLS` set and exercise it in
+   **`benign_corpus_in_normal_geometry_is_allow`**, *not* in the
+   alert-shaped test: `ip_host_url` and `data_uri_page` are
+   `alert_shaped`-gated on purpose, so putting URLs in the alert-shaped
+   corpus produces reds that are **wrong**.
+
+   Candidates, each chosen to exercise a specific signal's FP reasoning:
+
+   | candidate URL | exercises | why it must NOT fire |
+   |---|---|---|
+   | `https://www.microsoft.com/` | `brand_impersonation` | the literal brand — its comment says "the literal brand never fires" |
+   | `https://mail.google.com/` | `brand_impersonation` | real brand with a subdomain |
+   | `https://www.mufg.jp/` | `brand_impersonation` | non-Latin-market real brand |
+   | `https://windowsupdate.com/` | `combosquat_brand` | legitimate *concatenation*; the hyphen requirement is what spares it |
+   | `https://apple-support.example/` *(negative control)* | `combosquat_brand` | this one **should** fire — proves the test has teeth |
+   | `http://10.0.0.5/dashboard` | `ip_host_url` | enterprise intranet raw-IP page; gated, so must not fire in normal geometry |
+   | `https://storage.googleapis.com/corp-assets/report.pdf` | `cloud_storage_abuse` | legitimate blob-hosted asset; gated |
+   | `https://github.com/org/repo/security/advisories` | `url_path_lure` | "security" in the path on a real domain |
+
+   Same rule as step 2: **a red is only a bug once you have checked the
+   geometry guard is not already handling it.** Note `typosquat_brand`
+   fires at Levenshtein distance exactly 1 — worth adding a real short
+   domain that is one edit from a brand if one can be found, since that is
+   the residual risk nobody has measured.
+
 5. Optional but valuable: note in the test header that the corpus is
    hand-authored, so it bounds *imagined* FPs only — the literature's
    collected-corpus standard remains unmet.

@@ -40,6 +40,43 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
   design — a standalone script, consistent with `check-doc-claims.sh`,
   independently runnable and teeth-testable.
 
+### Found — DR-25: the URL-driven signals have zero benign coverage
+- **Produced by turning the Socratic question on a strength this audit had
+  just claimed.** S2 asserted "132-title benign corpus, 0 FPs, 0.0%" as
+  evidence of FP-aversion. But `classify()` also takes a `url`, and
+  `grep -c "url: Some" tests/benign_corpus.rs` returns **0** — every
+  benign window is `url: None`. Seven signals weighted 20–40 have never
+  been exercised against a legitimate URL:
+  `brand_impersonation` **40**, `ip_host_url` 35, `combosquat_brand` 30,
+  `typosquat_brand` 25, `data_uri_page` 25, `cloud_storage_abuse` 20,
+  `url_path_lure` 20. **Three of them — including the 40-point one — are
+  not `alert_shaped`-gated**, so they fire on the URL alone.
+- **This is absence of evidence, not evidence of a bug.** Each ungated
+  signal carries explicit FP reasoning in its own comment:
+  `brand_impersonation` needs a skeleton match that differs from the
+  literal brand ("the literal brand never fires"), `combosquat_brand`
+  requires hyphen-delimited brand+lure so `windowsupdate.com` is spared,
+  and `typosquat_brand` fires only at Levenshtein distance exactly 1. The
+  design is careful — **nothing executable checks that it is right.**
+- **Also recorded where the test must NOT go.** The obvious home,
+  `benign_corpus_fires_no_content_signal`, evaluates in an alert-shaped
+  profile on purpose; benign URLs there would make `ip_host_url` and
+  `data_uri_page` fire and the red would be **wrong**, since those are
+  gated precisely so a closable intranet raw-IP page never reaches them.
+  The right home is `benign_corpus_in_normal_geometry_is_allow` — the same
+  conclusion reached for the four Japanese `credential_harvest` titles.
+- **Filed rather than fixed, deliberately.** The URL signals live in
+  `src/lib.rs`, which imports `serde` and cannot be compiled here — so
+  unlike the Japanese titles, which were pre-screened against the real
+  detectors before being added, candidate URLs cannot be screened at all.
+  Adding tests nobody can run would make a future red ambiguous between "a
+  real false positive" and "a bad candidate". **WO-12 step 6** carries the
+  candidate table, each URL mapped to the signal whose reasoning it
+  exercises, plus a deliberate positive control that *should* fire.
+- **Qualified my own claim rather than leaving it standing**: strength S2
+  now reads "*on the title surface*; the URL surface is not yet measured
+  (DR-25)".
+
 ### Added — measured Strengths section; v0.6.0 completion is now evidenced on both sides
 - The audit recorded weaknesses exhaustively (DR-1..DR-24, each with
   evidence) but never enumerated **strengths** to the same standard — so
