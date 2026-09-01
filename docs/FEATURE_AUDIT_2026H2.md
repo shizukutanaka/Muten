@@ -869,7 +869,7 @@ same sweep. Prove teeth by reverting to the single strict parse.
 
 ---
 
-### [OPEN ★★] DR-25: the URL-driven signals have **zero** benign coverage
+### [~~RESOLVED~~] DR-25: the URL-driven signals had **zero** benign coverage
 **How this was found**: by turning the Socratic question on a strength
 this audit had just claimed. S2 asserts "132-title benign corpus, 0 FPs,
 0.0%" as evidence of FP-aversion — but `classify()` also takes a `url`,
@@ -909,9 +909,34 @@ explicitly). The right home is the existing
 non-modal, `UserInitiated`), which is the same conclusion reached for the
 four Japanese `credential_harvest` titles.
 
-**Why this was filed rather than fixed here.** The URL signal
-implementations live in `src/lib.rs`, which imports `serde` and therefore
-cannot be compiled or run in this environment. Unlike the Japanese
+**RESOLVED 2026-08-18 — measured, not deferred.** The blocker was
+"`lib.rs` needs serde, so candidates cannot be screened". Questioning that
+found a third way: rather than reimplementing the functions (which would
+test a copy, not the product) `scripts/check-url-fp.sh` **mechanically
+slices** `KNOWN_BRANDS`, `BRAND_LURE_WORDS`, `brand_impersonation`,
+`levenshtein_distance`, `typosquat_brand`, `combosquat` and `host_str`
+out of `src/lib.rs`/`src/rules.rs`, and **asserts every slice appears
+verbatim in its source file**. The code under test is provably the
+shipped code; if anyone edits those functions the slice moves with them,
+and if anyone renames one the extraction fails loudly
+(`SLICE FAILED: … source changed shape`) instead of quietly testing stale
+logic.
+
+Result: **0 of 11 legitimate URLs fire**, and both positive controls do
+(`apple-support.example` → combosquat, `amzon.com` → typosquat). The FP
+reasoning written in those comments is now *verified* rather than
+asserted. **Teeth**: relaxing `typosquat_brand`'s Levenshtein guard from
+`== 1` to `<= 2` makes **10 of 11 legitimate URLs fire** — that guard is
+load-bearing, and the check proves it. Wired into `verify.sh` as 1h.
+
+*(A note on one control: `arnazon.com` was tried first and correctly did
+**not** fire — it is distance 2 from `amazon`, not 1. My control was
+wrong, not the code; `amzon.com` is the true distance-1 case, exactly as
+the function's own comment says.)*
+
+**Historical note — why it was almost filed instead of fixed.** The URL
+signal implementations live in `src/lib.rs`, which imports `serde` and
+therefore cannot be compiled or run in this environment. Unlike the Japanese
 titles — which were *pre-screened against the real detectors* in
 `confusables.rs` before being added — candidate URLs cannot be screened
 here at all. Adding tests whose outcome nobody can observe would make any
@@ -929,7 +954,7 @@ from the tree by a command, not claimed; every number is enforced by
 | # | Strength | Evidence |
 |---|---|---|
 | S1 | **Detection breadth** — 89 named signals across 10 analytical lenses, plus 309 `title:` / 44 `glob:` / 44 `process:` blocklist rules, over **two complementary paths**: heuristics catch novel structural variants, the blocklist catches known exact phrasings | `all_signals()` count; blocklist counts; both enforced as marked doc-claims |
-| S2 | **False-positive aversion that is measured, not asserted** — *on the title surface*; the URL surface is **not yet measured** (DR-25) — 132-title benign corpus at **0 FPs / 0.0%**, weighted toward adversarial-benign cases that reuse scam vocabulary legitimately (a real AV's `ウイルス定義を更新しました`, a real bank's `重要なお知らせ`) | `tests/benign_corpus.rs` + `scripts/fp-probe/`, re-probed against all 68 detectors |
+| S2 | **False-positive aversion that is measured, not asserted** — on **both** surfaces: 132-title benign corpus at **0 FPs / 0.0%**, plus **0/11 legitimate URLs** firing the URL signals (DR-25 resolved), weighted toward adversarial-benign cases that reuse scam vocabulary legitimately (a real AV's `ウイルス定義を更新しました`, a real bank's `重要なお知らせ`) | `tests/benign_corpus.rs` + `scripts/fp-probe/`, re-probed against all 68 detectors |
 | S3 | **Positive detection guarded too** — 8 representative 2026 scam families verified still caught, each reporting *which* path caught it | `scripts/check-detection.sh`, teeth-proven by deleting a live rule |
 | S4 | **Reproducible verification without a registry** — **23 checks** run on any machine offline, including 696 real tests via standalone `rustc`; a skip is never counted as a pass | `./scripts/verify.sh --offline` |
 | S5 | **Self-defending documentation** — numeric claims carry machine-checked markers, so prose cannot quietly go false as the product grows | `scripts/check-doc-claims.sh`, 7 claims enforced |

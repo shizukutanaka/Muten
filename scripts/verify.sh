@@ -142,6 +142,22 @@ else
     skp "positive-detection check" "scripts/check-detection.sh not executable"
 fi
 
+# 1h. Benign-URL false-positive check (DR-25). Seven URL-driven signals
+#     weighted 20-40 had zero benign coverage; three, including the
+#     40-point brand_impersonation, are not alert_shaped-gated. The check
+#     mechanically slices the real functions out of lib.rs/rules.rs and
+#     verifies each slice is verbatim, so it can never test stale logic.
+if [ -x "$ROOT/scripts/check-url-fp.sh" ]; then
+    if _out=$("$ROOT/scripts/check-url-fp.sh" 2>&1); then
+        ok "benign-URL FP — $(printf '%s' "$_out" | grep -o 'legitimate URLs firing.*' | head -1)"
+    else
+        bad "benign-URL FP check:"
+        printf '%s\n' "$_out" | grep -E 'FIRES|SLICE|FIDELITY|MISS' | sed 's/^/      /'
+    fi
+else
+    skp "benign-URL FP check" "scripts/check-url-fp.sh not executable"
+fi
+
 echo
 echo "[2/3] Rust checks"
 

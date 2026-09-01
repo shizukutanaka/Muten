@@ -40,6 +40,43 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
   design — a standalone script, consistent with `check-doc-claims.sh`,
   independently runnable and teeth-testable.
 
+### Resolved — DR-25 measured, not deferred: **0/11 legitimate URLs fire**
+- The previous entry filed DR-25 and deferred the fix, reasoning that the
+  URL signals live in `src/lib.rs`, which imports `serde` and cannot be
+  compiled here — so candidate URLs could not be pre-screened. **That
+  "cannot" was questioned and turned out to be false**, the fourth time
+  this cycle a self-imposed impossibility gave way.
+- Stubbing serde was tried first and **rejected on evidence**: it produced
+  69 errors and would have required faking `Serializer`, `json!` and
+  `thiserror`, i.e. an elaborate scaffold whose own correctness could not
+  be checked. Reimplementing the functions was rejected too — that tests a
+  copy, not the product.
+- **The third way**: `scripts/check-url-fp.sh` *mechanically slices*
+  `KNOWN_BRANDS`, `BRAND_LURE_WORDS`, `brand_impersonation`,
+  `levenshtein_distance`, `typosquat_brand`, `combosquat` and `host_str`
+  out of `lib.rs`/`rules.rs`, and **asserts each slice appears verbatim in
+  its source file**. The code under test is provably the shipped code; a
+  rename makes extraction fail loudly (`SLICE FAILED: … source changed
+  shape`) rather than silently testing stale logic.
+- **Result: 0 of 11 legitimate URLs fire** — real brands
+  (`www.microsoft.com`, `mail.google.com`, `www.mufg.jp`,
+  `support.apple.com`), the legitimate concatenation `windowsupdate.com`,
+  an enterprise intranet raw IP, a GCS-hosted asset, a GitHub security
+  path — while **both positive controls do fire**
+  (`apple-support.example`, `amzon.com`). The FP reasoning written in
+  those comments is now verified rather than asserted.
+- **Teeth, and they are emphatic**: relaxing `typosquat_brand`'s
+  Levenshtein guard from `== 1` to `<= 2` makes **10 of 11 legitimate
+  URLs fire**. That single `== 1` is load-bearing, and nothing had been
+  checking it.
+- A control of mine was wrong and is recorded as such: `arnazon.com`
+  correctly did **not** fire, being distance 2 from `amazon`, not 1.
+  `amzon.com` is the true distance-1 case — exactly what the function's
+  own comment says.
+- Strength **S2 restored on evidence**, now covering *both* surfaces:
+  132 titles at 0 FPs plus 0/11 URLs. Wired into `verify.sh` as 1h;
+  **25 checks** now pass offline.
+
 ### Found — DR-25: the URL-driven signals have zero benign coverage
 - **Produced by turning the Socratic question on a strength this audit had
   just claimed.** S2 asserted "132-title benign corpus, 0 FPs, 0.0%" as
