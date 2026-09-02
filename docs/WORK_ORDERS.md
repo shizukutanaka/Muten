@@ -72,7 +72,7 @@ disagree, the audit doc is authoritative. 日本語補足: 上段=壊しては
 
 | Weakness (audit ref) | Impact | Fix |
 |---|---|---|
-| ~~Cargo-unverified Rust on the default branch~~ | ✅ largely resolved — **744** tests green via standalone `rustc`, now including the whole audit chain (DR-26); only a real end-to-end `cargo test` remains | **WO-1** |
+| ~~Cargo-unverified Rust on the default branch~~ | ✅ resolved for the behavioural claims — **1,623** tests green via standalone `rustc`, the whole crate included (DR-28). What remains registry-bound is named and narrow: the 3 proptest suites, `cli_contract`, and a real `cargo build` | **WO-1** |
 | CI claimed-then-shipped but not installed (DR-16) | no automated verification channel | **WO-2** (owner step) |
 | No signal for a bare IP literal shown in an alert (DR-13, CypherLoc trick) | detection gap on a live 2.8M-victim kit | **WO-3** |
 | IT-helpdesk impersonation only covered by verbatim blocklist rules (DR-14) | generalization gap (low — exact phrasings blocked) | **WO-4** |
@@ -96,9 +96,10 @@ backlog turns out not to gate completion. Work the four blockers; do the
 rest because you want the feature, not because the product is unfinished
 without it.
 
-**Status as of 2026-08-18**: B1 fixed; B2 covered (**744 tests green**
-without a registry — the audit chain included since DR-26 — plus the last
-two assertions checked directly); B3
+**Status as of 2026-08-18**: B1 fixed; B2 covered (**1,623 tests green**
+without a registry — the whole crate since DR-28, including
+`benign_corpus.rs` and `scoring_scenarios.rs` running against the real
+`classify()`); B3
 and B4 re-classified below as *not product blockers*. Registry access was
 confirmed exhaustively: no vendored sources, no crate cache, no permitted
 mirror — `index.crates.io` is reachable but `static.crates.io` is a
@@ -114,7 +115,7 @@ it is not blocking a release."* Applying that rule honestly:
 | # | Item | Detector wrong? | Build broken? | FPs likelier? | Verdict |
 |---|---|---|---|---|---|
 | B1 | DR-23 MSRV | — | **was YES** | — | ✅ **fixed** — `clap` 4.5.20, MSRV 1.75 holds |
-| B2 | cargo-unverified code | no | no | no | ✅ **all 5 touched files compile-verified and behaviour-verified** (696 tests green + assertions checked). Only an end-to-end `cargo test` remains — an environment-gated confirmation, not outstanding work |
+| B2 | cargo-unverified code | no | no | no | ✅ **the whole crate now compiles and runs offline** — 1,335 unit + 285 integration tests green (DR-28), including the 0-FP corpus and the 244 scoring scenarios. Only the proptest suites, `cli_contract` and a real `cargo build` remain — environment-gated confirmations, not outstanding work |
 | B3 | no CI | no | no | no | **not a product blocker** — a process guarantee for *future* changes |
 | B4 | `origin` dead | no — *weaker*, not wrong | no | **no; the opposite** | **not a product blocker** — implementing it naively makes FPs *likelier* (lock shape → Block), so shipping without it is the FP-safe state |
 
@@ -126,22 +127,21 @@ Rust files changed since the green commit `549df29`, and each is covered:
 | `src/confusables.rs` | ✅ `rustc` | ✅ **675 tests pass**; DR-12 teeth-proven (disabling `filefix` → FAIL) |
 | `tests/linux_helper_reference.rs` | ✅ `rustc` + offline stubs | ✅ **1 test passes** against the real shipped helper; DR-2b teeth-proven |
 | `tests/macos_helper_reference.rs` | ✅ `rustc` + offline stubs | ✅ **2 tests pass** (DR-2c, DR-2d) against the real shipped helper |
-| `tests/scoring_scenarios.rs` | ✅ `rustc` + compile-only crate stub | ✅ both new assertions checked against the *verified* `normalize_for_match` + `has_clickfix_instruction`, plus a benign control that correctly does not fire |
-| `tests/benign_corpus.rs` *(edited here)* | ✅ `rustc` + compile-only crate stub | ✅ all **132** titles probed against the real detectors — **0 false positives, 0.0%** |
+| `tests/scoring_scenarios.rs` | ✅ `rustc` + the real crate (DR-28) | ✅ **244 tests pass** end-to-end against the real `classify()`; teeth-proven by zeroing `W_TITLE_HIT` |
+| `tests/benign_corpus.rs` *(edited here)* | ✅ `rustc` + the real crate (DR-28) | ✅ **7 tests pass** against the real `classify()`; all **132** titles also probed against the real detectors — **0 false positives, 0.0%** |
 
 The 15 serde-importing modules were **not touched** — byte-identical to
 their green state — so nothing unverified ships.
 
 **The residual caveat, stated precisely**: `cargo test` has never run
-end-to-end. **696 tests do run** — `confusables.rs` 675, `fingerprint.rs` 12,
-`mitre.rs` 6, and the two `*_helper_reference.rs` suites (3) via
-`scripts/offline-stubs/` — all teeth-proven. What remains unrun is
-`tests/scoring_scenarios.rs` (2 tests), which needs the full
-`muten_overlay` crate graph and hence `serde`/`sha2` from the
-egress-denied `static.crates.io`. The helper suites additionally run
-against *stub* `tempfile`/`serde_json`, so they verify **helper
-behaviour**, not serde integration. **Do not advertise "all tests green"
-until someone runs a real `cargo test`.**
+end-to-end, and `cargo build` has never verified the crate against the
+*real* serde. **1,623 tests do run** — every unit test in `src/` plus the
+five integration suites that need only the crate and the two
+`*_helper_reference.rs` suites — all teeth-proven. What remains unrun is
+the three proptest suites and `tests/cli_contract.rs`, which need
+`proptest`/`clap` from the blocked registry and are deliberately not
+faked — a property test's substance is its input distribution, so a
+home-made generator would test something else while reading the same.
 
 **Where that leaves v0.6.0**: functionally complete and, within this
 environment's limits, verified — the build works on the advertised MSRV,
@@ -620,13 +620,16 @@ Do **not** let this become "add `origin` guessing heuristics" — a false
 **Verification split, so nobody misreads the evidence.** The corpus
 edits here were checked two independent ways: (a) **compilation** —
 `tests/benign_corpus.rs` compiles cleanly with all 64 added titles and
-the rate-reporting change, checked with `rustc` against a compile-only
-`muten_overlay` stub; (b) **behaviour** — every title probed against the
+the rate-reporting change, checked with `rustc`; (b) **behaviour** —
+since DR-28 the suite's 7 tests run against the real `classify()`, and
+every title is also probed against the
 real detectors in `confusables.rs` (`scripts/fp-probe/`), giving
-132 titles / 0 false positives / 0.0%. The stub run's own pass/fail is
-**not** behavioural evidence: its `classify` returns an empty verdict, so
-the benign tests pass trivially and two scam-detection tests fail as
-artefacts. Only a real `cargo test` combines both.
+132 titles / 0 false positives / 0.0%. **Both halves are now executed.**
+An earlier version of this paragraph warned that the compile-only stub's
+pass carried no information, because its `classify` returned an empty
+verdict. That stub is deleted (DR-28); the suite runs against the real
+`classify()`. What a real `cargo test` would still add is the proptest
+suites and verification against the genuine serde.
 
 **Expect red, and treat every red as the deliverable.** Adding benign
 titles is supposed to expose over-broad rules; each failure is a real
