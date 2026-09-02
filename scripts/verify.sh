@@ -158,6 +158,25 @@ else
     skp "benign-URL FP check" "scripts/check-url-fp.sh not executable"
 fi
 
+# 1i. Merkle audit-chain tamper evidence (S8). The RFC 6962 root and the
+#     SHA-256 link chain are the product's central integrity claim, and
+#     their tests had never been executed - merkle.rs and sink.rs need
+#     sha2/hex/serde_json/thiserror/serde/tempfile, none downloadable
+#     here. check-merkle.sh proves the SHA-256 against NIST vectors
+#     BEFORE running anything on top of it; check-sink.sh runs it first,
+#     then compiles the real sink.rs verbatim over a verbatim slice of
+#     the two monitor types and runs its tests, tamper cases included.
+if [ -x "$ROOT/scripts/check-sink.sh" ]; then
+    if _out=$("$ROOT/scripts/check-sink.sh" 2>&1); then
+        ok "audit chain — $(printf '%s' "$_out" | grep -o 'audit chain: .*' | sed 's/^audit chain: //' | head -1)"
+    else
+        bad "audit-chain tamper-evidence check:"
+        printf '%s\n' "$_out" | grep -E 'FAIL|MISMATCH|SLICE|JSON-|FAILED|panicked' | sed 's/^/      /'
+    fi
+else
+    skp "audit-chain check" "scripts/check-sink.sh not executable"
+fi
+
 echo
 echo "[2/3] Rust checks"
 
@@ -281,7 +300,7 @@ if command -v rustc >/dev/null 2>&1; then
     fi
 
     rm -rf "$_tmp"
-    skp "the 15 serde modules + a real end-to-end cargo test" "need the real crate graph — cargo + registry"
+    skp "the 14 remaining serde modules + a real end-to-end cargo test" "need the real crate graph — cargo + registry (sink.rs is now covered by check 1i)"
 else
     skp "standalone rustc module tests" "rustc not installed"
 fi

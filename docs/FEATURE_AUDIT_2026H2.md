@@ -869,6 +869,90 @@ same sweep. Prove teeth by reverting to the single strict parse.
 
 ---
 
+### [~~RESOLVED~~] DR-26: the tamper-evident audit chain had **never been executed**
+**How this was found**: by turning the Socratic question on S8, exactly
+as DR-25 turned it on S2. S8 claims a "tamper-evident SHA-256 audit chain
+(RFC 6962 Merkle root + inclusion proofs)". The question was not *is the
+code right* but **what executable evidence exists that it detects
+tampering?** The answer: none. `src/merkle.rs` carried 15 tests and
+`src/sink.rs` 31 — including `tampering_breaks_chain`,
+`refuses_to_open_tampered_log` and `verify_checkpoint_fails_with_tampered_head`
+— and **not one had ever run**, because both modules need `sha2`, `hex`,
+`serde_json`, `thiserror`, `serde` and `tempfile`, and this environment's
+egress policy denies `static.crates.io`. The product's central integrity
+claim rested on tests no machine had executed.
+
+**Why a fake `sha2` would have been worse than nothing.** Stubbing the
+hash would have made the known-answer tests vacuous: `merkle_root(&[])`
+would "pass" against whatever the fake returned. So the third path from
+DR-25 was taken again — build something whose correctness can be
+demonstrated independently. `scripts/offline-stubs/sha2.rs` is a real
+FIPS 180-4 SHA-256, and `scripts/check-merkle.sh` proves it against
+**four published NIST vectors** (empty string, `"abc"`, the 56-byte
+two-block message, and one million `'a'`) *before* running anything on
+top of it. If the primitive is wrong the self-test fails first and the
+merkle results are never reported.
+
+**Fidelity of what is under test.** `src/merkle.rs` and `src/sink.rs` are
+compiled **verbatim** from `src/` as modules of a synthetic crate root —
+nothing is copied or rewritten. The two types `sink.rs` imports from
+`crate::monitor` are **mechanically sliced** out of `src/monitor.rs` and
+each slice is asserted to appear verbatim there; only the `Serialize`
+derive is dropped, and `sink.rs` never serializes the struct, it reads
+the four fields. The JSON stand-in is proven to round-trip
+parse → emit → parse as a fixpoint before any chain result is believed.
+
+**Honest limits.** The `thiserror` shim emits `Display` via `Debug`, so
+**error message wording is not under test** — acceptable only because no
+`sink.rs` test asserts on wording; they match on the variant. The JSON
+encoder is self-consistent, not proven byte-identical to upstream
+`serde_json` on every input; the chain tests depend on self-consistency,
+not on that stronger property.
+
+**Result**: `scripts/check-merkle.sh` and `scripts/check-sink.sh`, wired
+as `verify.sh` check **1i**. **16 merkle tests + 32 sink tests, 8 of them
+tamper and forgery cases, now run on every verification.**
+
+---
+
+### [~~RESOLVED~~] DR-27: two teeth tests **did not bite** — and each named a real hole
+**How this was found**: by refusing to accept a green run as proof. Four
+deliberate breakages were introduced to check that the new checks fail
+when they should. Two bit immediately. **Two did not**, and each
+no-bite was a genuine gap in the product's own test suite, not in the
+harness.
+
+**Hole 1 — the RFC 6962 node prefix was never pinned.** Changing
+`NODE_PREFIX` from `0x01` to `0x02` in `src/merkle.rs` left **all 15
+tests green**. A tree built that way is not RFC 6962 and no Certificate
+Transparency verifier — nor `muten-audit-chain`, whose format the module
+promises to match — would accept it, yet nothing said so. The cause:
+`two_and_three_leaf_shape_matches_rfc` builds its expectation with
+`hash_node` *itself*, so it checks the tree's shape and is blind to the
+domain separator. **Fix**: `node_hash_is_pinned_to_the_rfc_value`, a
+known-answer test whose two roots were computed by an **independent**
+implementation (Python `hashlib`) straight from the RFC definitions. The
+prefix flip now fails it loudly.
+
+**Hole 2 — `seq` was not proven to be bound into the link hash.**
+`sink.rs`'s module docs promise the hash covers
+`prev_hash‖timestamp‖kind‖window_id‖detail‖seq`. Replacing
+`h.update(seq.to_be_bytes())` with a no-op left **all 31 tests green**:
+every existing test only varies fields it also expects to change, so a
+component silently dropped from the digest was invisible. **Fix**:
+`every_component_is_bound_into_the_link_hash` varies each of the six
+inputs one at a time from a fixed baseline, requires the hash to move,
+and additionally requires the six variants to differ from each other so
+no component can be aliased onto another's position. Dropping `seq` now
+names `seq` in the failure message.
+
+**The general lesson**, worth more than either fix: *a test that computes
+its expected value with the same function it is testing verifies shape,
+never constants.* Both holes had that exact form. Both are now covered by
+known-answer or one-at-a-time-variation tests, which do not.
+
+---
+
 ### [~~RESOLVED~~] DR-25: the URL-driven signals had **zero** benign coverage
 **How this was found**: by turning the Socratic question on a strength
 this audit had just claimed. S2 asserts "132-title benign corpus, 0 FPs,
@@ -960,7 +1044,7 @@ from the tree by a command, not claimed; every number is enforced by
 | S5 | **Self-defending documentation** — numeric claims carry machine-checked markers, so prose cannot quietly go false as the product grows | `scripts/check-doc-claims.sh`, 7 claims enforced |
 | S6 | **Small, safe supply chain** — `#![forbid(unsafe_code)]`, **6** direct dependencies, MSRV 1.75 held, `Cargo.lock`↔`Cargo.toml` pin sync enforced, Dependabot config validated | `verify.sh` checks 1c/1d + `Cargo.toml` |
 | S7 | **Cross-artifact deployment integrity** — 4 OS helpers and 3 MDM templates, with template→helper and template→CLI-flag references machine-verified | `scripts/check-mdm-templates.sh`, teeth-proven |
-| S8 | **Explainable by construction** — additive named signals with a tamper-evident SHA-256 audit chain (RFC 6962 Merkle root + inclusion proofs); every verdict states *why* | `src/lib.rs` / `src/sink.rs`; validated against the ROBOVIC precedent (NDSS 2017) |
+| S8 | **Explainable by construction, and the tamper-evidence is now *measured*** — additive named signals with a SHA-256 audit chain (RFC 6962 Merkle root + inclusion proofs); every verdict states *why*. **16 merkle + 32 sink tests run on every verification, 8 of them tamper/forgery cases, on a SHA-256 proven against 4 NIST vectors** (DR-26). The node prefix and every hashed component are pinned by known-answer and one-at-a-time-variation tests (DR-27) | `src/lib.rs` / `src/sink.rs` / `src/merkle.rs`; `scripts/check-merkle.sh` + `scripts/check-sink.sh` (verify.sh 1i); validated against the ROBOVIC precedent (NDSS 2017) |
 
 **The strength that matters most is structural**: the FP-safe posture is
 not a habit but an enforced invariant. `origin` remains unimplemented

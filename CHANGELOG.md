@@ -5,6 +5,51 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — `scripts/check-merkle.sh` + `scripts/check-sink.sh`: the tamper-evidence the audit chain only *claimed* (DR-26, DR-27)
+- **The gap.** Strength S8 advertises a tamper-evident SHA-256 audit
+  chain with an RFC 6962 Merkle root. `src/merkle.rs` carried 15 tests
+  and `src/sink.rs` 31 — `tampering_breaks_chain`,
+  `refuses_to_open_tampered_log`, `verify_checkpoint_fails_with_tampered_head`
+  — and **not one had ever been executed**. Both modules need `sha2`,
+  `hex`, `serde_json`, `thiserror`, `serde` and `tempfile`, and this
+  environment's egress policy denies `static.crates.io`. The product's
+  central integrity claim was asserted, never demonstrated.
+- **A fake `sha2` would have been worse than nothing**: it would have
+  made `empty_tree_is_sha256_of_empty` vacuous. So
+  `scripts/offline-stubs/sha2.rs` is a real FIPS 180-4 SHA-256, and
+  `check-merkle.sh` proves it against **four published NIST vectors**
+  (empty, `"abc"`, the 56-byte two-block message, one million `'a'`)
+  *before* running anything on top of it — a wrong primitive fails the
+  self-test first and the merkle results are never reported.
+- **Nothing is reimplemented.** `merkle.rs` and `sink.rs` compile
+  **verbatim** from `src/`; the two `crate::monitor` types `sink.rs`
+  needs are **mechanically sliced** from `src/monitor.rs` with each slice
+  asserted verbatim there. The JSON stand-in must round-trip
+  parse → emit → parse as a fixpoint before any chain result is believed.
+- **Two teeth tests did not bite — and each named a real hole (DR-27).**
+  - Flipping `NODE_PREFIX` `0x01` → `0x02` left all 15 merkle tests
+    green: `two_and_three_leaf_shape_matches_rfc` builds its expectation
+    with `hash_node` *itself*, so it checks shape and is blind to the RFC
+    domain separator. A tree built that way interoperates with nothing.
+    **Added** `node_hash_is_pinned_to_the_rfc_value`, whose two roots come
+    from an independent implementation (Python `hashlib`).
+  - Removing `h.update(seq.to_be_bytes())` from `link_hash` left all 31
+    sink tests green, though the module docs promise `seq` is hashed:
+    every existing test only varies fields it also expects to change.
+    **Added** `every_component_is_bound_into_the_link_hash`, which varies
+    each of the six inputs one at a time and also requires the six
+    variants to differ from each other.
+  - The general lesson: *a test that computes its expected value with the
+    function under test verifies shape, never constants.*
+- **Honest limits, recorded in `scripts/offline-stubs/README.md`.** The
+  `thiserror` shim emits `Display` via `Debug`, so error message wording
+  is not under test (no `sink.rs` test asserts on wording — they match on
+  the variant). The `serde` shim handles plain named-field structs only
+  and panics loudly on anything else. The JSON encoder is proven
+  self-consistent, not byte-identical to upstream.
+- Wired as `verify.sh` check **1i** (28 checks now). **16 merkle + 32
+  sink tests, 8 of them tamper/forgery cases, run on every verification.**
+
 ### Added — `scripts/check-mdm-templates.sh`: the cross-artifact deployment gate
 - The three MDM templates (launchd plist, Task Scheduler XML, systemd
   unit) are deploy-critical — if one breaks, the daemon never starts,

@@ -374,6 +374,31 @@ mod tests {
     }
 
     #[test]
+    fn node_hash_is_pinned_to_the_rfc_value() {
+        // KNOWN-ANSWER test for the INTERNAL-NODE hash.
+        //
+        // WHY THIS IS SEPARATE from `two_and_three_leaf_shape_matches_rfc`:
+        // that test builds its expectation with `hash_node` itself, so it
+        // checks the tree's *shape* but is blind to the node prefix - a
+        // build with `NODE_PREFIX = 0x02` produces a tree no RFC 6962
+        // verifier (or `muten-audit-chain`) would accept, yet passes it.
+        // These two roots were computed by an INDEPENDENT implementation
+        // (Python `hashlib`) directly from the RFC definitions
+        // MTH({d0,d1}) = SHA-256(0x01 || MTH({d0}) || MTH({d1})), so they
+        // pin the 0x01 domain separator and the left-heavy split at once.
+        // If either constant drifts, interop breaks loudly here.
+        let d = leaves(&["a", "b", "c"]);
+        assert_eq!(
+            merkle_root(&d[..2]),
+            "b137985ff484fb600db93107c77b0365c80d78f5b429ded0fd97361d077999eb"
+        );
+        assert_eq!(
+            merkle_root(&d),
+            "36642e73c2540ab121e3a6bf9545b0a24982cd830eb13d3cd19de3ce6c021ec1"
+        );
+    }
+
+    #[test]
     fn leaf_and_node_prefixes_differ_from_raw_sha() {
         // Domain separation: a leaf is SHA-256(0x00 || data), not SHA-256(data).
         let raw = hex::encode(sha256(&[b"x"]));

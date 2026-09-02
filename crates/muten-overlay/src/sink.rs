@@ -959,6 +959,49 @@ mod tests {
     }
 
     #[test]
+    fn every_component_is_bound_into_the_link_hash() {
+        // The module docs promise the hash covers prev_hash, timestamp,
+        // kind, window_id, detail AND seq. Nothing was checking that.
+        // A build that quietly stopped mixing one of them in - say `seq`
+        // - kept every other test in this file green, because the other
+        // tests only ever vary fields they also expect to change.
+        //
+        // This varies each input ONE AT A TIME from a fixed baseline and
+        // requires the hash to move. If any component is ever dropped
+        // from the digest, exactly one assertion here names it.
+        let base_detail = serde_json::json!({"k": "v"});
+        let base = link_hash("prev", 1_000, "kind", "w1", &base_detail, 0);
+        let cases: [(&str, String); 6] = [
+            ("prev_hash", link_hash("prev2", 1_000, "kind", "w1", &base_detail, 0)),
+            ("timestamp_ms", link_hash("prev", 1_001, "kind", "w1", &base_detail, 0)),
+            ("kind", link_hash("prev", 1_000, "kind2", "w1", &base_detail, 0)),
+            ("window_id", link_hash("prev", 1_000, "kind", "w2", &base_detail, 0)),
+            (
+                "detail",
+                link_hash("prev", 1_000, "kind", "w1", &serde_json::json!({"k": "w"}), 0),
+            ),
+            ("seq", link_hash("prev", 1_000, "kind", "w1", &base_detail, 1)),
+        ];
+        for (field, hashed) in &cases {
+            assert_ne!(
+                &base, hashed,
+                "{field} is NOT bound into the link hash - it can be altered undetected"
+            );
+        }
+        // The variants must also differ from each other, so a component
+        // cannot be silently aliased onto another's position.
+        for i in 0..cases.len() {
+            for j in (i + 1)..cases.len() {
+                assert_ne!(
+                    cases[i].1, cases[j].1,
+                    "{} and {} collide in the link hash",
+                    cases[i].0, cases[j].0
+                );
+            }
+        }
+    }
+
+    #[test]
     fn link_hash_is_stable_regardless_of_key_insertion_order() {
         // Even if serde_json's map ordering changed, canonical_json enforces
         // the same sorted serialization so the hash is always identical.
