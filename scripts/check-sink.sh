@@ -45,6 +45,9 @@ if ! _mk=$("$ROOT/scripts/check-merkle.sh" 2>&1); then
     printf '%s\n' "$_mk" | sed 's/^/      /'
     exit 1
 fi
+# Surface what the foundation actually proved, so a caller reading only
+# this script's output still sees the NIST self-test and the merkle count.
+printf '%s\n' "$_mk"
 
 # --- Stage 2: slice the two monitor types, verbatim --------------------
 python3 - "$CRATE/src/monitor.rs" "$TMP/monitor_slice.rs" <<'PY'

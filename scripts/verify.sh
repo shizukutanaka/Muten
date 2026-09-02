@@ -168,7 +168,8 @@ fi
 #     the two monitor types and runs its tests, tamper cases included.
 if [ -x "$ROOT/scripts/check-sink.sh" ]; then
     if _out=$("$ROOT/scripts/check-sink.sh" 2>&1); then
-        ok "audit chain — $(printf '%s' "$_out" | grep -o 'audit chain: .*' | sed 's/^audit chain: //' | head -1)"
+        ok "audit chain — $(printf '%s' "$_out" | grep -o 'merkle tamper-evidence: [0-9]* tests' | head -1), $(printf '%s' "$_out" | grep -o 'audit chain: .*' | sed 's/^audit chain: //' | head -1)"
+        ok "SHA-256 foundation — $(printf '%s' "$_out" | grep -o 'SHA-256 self-test: .*' | head -1)"
     else
         bad "audit-chain tamper-evidence check:"
         printf '%s\n' "$_out" | grep -E 'FAIL|MISMATCH|SLICE|JSON-|FAILED|panicked' | sed 's/^/      /'

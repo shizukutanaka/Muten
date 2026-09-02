@@ -47,7 +47,7 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
   the variant). The `serde` shim handles plain named-field structs only
   and panics loudly on anything else. The JSON encoder is proven
   self-consistent, not byte-identical to upstream.
-- Wired as `verify.sh` check **1i** (28 checks now). **16 merkle + 32
+- Wired as `verify.sh` check **1i** (29 checks now). **16 merkle + 32
   sink tests, 8 of them tamper/forgery cases, run on every verification.**
 - **Automated against future drift**: `check-doc-claims.sh` gained an
   eighth enforced claim, `offline_tests` — the number of tests actually
