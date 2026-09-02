@@ -52,7 +52,10 @@ disagree, the audit doc is authoritative. 日本語補足: 上段=壊しては
   Unicode-confusable normalization pipeline (`src/confusables.rs`) —
   the product's core value.
 - Tamper-evident SHA-256 audit chain with RFC 6962 Merkle anchoring
-  (`src/sink.rs`) — the operator-trust story.
+  (`src/sink.rs`, `src/merkle.rs`) — the operator-trust story, and since
+  DR-26 an **executed** one: 16 merkle + 32 sink tests, 8 of them tamper
+  and forgery cases, run on every `verify.sh` on a SHA-256 proven against
+  four NIST vectors. Do not weaken `check-merkle.sh`/`check-sink.sh`.
 - False-positive-averse design that actually holds: `user_initiated`
   relief, `alert_shaped` gating on content signals, and the adversarial
   `tests/benign_corpus.rs` corpus. FP-aversion is a stated product
@@ -69,7 +72,7 @@ disagree, the audit doc is authoritative. 日本語補足: 上段=壊しては
 
 | Weakness (audit ref) | Impact | Fix |
 |---|---|---|
-| ~~Cargo-unverified Rust on the default branch~~ | ✅ largely resolved — 696 tests green via standalone `rustc`; only a real end-to-end `cargo test` remains | **WO-1** |
+| ~~Cargo-unverified Rust on the default branch~~ | ✅ largely resolved — **744** tests green via standalone `rustc`, now including the whole audit chain (DR-26); only a real end-to-end `cargo test` remains | **WO-1** |
 | CI claimed-then-shipped but not installed (DR-16) | no automated verification channel | **WO-2** (owner step) |
 | No signal for a bare IP literal shown in an alert (DR-13, CypherLoc trick) | detection gap on a live 2.8M-victim kit | **WO-3** |
 | IT-helpdesk impersonation only covered by verbatim blocklist rules (DR-14) | generalization gap (low — exact phrasings blocked) | **WO-4** |
@@ -77,6 +80,7 @@ disagree, the audit doc is authoritative. 日本語補足: 上段=壊しては
 | No fault isolation in `enumerate` parsing (DR-18): one malformed element blinds the entire sweep | worst-case failure mode; helper bugs / custom helpers see *nothing* instead of missing one window | **WO-9** |
 | Failed dismiss audited identically to a self-closed window (DR-19) | a broken dismissal path across a fleet is invisible — looks like scams closing themselves | **WO-10** |
 | ~~502 JP literals vs 10 JP benign titles~~ ✅ **9:1**, FP rate 0.0% measured (DR-21); **but 7 URL-driven signals (20–40 pts) still have ZERO benign URL coverage (DR-25)** | the URL surface's FP-safety rests on code comments, with nothing executable checking it | **WO-12** step 6 |
+| ~~Audit chain's tamper-evidence never executed (DR-26)~~ | ✅ resolved — 48 chain tests run every verification; two teeth failures (DR-27) exposed a missing RFC-6962 node-prefix pin and an unbound `seq`, both now covered | done |
 | Blocklist loader drops mis-authored rules with no diagnostic (DR-22) | a hot-reloaded, operator-edited rule that fails to load is an unannounced detection hole | **WO-13** (shell linter shipped) |
 | Audit log grows unbounded; no rotation (DR-4) | multi-week deployments | **WO-6** |
 | **DR-20 remainder**: `origin` still hard-coded `unknown` (~~`age_ms`~~ ✅ real on all 4 helpers since 2026-08), so `unsolicited` (25) never fires | deliberately unimplemented until the lock-shape guard lands — naive `origin` would *dismiss screen lockers* | **WO-11** (guard designed) |
@@ -92,8 +96,9 @@ backlog turns out not to gate completion. Work the four blockers; do the
 rest because you want the feature, not because the product is unfinished
 without it.
 
-**Status as of 2026-08-18**: B1 fixed; B2 covered (**696 tests green**
-without a registry, plus the last two assertions checked directly); B3
+**Status as of 2026-08-18**: B1 fixed; B2 covered (**744 tests green**
+without a registry — the audit chain included since DR-26 — plus the last
+two assertions checked directly); B3
 and B4 re-classified below as *not product blockers*. Registry access was
 confirmed exhaustively: no vendored sources, no crate cache, no permitted
 mirror — `index.crates.io` is reachable but `static.crates.io` is a
