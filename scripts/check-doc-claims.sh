@@ -74,19 +74,20 @@ def unit_tests():
                for f in (crate / 'src').glob('*.rs'))
 
 def offline_tests():
-    """Tests actually EXECUTED with standalone rustc, no registry needed.
+    """Tests actually EXECUTED without a package registry.
 
-    These are the modules and suites scripts/verify.sh runs in phase 2b:
-    the three dependency-free src modules, the two that link the offline
-    stubs (merkle.rs, sink.rs), and the two helper-reference suites. The
-    compile-only checks are deliberately NOT counted - they type-check,
-    they do not run. If a module is added to phase 2b, add it here too.
+    Since the whole crate compiles against scripts/offline-stubs/, this is
+    every unit test in src/ plus the seven integration suites verify.sh
+    runs: the five that need only the crate, and the two helper-reference
+    suites. NOT counted: the three proptest suites and cli_contract, which
+    need proptest/clap from the registry and are deliberately not faked.
     """
-    src_files = ['confusables.rs', 'fingerprint.rs', 'mitre.rs', 'merkle.rs', 'sink.rs']
-    n = sum((crate / 'src' / f).read_text(encoding='utf-8').count('#[test]')
-            for f in src_files)
-    n += sum((crate / 'tests' / f).read_text(encoding='utf-8').count('#[test]')
-             for f in ['linux_helper_reference.rs', 'macos_helper_reference.rs'])
+    n = unit_tests()
+    suites = ['benign_corpus', 'blocklist_coverage', 'composed_evasion',
+              'helper_contract', 'scoring_scenarios',
+              'linux_helper_reference', 'macos_helper_reference']
+    n += sum((crate / 'tests' / f'{s}.rs').read_text(encoding='utf-8').count('#[test]')
+             for s in suites)
     return n
 
 def benign_titles():

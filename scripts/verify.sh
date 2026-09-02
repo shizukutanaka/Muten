@@ -275,33 +275,26 @@ if command -v rustc >/dev/null 2>&1; then
         rm -rf "$_tmp2"
     fi
 
-    # Compile-check the two suites that need the crate itself. This proves
-    # they still TYPE-CHECK; it says nothing about behaviour, because the
-    # stub's classify() returns an empty verdict. See the stubs' README.
-    if [ -f "$_stub/muten_overlay_compileonly.rs" ]; then
-        _tmp3="${TMPDIR:-/tmp}/muten-mo-$$"
-        mkdir -p "$_tmp3"
-        if rustc --edition 2021 --crate-type lib --crate-name muten_overlay \
-                 -o "$_tmp3/libmuten_overlay.rlib" \
-                 "$_stub/muten_overlay_compileonly.rs" >/dev/null 2>&1; then
-            for _t in benign_corpus scoring_scenarios; do
-                [ -f "$CRATE/tests/$_t.rs" ] || continue
-                if (cd "$CRATE" && rustc --edition 2021 --test -O \
-                        --extern muten_overlay="$_tmp3/libmuten_overlay.rlib" \
-                        -o "$_tmp3/c_$_t" "tests/$_t.rs" >/dev/null 2>&1); then
-                    ok "$_t.rs type-checks (compile-only stub — not a behaviour check)"
-                else
-                    bad "$_t.rs fails to compile"
-                fi
-            done
+    # Run the WHOLE crate: 1,335 unit tests plus the five integration
+    # suites that need only the crate, benign_corpus.rs (the 0-FP claim)
+    # and scoring_scenarios.rs (the detect->DISMISS claim) among them.
+    # These were previously compile-checked against a stub whose
+    # classify() returned an empty verdict, so their pass/fail carried no
+    # information; that stub is gone. See check-crate.sh for exactly what
+    # this proves and what it deliberately does not.
+    if [ -x "$ROOT/scripts/check-crate.sh" ]; then
+        if _cr=$("$ROOT/scripts/check-crate.sh" 2>&1); then
+            ok "whole-crate tests — $(printf '%s' "$_cr" | grep -o 'crate tests: .*' | sed 's/^crate tests: //')"
         else
-            skp "benign_corpus/scoring_scenarios compile check" "compile-only stub failed to build"
+            bad "whole-crate test run:"
+            printf '%s\n' "$_cr" | grep -E 'FAIL|FAILED|panicked|^error' | head -12 | sed 's/^/      /'
         fi
-        rm -rf "$_tmp3"
+    else
+        skp "whole-crate test run" "scripts/check-crate.sh not executable"
     fi
 
     rm -rf "$_tmp"
-    skp "the 14 remaining serde modules + a real end-to-end cargo test" "need the real crate graph — cargo + registry (sink.rs is now covered by check 1i)"
+    skp "the 3 proptest suites + cli_contract + a real cargo build" "need proptest/clap from the registry; every other test now runs offline"
 else
     skp "standalone rustc module tests" "rustc not installed"
 fi

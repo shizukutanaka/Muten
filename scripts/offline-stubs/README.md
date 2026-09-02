@@ -17,6 +17,7 @@ test surfaces touch only a small external API:
 | `tests/macos_helper_reference.rs` | same |
 | `src/merkle.rs` (16 tests) | `sha2::{Digest, Sha256}`, `hex::{encode, decode}` |
 | `src/sink.rs` (32 tests) | the above plus `serde_json`, `thiserror::Error`, `serde::{Serialize, Deserialize}`, `tempfile` |
+| the whole crate + 5 integration suites (1,620 tests) | all of the above |
 
 Those suites shell out to the real shipped helper scripts and assert on
 the JSON they print, so what they actually verify is **helper behaviour**,
@@ -61,23 +62,32 @@ A real `cargo test` remains the authority. Never advertise "all tests
 green" on the strength of these stubs alone.
 
 
-## `muten_overlay_compileonly.rs` — compile checking only
+## The whole crate now runs here — and what that does NOT mean
 
-`tests/benign_corpus.rs` and `tests/scoring_scenarios.rs` need the crate
-itself, which needs `serde`/`sha2` and therefore the blocked registry.
-This stub provides just the surface they name (`OverlayWindow`, `Origin`,
-`Ruleset`, `Decision`, `Verdict`, `classify`, the two thresholds) so
-`rustc` can **type-check** them.
+`scripts/check-crate.sh` compiles the real `src/lib.rs` against these
+stubs and runs **1,335 unit tests plus 285 integration tests**, including
+the two suites that carry the product's central behavioural claims:
+`tests/benign_corpus.rs` (zero false positives) and
+`tests/scoring_scenarios.rs` (a detected window's score actually crosses
+`BLOCK_THRESHOLD`). Both were previously compile-checked against a stub
+whose `classify()` returned an empty verdict — a pass that carried no
+information. That stub is deleted; a check that cannot fail informatively
+is worse than none.
 
-**Its `classify` returns an empty verdict, so the resulting pass/fail is
-meaningless.** Use it to answer *"does this file still compile?"* and
-nothing else. Under it the benign tests pass trivially and the
-scam-detection tests fail as artefacts — neither outcome is evidence.
+**Proves**: the behaviour of `classify()` and everything under it, on the
+real, unmodified `src/` and `tests/`. Teeth-proven in both directions —
+zeroing `W_TITLE_HIT` (detection intact, dismissal broken) turns
+`helper_contract` red, and removing the `alert_shaped` fence from the
+ClickFix signal turns a unit test red.
 
-Behaviour is established separately, by probing the **real** detectors in
-`confusables.rs` (`scripts/fp-probe/`). Keeping the two apart is
-deliberate: a stub can only ever prove compilation, so it must never be
-the thing that tells you detection works.
+**Does NOT prove**: serde integration, and this is **not** an answer to
+"does the crate compile under real serde" — only `cargo build` is.
+
+**Deliberately not run, and deliberately not faked**: the three proptest
+suites and `tests/cli_contract.rs`. A property test's substance is its
+input *distribution*; a home-made generator would test something else
+while reading the same, and its regex strategies would have to be
+reimplemented. `cli_contract` needs clap and the built binary.
 
 ## `thiserror.rs` / `serde.rs` — narrow derive shims, and their limits
 
@@ -95,12 +105,15 @@ proc-macro shims supply exactly those derives and **nothing wider**:
   generics, `#[serde(...)]` options and borrowed deserialization all
   panic at compile time rather than silently doing something else.
 
-### Why there is still no stub for the whole crate
+### Why a *permissive* stub is still refused
 
-Compiling all of `lib.rs` would need those derives across the whole
-model, and a permissive stand-in — a blanket `impl<T> Serialize for T {}`
-— accepts code that real serde would reject, so a green from it would be
-weaker than it looks while reading as stronger. The narrow shims above
-are the opposite bargain: they cover two known declarations and fail
-loudly on anything else. A real `cargo build` remains the only honest
-answer to *"does the whole crate compile?"*.
+An earlier version of this file rejected any whole-crate stub. That
+objection was aimed at a **permissive** one: a blanket
+`impl<T> Serialize for T {}` accepts code real serde rejects, so a green
+from it reads stronger than it is. That reasoning still stands, and these
+shims are the opposite bargain — they reproduce a named set of shapes and
+**panic at compile time** on everything else, so an unsupported
+declaration stops the build instead of quietly passing. What changed is
+only the scope of what has been taught, not the standard. A real
+`cargo build` remains the only honest answer to *"does the whole crate
+compile?"*, and nothing here claims otherwise.

@@ -15,7 +15,7 @@
 //! arbitrary-precision numbers. Byte-identical output with upstream on
 //! every input is NOT claimed — only self-consistency, which is what the
 //! hash-chain tests actually depend on.
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::ops::Index;
 
@@ -127,6 +127,17 @@ impl PartialEq<&str> for Value {
         matches!(self, Value::String(s) if s == *o)
     }
 }
+// Upstream also compares against unsized `str` and owned `String`.
+impl PartialEq<str> for Value {
+    fn eq(&self, o: &str) -> bool {
+        matches!(self, Value::String(s) if s == o)
+    }
+}
+impl PartialEq<String> for Value {
+    fn eq(&self, o: &String) -> bool {
+        matches!(self, Value::String(s) if s == o)
+    }
+}
 impl PartialEq<bool> for Value {
     fn eq(&self, o: &bool) -> bool {
         matches!(self, Value::Bool(b) if b == o)
@@ -182,6 +193,14 @@ impl ToValue for Value {
 impl<T: ToValue + ?Sized> ToValue for &T {
     fn to_value(&self) -> Value {
         (**self).to_value()
+    }
+}
+impl<T: ToValue> ToValue for Option<T> {
+    fn to_value(&self) -> Value {
+        match self {
+            Some(v) => v.to_value(),
+            None => Value::Null,
+        }
     }
 }
 impl<T: ToValue> ToValue for Vec<T> {
@@ -361,6 +380,62 @@ impl Serialize for bool {
         out.push_str(if *self { "true" } else { "false" });
     }
 }
+impl<T: Serialize> Serialize for Option<T> {
+    fn write_json(&self, out: &mut String) {
+        match self {
+            Some(v) => v.write_json(out),
+            None => out.push_str("null"),
+        }
+    }
+}
+impl<T: Serialize> Serialize for Vec<T> {
+    fn write_json(&self, out: &mut String) {
+        self.as_slice().write_json(out);
+    }
+}
+impl<T: Serialize> Serialize for [T] {
+    fn write_json(&self, out: &mut String) {
+        out.push('[');
+        for (i, v) in self.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            v.write_json(out);
+        }
+        out.push(']');
+    }
+}
+impl<T: Serialize, const N: usize> Serialize for [T; N] {
+    fn write_json(&self, out: &mut String) {
+        self.as_slice().write_json(out);
+    }
+}
+impl<T: Serialize + Ord> Serialize for BTreeSet<T> {
+    fn write_json(&self, out: &mut String) {
+        out.push('[');
+        for (i, v) in self.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            v.write_json(out);
+        }
+        out.push(']');
+    }
+}
+impl<V: Serialize> Serialize for BTreeMap<String, V> {
+    fn write_json(&self, out: &mut String) {
+        out.push('{');
+        for (i, (k, v)) in self.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            escape_into(out, k);
+            out.push(':');
+            v.write_json(out);
+        }
+        out.push('}');
+    }
+}
 impl<T: Serialize + ?Sized> Serialize for &T {
     fn write_json(&self, out: &mut String) {
         (**self).write_json(out);
@@ -408,6 +483,60 @@ impl FromJson for bool {
         v.as_bool().ok_or_else(|| Error("expected bool".into()))
     }
 }
+impl<T: FromJson> FromJson for Option<T> {
+    fn from_value(v: &Value) -> Result<Self, Error> {
+        if v.is_null() {
+            Ok(None)
+        } else {
+            T::from_value(v).map(Some)
+        }
+    }
+}
+impl<T: FromJson + Ord> FromJson for BTreeSet<T> {
+    fn from_value(v: &Value) -> Result<Self, Error> {
+        let a = v.as_array().ok_or_else(|| Error("expected array".into()))?;
+        a.iter().map(T::from_value).collect()
+    }
+}
+impl<V: FromJson> FromJson for BTreeMap<String, V> {
+    fn from_value(v: &Value) -> Result<Self, Error> {
+        match v {
+            Value::Object(m) => m
+                .iter()
+                .map(|(k, val)| V::from_value(val).map(|x| (k.clone(), x)))
+                .collect(),
+            _ => Err(Error("expected object".into())),
+        }
+    }
+}
+impl<T: FromJson> FromJson for Vec<T> {
+    fn from_value(v: &Value) -> Result<Self, Error> {
+        let a = v.as_array().ok_or_else(|| Error("expected array".into()))?;
+        a.iter().map(T::from_value).collect()
+    }
+}
+impl FromJson for f64 {
+    fn from_value(v: &Value) -> Result<Self, Error> {
+        match v {
+            Value::Number(Number::PosInt(n)) => Ok(*n as f64),
+            Value::Number(Number::NegInt(n)) => Ok(*n as f64),
+            Value::Number(Number::Float(n)) => Ok(*n),
+            _ => Err(Error("expected number".into())),
+        }
+    }
+}
+macro_rules! from_json_int {
+    ($($t:ty),*) => { $( impl FromJson for $t {
+        fn from_value(v: &Value) -> Result<Self, Error> {
+            match v {
+                Value::Number(Number::PosInt(n)) => <$t>::try_from(*n).ok(),
+                Value::Number(Number::NegInt(n)) => <$t>::try_from(*n).ok(),
+                _ => None,
+            }.ok_or_else(|| Error("expected integer".into()))
+        }
+    } )* };
+}
+from_json_int!(i8, i16, i32, i64, isize);
 macro_rules! from_json_uint {
     ($($t:ty),*) => { $( impl FromJson for $t {
         fn from_value(v: &Value) -> Result<Self, Error> {

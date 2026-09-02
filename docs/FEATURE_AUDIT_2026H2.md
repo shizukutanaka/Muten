@@ -869,6 +869,58 @@ same sweep. Prove teeth by reverting to the single strict parse.
 
 ---
 
+### [~~RESOLVED~~] DR-28: "detected" was never shown to mean "dismissed"
+**How this was found**: by questioning S3 the way DR-26 questioned S8.
+S3 claimed 8 scam families "verified still caught". Caught *how*?
+Reading `scripts/check-detection.sh`: it asserts that **at least one path
+fires** — a `has_*` detector or a `title:` blocklist rule. It does not
+assert a verdict. And the arithmetic matters: a `title:` hit is
+`W_TITLE_HIT = 40` against `BLOCK_THRESHOLD = 100`. **A signal firing
+dismisses nothing.** The product's one job is to detect *and dismiss*;
+nothing executable connected the two halves.
+
+**The test that does connect them already existed and had never run.**
+`tests/scoring_scenarios.rs` (244 tests) asserts end-to-end verdicts, and
+`tests/benign_corpus.rs` (7 tests) asserts the 0-false-positive claim.
+Both were only *type-checked*, against a stub whose `classify()` returned
+an empty verdict — so their pass carried **no information at all**. The
+benign tests passed trivially; the detection tests were "expected" to
+fail as artefacts. Two of the product's three central claims rested on
+that.
+
+**Why the earlier refusal to stub the crate was right, and what changed.**
+`scripts/offline-stubs/README.md` had rejected a whole-crate stub because
+a blanket `impl<T> Serialize for T {}` accepts code real serde rejects,
+making a green read stronger than it is. That objection is about
+**compilation** claims, and it still stands. The narrow derive shims
+built for DR-26 are the opposite bargain: they reproduce named-field
+structs, unit-variant enums with `rename_all = "snake_case"`,
+externally-tagged single-field tuple variants and `#[serde(default)]`,
+and **panic at compile time** on anything else. Extending them to the
+whole crate was 62 compile errors in six classes, all mechanical.
+
+**Result**: `scripts/check-crate.sh`, wired into `verify.sh` phase 2b.
+**1,335 unit tests + 285 integration tests now execute** with no
+registry, `benign_corpus` and `scoring_scenarios` among them. The
+compile-only stub is **deleted** — it could only ever produce a
+meaningless pass, and keeping a check that cannot fail informatively is
+worse than having none.
+
+**Teeth-proven, both directions.** Setting `W_TITLE_HIT` to 0 — detection
+intact, dismissal broken — turns `helper_contract` red. Removing the
+`alert_shaped` false-positive fence from the ClickFix signal turns a unit
+test red. Neither breakage was visible before this check existed.
+
+**Honest limits.** This proves `classify()`'s behaviour on the real,
+unmodified `src/` and `tests/`. It does **not** prove serde integration
+and is **not** an answer to "does the crate compile under real serde" —
+only `cargo build` is. The three proptest suites and `cli_contract` are
+deliberately **not** run: a property test's substance is its input
+distribution, so a home-made generator would test something else while
+reading the same.
+
+---
+
 ### [~~RESOLVED~~] DR-26: the tamper-evident audit chain had **never been executed**
 **How this was found**: by turning the Socratic question on S8, exactly
 as DR-25 turned it on S2. S8 claims a "tamper-evident SHA-256 audit chain
@@ -1038,9 +1090,9 @@ from the tree by a command, not claimed; every number is enforced by
 | # | Strength | Evidence |
 |---|---|---|
 | S1 | **Detection breadth** — 89 named signals across 10 analytical lenses, plus 309 `title:` / 44 `glob:` / 44 `process:` blocklist rules, over **two complementary paths**: heuristics catch novel structural variants, the blocklist catches known exact phrasings | `all_signals()` count; blocklist counts; both enforced as marked doc-claims |
-| S2 | **False-positive aversion that is measured, not asserted** — on **both** surfaces: 132-title benign corpus at **0 FPs / 0.0%**, plus **0/11 legitimate URLs** firing the URL signals (DR-25 resolved), weighted toward adversarial-benign cases that reuse scam vocabulary legitimately (a real AV's `ウイルス定義を更新しました`, a real bank's `重要なお知らせ`) | `tests/benign_corpus.rs` + `scripts/fp-probe/`, re-probed against all 68 detectors |
-| S3 | **Positive detection guarded too** — 8 representative 2026 scam families verified still caught, each reporting *which* path caught it | `scripts/check-detection.sh`, teeth-proven by deleting a live rule |
-| S4 | **Reproducible verification without a registry** — **29 checks** run on any machine offline, including <!--claim:offline_tests-->744 real tests executed via standalone `rustc` (the audit chain's tamper cases among them); a skip is never counted as a pass | `./scripts/verify.sh --offline`, test count machine-enforced |
+| S2 | **False-positive aversion that is measured by an executed test, not asserted** — 132-title benign corpus at **0 FPs / 0.0%**, plus **0/11 legitimate URLs** firing the URL signals (DR-25), weighted toward adversarial-benign cases that reuse scam vocabulary legitimately (a real AV's `ウイルス定義を更新しました`, a real bank's `重要なお知らせ`). Since DR-28 `benign_corpus.rs` **runs against the real `classify()`**, not a stub | `tests/benign_corpus.rs` (7 tests, executed), `scripts/check-crate.sh` + `scripts/fp-probe/` |
+| S3 | **Detection *and dismissal* both guarded** — 8 representative 2026 scam families verified still caught, each reporting *which* path caught it; and since DR-28 the **244 scoring scenarios run for real**, so the score is proven to cross `BLOCK_THRESHOLD` rather than merely to fire a signal | `scripts/check-detection.sh` + `tests/scoring_scenarios.rs` (executed), both teeth-proven |
+| S4 | **Reproducible verification without a registry** — **29 checks** run on any machine offline, including <!--claim:offline_tests-->1,623 real tests executed via standalone `rustc`, the whole crate included; a skip is never counted as a pass | `./scripts/verify.sh --offline`, test count machine-enforced |
 | S5 | **Self-defending documentation** — numeric claims carry machine-checked markers, so prose cannot quietly go false as the product grows | `scripts/check-doc-claims.sh`, 7 claims enforced |
 | S6 | **Small, safe supply chain** — `#![forbid(unsafe_code)]`, **6** direct dependencies, MSRV 1.75 held, `Cargo.lock`↔`Cargo.toml` pin sync enforced, Dependabot config validated | `verify.sh` checks 1c/1d + `Cargo.toml` |
 | S7 | **Cross-artifact deployment integrity** — 4 OS helpers and 3 MDM templates, with template→helper and template→CLI-flag references machine-verified | `scripts/check-mdm-templates.sh`, teeth-proven |
@@ -1062,21 +1114,19 @@ verdict rests on a two-part evidence chain, not on assertion:
 1. **A full-suite green baseline exists.** At commit `549df29` the entire
    crate passed `cargo test` end-to-end: 1331 unit tests, 26
    `cli_contract` integration tests, and the 7 other integration suites.
-2. **Every change since that baseline is independently verified.** Three
-   *source* files are touched, and all three are re-measured:
-   `src/confusables.rs` (+44/−2), whose 675 unit tests — including the
-   new DR-12 ones — run green via standalone `rustc`, teeth-proven;
-   `src/merkle.rs`, whose **16** tests run on a SHA-256 proven against
-   four NIST vectors (DR-26); and `src/sink.rs`, whose **32** tests —
-   8 of them tamper and forgery cases — run against the shipping module
-   compiled verbatim. The four touched *test* files are compile-verified,
-   and their asserted behaviour is verified against the real detectors
-   and the real shipped helper scripts. Every other module is
-   **byte-identical** to the green baseline. The shell layer, blocklist
-   (lint-clean, 10 dead rules removed), MDM templates, and the
-   132-title / 0-FP / 0.0% benign corpus are all verified in place, and
-   `./scripts/verify.sh` reproduces **29** of these checks on any machine
-   with no registry access.
+2. **The current tree is verified directly, not only by inheritance from
+   that baseline.** Since DR-28 the whole crate compiles and runs without
+   a registry: **all 1,335 unit tests plus 285 integration tests execute
+   on every `verify.sh` run**, including `benign_corpus.rs` (the 0-FP
+   claim) and `scoring_scenarios.rs` (the detect→dismiss claim, 244
+   tests), both of which were previously type-checked against a stub
+   whose verdict was empty. The audit chain's 48 tamper tests run on a
+   SHA-256 proven against four NIST vectors (DR-26). The shell layer,
+   blocklist (lint-clean, 10 dead rules removed), MDM templates and the
+   132-title benign corpus are verified in place, and
+   `./scripts/verify.sh` reproduces **29** checks on any machine with no
+   registry access. What remains registry-bound is narrow and named: the
+   three proptest suites, `cli_contract`, and a real `cargo build`.
 
 Re-running `cargo test` end-to-end on the current tree is
 **re-certification of what this chain already establishes** — worth

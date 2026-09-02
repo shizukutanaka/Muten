@@ -5,6 +5,44 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — `scripts/check-crate.sh`: "detected" now has to mean "dismissed" (DR-28)
+- **The question.** S3 claimed 8 scam families "verified still caught".
+  Caught how? `check-detection.sh` asserts that at least one path *fires*
+  — a `has_*` detector or a `title:` rule. It asserts no verdict. A
+  `title:` hit is `W_TITLE_HIT = 40` against `BLOCK_THRESHOLD = 100`, so
+  **a firing signal dismisses nothing.** The product's one job is detect
+  *and dismiss*; nothing executable joined the halves.
+- **The test that joins them existed and had never run.**
+  `tests/scoring_scenarios.rs` (244 tests) asserts end-to-end verdicts
+  and `tests/benign_corpus.rs` (7 tests) asserts the 0-FP claim. Both
+  were type-checked only, against a stub whose `classify()` returned an
+  empty verdict — so the benign tests passed trivially and the detection
+  tests were "expected" to fail as artefacts. Their pass carried **no
+  information**.
+- **What changed, and what did not.** The earlier refusal to stub the
+  whole crate was aimed at a *permissive* stub: a blanket
+  `impl<T> Serialize for T {}` accepts code real serde rejects. That
+  reasoning stands. The DR-26 derive shims are the opposite bargain —
+  they reproduce a named set of shapes and **panic at compile time** on
+  anything else. Extending them to the whole crate was 62 errors in six
+  mechanical classes: enum variants, `#[serde(...)]` helper attributes,
+  and container impls for `Option`/`Vec`/`BTreeSet`/`BTreeMap`.
+- **Result**: **1,335 unit tests + 285 integration tests now execute**
+  with no package registry, on the real unmodified `src/` and `tests/`.
+  `verify.sh` phase 2b runs them; the compile-only stub is **deleted**,
+  because a check that cannot fail informatively is worse than none.
+- **Teeth-proven in both directions.** Setting `W_TITLE_HIT` to 0 —
+  detection intact, dismissal broken — turns `helper_contract` red.
+  Removing the `alert_shaped` false-positive fence from the ClickFix
+  signal turns a unit test red. Neither was visible before.
+- **Honest limits.** This proves `classify()`'s behaviour, not serde
+  integration, and is not an answer to "does the crate compile under real
+  serde". The three proptest suites and `cli_contract` are deliberately
+  **not** run and **not** faked: a property test's substance is its input
+  distribution, so a home-made generator would test something else while
+  reading the same.
+- The enforced `offline_tests` doc-claim rose from 744 to **1,623**.
+
 ### Added — `scripts/check-merkle.sh` + `scripts/check-sink.sh`: the tamper-evidence the audit chain only *claimed* (DR-26, DR-27)
 - **The gap.** Strength S8 advertises a tamper-evident SHA-256 audit
   chain with an RFC 6962 Merkle root. `src/merkle.rs` carried 15 tests

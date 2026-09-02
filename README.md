@@ -102,18 +102,19 @@ produces these.
 `cli_contract` integration tests + 7 further integration suites;
 `clippy -D warnings` clean.
 
-> **Why "complete", and how it was verified.** 1,331 of those unit tests
-> and every integration suite were measured green by an end-to-end
-> `cargo test` at the baseline commit `549df29`. Three *source* files
-> have changed since, and all three are independently re-measured:
-> `src/confusables.rs` (suite 673 → 675, green via standalone `rustc`,
-> DR-12 tests teeth-proven); `src/merkle.rs` (16 tests, run for real on a
-> SHA-256 proven against four NIST vectors); and `src/sink.rs` (32 tests,
-> 8 of them tamper and forgery cases, run against the shipping module
-> compiled verbatim). Every other module is byte-identical to that
-> baseline. The touched *test* files are compile-verified with their
-> behaviour checked against the real detectors and the real shipped
-> helper scripts. Full evidence chain: the **Completion Verdict** in
+> **Why "complete", and how it was verified.** All 1,335 unit tests run
+> green on every verification, with no package registry, together with
+> 285 integration tests. That includes the two suites carrying the
+> product's central behavioural claims: `benign_corpus.rs` for zero false
+> positives, and `scoring_scenarios.rs` for the detect-*and-dismiss*
+> claim, whose 244 tests prove a detected window's score actually crosses
+> the block threshold. Both used to be type-checked only against a stub
+> that returned an empty verdict, so their pass meant nothing (DR-28).
+> The audit chain's 48 tamper-evidence tests run on a SHA-256 proven
+> against four NIST vectors (DR-26). Not run offline: the three proptest
+> suites and `cli_contract`, which need dependencies from the blocked
+> registry and are deliberately not faked. Full evidence chain: the
+> **Completion Verdict** in
 > [`docs/FEATURE_AUDIT_2026H2.md`](docs/FEATURE_AUDIT_2026H2.md).
 >
 > Re-running `cargo test` end-to-end on the current tree re-certifies
