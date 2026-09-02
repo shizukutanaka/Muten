@@ -5,6 +5,32 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — `scripts/check-signals.sh`: the signal inventory, and the origin relief that must stay ungranted (DR-29)
+- **The question.** S1 claims 89 named signals; S8 claims every verdict is
+  explainable by construction. Both rest on `all_signals()` and the set
+  the engine emits being **the same set**, and nothing checked that. A
+  signal emitted but undeclared makes a verdict cite a reason the
+  inventory cannot explain; a signal declared but never emitted is a
+  phantom capability the docs and MDM guidance promise.
+- **Measured**: 89 declared, 89 emitted, identical. 88 weighted, the
+  exception being `blocklist_host`, a hard block that returns
+  `BLOCK_THRESHOLD` directly and correctly carries no additive weight.
+  The claim was true, but held by nothing.
+- **The invariant worth more than the inventory.** The same pass found
+  that **no production code constructs `Origin::UserInitiated` or
+  `Origin::Unsolicited`** — every occurrence is a comparison or match
+  arm. That is the safe posture, and it now has a guard.
+  `UserInitiated` buys a −40 relief whose only cheap X11 source,
+  `_NET_WM_USER_TIME`, is **client-writable**; `Unsolicited` adds +25,
+  which takes a bare screen-lock shape past the block threshold and makes
+  muten dismiss a user's real screen locker (DR-20). The check fails on
+  any assignment of either in shipping code and points at the designed
+  lock-shape clamp (WO-11).
+- Wired as `verify.sh` check **1j** (31 checks now). **Teeth-proven three
+  ways**: an undeclared emission, a phantom declaration, and a naive
+  `Origin::Unsolicited` assignment in `monitor.rs` each name a distinct
+  failure.
+
 ### Added — `scripts/check-crate.sh`: "detected" now has to mean "dismissed" (DR-28)
 - **The question.** S3 claimed 8 scam families "verified still caught".
   Caught how? `check-detection.sh` asserts that at least one path *fires*

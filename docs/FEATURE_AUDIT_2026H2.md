@@ -869,6 +869,46 @@ same sweep. Prove teeth by reverting to the single strict parse.
 
 ---
 
+### [~~RESOLVED~~] DR-29: nothing tied the published signal list to the emitted one
+**How this was found**: by questioning S1 and S8 together. S1 claims 89
+named signals; S8 claims every verdict is *explainable by construction*.
+Both rest on one property nobody checked: that `all_signals()` and the
+set `classify()` actually emits are **the same set**. Drift either way is
+a silent defect.
+
+| drift | consequence |
+|---|---|
+| emitted but not declared | a verdict cites a reason the published inventory does not describe — explainability broken at exactly the moment an operator needs it |
+| declared but never emitted | a phantom capability: docs, MDM guidance and the operator's mental model all promise detection that cannot occur |
+
+**The measurement**: 89 declared, 89 emitted, sets identical; 88 carry a
+weight, the exception being `blocklist_host`, which is a *hard* block
+returning `BLOCK_THRESHOLD` directly and correctly has no additive
+weight. So the claim was true — but it was true by luck, with nothing
+holding it true.
+
+**The invariant worth more than the inventory.** The same pass asked
+where `Origin` comes from, and found that **no production code
+constructs `Origin::UserInitiated` or `Origin::Unsolicited`** — every
+occurrence is a comparison or a match arm. That is not an oversight, it
+is the safe posture, and it now has a guard:
+
+* `UserInitiated` buys a **−40** relief, and its only cheap X11 source,
+  `_NET_WM_USER_TIME`, is **client-writable** — a scam window can set it.
+* `Unsolicited` adds **+25**, which takes a bare screen-lock shape past
+  the block threshold and makes muten **dismiss a user's real screen
+  locker** (DR-20).
+
+`scripts/check-signals.sh` now fails on any assignment of either value in
+shipping code, with a message pointing at the designed lock-shape clamp
+(WO-11). A future "let's just wire up origin" cannot land quietly.
+
+**Teeth-proven three ways**: emitting an undeclared signal, declaring a
+signal nothing emits, and naively assigning `Origin::Unsolicited` in
+`monitor.rs` each produce a distinct, named failure.
+
+---
+
 ### [~~RESOLVED~~] DR-28: "detected" was never shown to mean "dismissed"
 **How this was found**: by questioning S3 the way DR-26 questioned S8.
 S3 claimed 8 scam families "verified still caught". Caught *how*?
@@ -1089,10 +1129,10 @@ from the tree by a command, not claimed; every number is enforced by
 
 | # | Strength | Evidence |
 |---|---|---|
-| S1 | **Detection breadth** — 89 named signals across 10 analytical lenses, plus 309 `title:` / 44 `glob:` / 44 `process:` blocklist rules, over **two complementary paths**: heuristics catch novel structural variants, the blocklist catches known exact phrasings | `all_signals()` count; blocklist counts; both enforced as marked doc-claims |
+| S1 | **Detection breadth, with no phantom entries** — 89 named signals across 10 analytical lenses, plus 309 `title:` / 44 `glob:` / 44 `process:` blocklist rules, over **two complementary paths**: heuristics catch novel structural variants, the blocklist catches known exact phrasings. Since DR-29 the published list and the set the engine emits are **proven to be the same set**, and every signal is weighted | `all_signals()` count and blocklist counts, enforced as marked doc-claims; `scripts/check-signals.sh` (verify.sh 1j), teeth-proven three ways |
 | S2 | **False-positive aversion that is measured by an executed test, not asserted** — 132-title benign corpus at **0 FPs / 0.0%**, plus **0/11 legitimate URLs** firing the URL signals (DR-25), weighted toward adversarial-benign cases that reuse scam vocabulary legitimately (a real AV's `ウイルス定義を更新しました`, a real bank's `重要なお知らせ`). Since DR-28 `benign_corpus.rs` **runs against the real `classify()`**, not a stub | `tests/benign_corpus.rs` (7 tests, executed), `scripts/check-crate.sh` + `scripts/fp-probe/` |
 | S3 | **Detection *and dismissal* both guarded** — 8 representative 2026 scam families verified still caught, each reporting *which* path caught it; and since DR-28 the **244 scoring scenarios run for real**, so the score is proven to cross `BLOCK_THRESHOLD` rather than merely to fire a signal | `scripts/check-detection.sh` + `tests/scoring_scenarios.rs` (executed), both teeth-proven |
-| S4 | **Reproducible verification without a registry** — **29 checks** run on any machine offline, including <!--claim:offline_tests-->1,623 real tests executed via standalone `rustc`, the whole crate included; a skip is never counted as a pass | `./scripts/verify.sh --offline`, test count machine-enforced |
+| S4 | **Reproducible verification without a registry** — **31 checks** run on any machine offline, including <!--claim:offline_tests-->1,623 real tests executed via standalone `rustc`, the whole crate included; a skip is never counted as a pass | `./scripts/verify.sh --offline`, test count machine-enforced |
 | S5 | **Self-defending documentation** — numeric claims carry machine-checked markers, so prose cannot quietly go false as the product grows | `scripts/check-doc-claims.sh`, 7 claims enforced |
 | S6 | **Small, safe supply chain** — `#![forbid(unsafe_code)]`, **6** direct dependencies, MSRV 1.75 held, `Cargo.lock`↔`Cargo.toml` pin sync enforced, Dependabot config validated | `verify.sh` checks 1c/1d + `Cargo.toml` |
 | S7 | **Cross-artifact deployment integrity** — 4 OS helpers and 3 MDM templates, with template→helper and template→CLI-flag references machine-verified | `scripts/check-mdm-templates.sh`, teeth-proven |
@@ -1124,7 +1164,7 @@ verdict rests on a two-part evidence chain, not on assertion:
    SHA-256 proven against four NIST vectors (DR-26). The shell layer,
    blocklist (lint-clean, 10 dead rules removed), MDM templates and the
    132-title benign corpus are verified in place, and
-   `./scripts/verify.sh` reproduces **29** checks on any machine with no
+   `./scripts/verify.sh` reproduces **31** checks on any machine with no
    registry access. What remains registry-bound is narrow and named: the
    three proptest suites, `cli_contract`, and a real `cargo build`.
 

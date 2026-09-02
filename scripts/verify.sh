@@ -158,6 +158,24 @@ else
     skp "benign-URL FP check" "scripts/check-url-fp.sh not executable"
 fi
 
+# 1j. Signal-inventory invariants. The published signal list and the set
+#     the engine emits must be the same set, or a verdict cites a reason
+#     the inventory cannot explain (or promises detection that cannot
+#     happen). Also pins that no production code constructs an `Origin`
+#     other than `Unknown` — the client-writable `_NET_WM_USER_TIME`
+#     must never buy the -40 relief, and a naive `Unsolicited` would
+#     dismiss a real screen locker (DR-20 / WO-11).
+if [ -x "$ROOT/scripts/check-signals.sh" ]; then
+    if _out=$("$ROOT/scripts/check-signals.sh" 2>&1); then
+        ok "signal inventory — $(printf '%s' "$_out" | grep -o 'signal inventory: .*' | sed 's/^signal inventory: //' | head -1)"
+    else
+        bad "signal-inventory check:"
+        printf '%s\n' "$_out" | grep -E 'FAIL|^      ' | head -10 | sed 's/^/      /'
+    fi
+else
+    skp "signal-inventory check" "scripts/check-signals.sh not executable"
+fi
+
 # 1i. Merkle audit-chain tamper evidence (S8). The RFC 6962 root and the
 #     SHA-256 link chain are the product's central integrity claim, and
 #     their tests had never been executed - merkle.rs and sink.rs need

@@ -83,7 +83,7 @@ disagree, the audit doc is authoritative. 日本語補足: 上段=壊しては
 | ~~Audit chain's tamper-evidence never executed (DR-26)~~ | ✅ resolved — 48 chain tests run every verification; two teeth failures (DR-27) exposed a missing RFC-6962 node-prefix pin and an unbound `seq`, both now covered | done |
 | Blocklist loader drops mis-authored rules with no diagnostic (DR-22) | a hot-reloaded, operator-edited rule that fails to load is an unannounced detection hole | **WO-13** (shell linter shipped) |
 | Audit log grows unbounded; no rotation (DR-4) | multi-week deployments | **WO-6** |
-| **DR-20 remainder**: `origin` still hard-coded `unknown` (~~`age_ms`~~ ✅ real on all 4 helpers since 2026-08), so `unsolicited` (25) never fires | deliberately unimplemented until the lock-shape guard lands — naive `origin` would *dismiss screen lockers* | **WO-11** (guard designed) |
+| **DR-20 remainder**: `origin` still hard-coded `unknown` (~~`age_ms`~~ ✅ real on all 4 helpers since 2026-08), so `unsolicited` (25) never fires | deliberately unimplemented until the lock-shape guard lands — naive `origin` would *dismiss screen lockers*. Since DR-29 this is **enforced**: `check-signals.sh` fails on any `Origin::UserInitiated`/`Unsolicited` assignment in shipping code | **WO-11** (guard designed, violation now blocked) |
 | Detection vocabulary EN+JP only (DR-8) | non-EN/JP fleets under-detect | Backlog |
 
 ## 1.5 Definition of Done — what actually blocks v0.6.0
