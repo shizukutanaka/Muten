@@ -1040,7 +1040,7 @@ from the tree by a command, not claimed; every number is enforced by
 | S1 | **Detection breadth** — 89 named signals across 10 analytical lenses, plus 309 `title:` / 44 `glob:` / 44 `process:` blocklist rules, over **two complementary paths**: heuristics catch novel structural variants, the blocklist catches known exact phrasings | `all_signals()` count; blocklist counts; both enforced as marked doc-claims |
 | S2 | **False-positive aversion that is measured, not asserted** — on **both** surfaces: 132-title benign corpus at **0 FPs / 0.0%**, plus **0/11 legitimate URLs** firing the URL signals (DR-25 resolved), weighted toward adversarial-benign cases that reuse scam vocabulary legitimately (a real AV's `ウイルス定義を更新しました`, a real bank's `重要なお知らせ`) | `tests/benign_corpus.rs` + `scripts/fp-probe/`, re-probed against all 68 detectors |
 | S3 | **Positive detection guarded too** — 8 representative 2026 scam families verified still caught, each reporting *which* path caught it | `scripts/check-detection.sh`, teeth-proven by deleting a live rule |
-| S4 | **Reproducible verification without a registry** — **23 checks** run on any machine offline, including 696 real tests via standalone `rustc`; a skip is never counted as a pass | `./scripts/verify.sh --offline` |
+| S4 | **Reproducible verification without a registry** — **28 checks** run on any machine offline, including <!--claim:offline_tests-->744 real tests executed via standalone `rustc` (the audit chain's tamper cases among them); a skip is never counted as a pass | `./scripts/verify.sh --offline`, test count machine-enforced |
 | S5 | **Self-defending documentation** — numeric claims carry machine-checked markers, so prose cannot quietly go false as the product grows | `scripts/check-doc-claims.sh`, 7 claims enforced |
 | S6 | **Small, safe supply chain** — `#![forbid(unsafe_code)]`, **6** direct dependencies, MSRV 1.75 held, `Cargo.lock`↔`Cargo.toml` pin sync enforced, Dependabot config validated | `verify.sh` checks 1c/1d + `Cargo.toml` |
 | S7 | **Cross-artifact deployment integrity** — 4 OS helpers and 3 MDM templates, with template→helper and template→CLI-flag references machine-verified | `scripts/check-mdm-templates.sh`, teeth-proven |
@@ -1062,17 +1062,20 @@ verdict rests on a two-part evidence chain, not on assertion:
 1. **A full-suite green baseline exists.** At commit `549df29` the entire
    crate passed `cargo test` end-to-end: 1331 unit tests, 26
    `cli_contract` integration tests, and the 7 other integration suites.
-2. **Every change since that baseline is independently verified.** The
-   only *source* file touched is `src/confusables.rs` (+44/−2), whose
-   675 unit tests — including the new DR-12 ones — run green via
-   standalone `rustc`, teeth-proven. The four touched *test* files are
-   compile-verified, and their asserted behaviour is verified against the
-   real detectors and the real shipped helper scripts (696 tests total,
-   plus direct assertion checks with benign controls). The other 15
-   modules are **byte-identical** to the green baseline. The shell layer,
-   blocklist (lint-clean, 10 dead rules removed), MDM templates, and the
+2. **Every change since that baseline is independently verified.** Three
+   *source* files are touched, and all three are re-measured:
+   `src/confusables.rs` (+44/−2), whose 675 unit tests — including the
+   new DR-12 ones — run green via standalone `rustc`, teeth-proven;
+   `src/merkle.rs`, whose **16** tests run on a SHA-256 proven against
+   four NIST vectors (DR-26); and `src/sink.rs`, whose **32** tests —
+   8 of them tamper and forgery cases — run against the shipping module
+   compiled verbatim. The four touched *test* files are compile-verified,
+   and their asserted behaviour is verified against the real detectors
+   and the real shipped helper scripts. Every other module is
+   **byte-identical** to the green baseline. The shell layer, blocklist
+   (lint-clean, 10 dead rules removed), MDM templates, and the
    132-title / 0-FP / 0.0% benign corpus are all verified in place, and
-   `./scripts/verify.sh` reproduces 17 of these checks on any machine
+   `./scripts/verify.sh` reproduces **28** of these checks on any machine
    with no registry access.
 
 Re-running `cargo test` end-to-end on the current tree is
@@ -1088,14 +1091,17 @@ recorded product decisions, not open engineering.
 ## Current State Summary (as of this audit's last commit)
 
 - **Version**: `muten-overlay` v0.6.0.
-- **Tests**: **1,333** unit tests + 26 `cli_contract` integration tests
+- **Tests**: **1,335** unit tests + 26 `cli_contract` integration tests
   + 7 other integration suites (helper_contract, linux_helper_reference,
   macos_helper_reference, monitor_properties, scoring_scenarios,
   benign_corpus, composed_evasion, scareware_properties). 1,331 of the
   unit tests and every integration suite were measured green by an
-  end-to-end `cargo test` at commit `549df29`; the +2 are the DR-12
-  additions in `confusables.rs` (673 → 675), which run green via
-  standalone `rustc` and are teeth-proven.
+  end-to-end `cargo test` at commit `549df29`; the +4 are the DR-12
+  additions in `confusables.rs` (673 → 675) plus the DR-27 additions in
+  `merkle.rs` (15 → 16) and `sink.rs` (31 → 32). All four run green via
+  standalone `rustc` and all four are teeth-proven — the merkle and sink
+  suites now execute in full on every `verify.sh` run (check 1i), on a
+  SHA-256 proven against four published NIST vectors.
   **Correction to an earlier version of this line**, which said the two
   `*_helper_reference` suites' "Rust compilation is unverified this
   round": they are now **compile-verified and executed** —

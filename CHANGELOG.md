@@ -49,6 +49,10 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
   self-consistent, not byte-identical to upstream.
 - Wired as `verify.sh` check **1i** (28 checks now). **16 merkle + 32
   sink tests, 8 of them tamper/forgery cases, run on every verification.**
+- **Automated against future drift**: `check-doc-claims.sh` gained an
+  eighth enforced claim, `offline_tests` — the number of tests actually
+  *executed* by standalone `rustc` (**744**, compile-only checks
+  deliberately excluded). Teeth-proven: stating 743 fails the check.
 
 ### Added — `scripts/check-mdm-templates.sh`: the cross-artifact deployment gate
 - The three MDM templates (launchd plist, Task Scheduler XML, systemd

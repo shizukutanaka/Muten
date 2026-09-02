@@ -73,6 +73,22 @@ def unit_tests():
     return sum(f.read_text(encoding='utf-8').count('#[test]')
                for f in (crate / 'src').glob('*.rs'))
 
+def offline_tests():
+    """Tests actually EXECUTED with standalone rustc, no registry needed.
+
+    These are the modules and suites scripts/verify.sh runs in phase 2b:
+    the three dependency-free src modules, the two that link the offline
+    stubs (merkle.rs, sink.rs), and the two helper-reference suites. The
+    compile-only checks are deliberately NOT counted - they type-check,
+    they do not run. If a module is added to phase 2b, add it here too.
+    """
+    src_files = ['confusables.rs', 'fingerprint.rs', 'mitre.rs', 'merkle.rs', 'sink.rs']
+    n = sum((crate / 'src' / f).read_text(encoding='utf-8').count('#[test]')
+            for f in src_files)
+    n += sum((crate / 'tests' / f).read_text(encoding='utf-8').count('#[test]')
+             for f in ['linux_helper_reference.rs', 'macos_helper_reference.rs'])
+    return n
+
 def benign_titles():
     bc = (crate / 'tests' / 'benign_corpus.rs').read_text(encoding='utf-8')
     arr = re.search(r'const BENIGN_TITLES: &\[&str\] = &\[(.*?)\n\];', bc, re.S).group(1)
@@ -86,6 +102,7 @@ TRUTH = {
     'process_rules':  rules('process'),
     'jp_title_rules': jp_title_rules(),
     'benign_titles':  benign_titles(),
+    'offline_tests':  offline_tests(),
 }
 
 docs = [root / 'README.md'] + sorted((root / 'docs').glob('*.md')) \
