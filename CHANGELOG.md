@@ -5,6 +5,27 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
+### Added — `scripts/check-blocklist-live.sh`: the shipped blocklist, judged by the real loader (DR-30)
+- **The question.** S1's rule counts come from a Python regex and its
+  unreachable-rule analysis from a shell linter — both reimplementations
+  of `Ruleset::parse`, neither the loader itself. Measured against the
+  real loader, any line without a recognized lowercase prefix
+  (`Title: …`, `Glob: …`, `title : …`, a bare phrase) is **reinterpreted
+  as a host hard-block rule**, not dropped. The linter already catches
+  those and the shipped file has none, so this was a claim resting on
+  unverified agreement, not a live defect.
+- **The check** loads `examples/overlay-blocklist.txt` with the real
+  loader and judges it with the real `classify()`: loader counts equal
+  the file's (309 / 44 / 44 / 0 host), and **all 309 title rules fire as
+  themselves and reach Block** in a scam-shaped window, against a benign
+  control that stops at 95.
+- **Measured along the way**: with the title weight zeroed, 109 of 309
+  rules stop blocking. For those phrasings the curated rule is the only
+  path to dismissal; no heuristic backs them up.
+- Teeth-proven four ways (mis-cased prefix, zero-width-only rule, a
+  broad rule pre-empting narrower ones, zeroed weight). `verify.sh`
+  check **1k**; 33 checks now.
+
 ### Added — `scripts/check-signals.sh`: the signal inventory, and the origin relief that must stay ungranted (DR-29)
 - **The question.** S1 claims 89 named signals; S8 claims every verdict is
   explainable by construction. Both rest on `all_signals()` and the set

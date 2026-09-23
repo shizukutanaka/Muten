@@ -176,6 +176,24 @@ else
     skp "signal-inventory check" "scripts/check-signals.sh not executable"
 fi
 
+# 1k. The shipped blocklist through the REAL loader and classify() (DR-30).
+#     Rule counts and reachability were only ever measured by
+#     reimplementations (a Python regex, a shell linter). This loads the
+#     file with Ruleset::parse, requires the loader's counts to equal the
+#     file's - `host` catches a mis-cased line silently reinterpreted as a
+#     host rule - and requires every title rule to fire as itself and
+#     reach Block in a scam-shaped window, against a benign control.
+if [ -x "$ROOT/scripts/check-blocklist-live.sh" ]; then
+    if _out=$("$ROOT/scripts/check-blocklist-live.sh" 2>&1); then
+        ok "live blocklist — $(printf '%s' "$_out" | grep -o '[0-9]*/[0-9]* title rules fire as themselves and Block' | head -1), loader counts match the file"
+    else
+        bad "live blocklist check:"
+        printf '%s\n' "$_out" | grep -E 'COUNT|NOSIG|SHADOWED|NOBLOCK|CONTROL|FAIL|\.\.\. and' | head -12 | sed 's/^/      /'
+    fi
+else
+    skp "live blocklist check" "scripts/check-blocklist-live.sh not executable"
+fi
+
 # 1i. Merkle audit-chain tamper evidence (S8). The RFC 6962 root and the
 #     SHA-256 link chain are the product's central integrity claim, and
 #     their tests had never been executed - merkle.rs and sink.rs need

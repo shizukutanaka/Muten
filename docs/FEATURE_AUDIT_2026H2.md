@@ -869,6 +869,67 @@ same sweep. Prove teeth by reverting to the single strict parse.
 
 ---
 
+### [~~RESOLVED~~] DR-30: the blocklist was only ever measured by reimplementations of its loader
+**How this was found**: by asking what S1's rule counts are measured
+*with*. "309 `title:` / 44 `glob:` / 44 `process:`" comes from a Python
+regex in `check-doc-claims.sh`; the unreachable-rule analysis comes from a
+shell reimplementation in `lint-blocklist.sh`. Neither is
+`Ruleset::parse`. The loader has rules of its own that a reimplementation
+can drift from:
+
+* a `title:` whose **normalized** key is empty (e.g. a lone zero-width
+  space) is **dropped**;
+* **any line without a recognized lowercase prefix falls through to a
+  HOST hard-block rule.** Measured against the real loader: `Title: …`,
+  `TITLE: …`, `Glob: …`, `title : …` (space before the colon) and a bare
+  phrase each become **one host rule and zero title rules**. The
+  operator's intended detection does not merely vanish — it silently
+  becomes something else.
+
+The shell linter already flags all four fall-through forms (DR-22), and
+the shipped file contains **zero** such lines. So this was not a live
+defect; it was a correctness claim resting entirely on two
+reimplementations agreeing with a loader nobody ran. And DR-28's question
+applied here too: a title rule is worth `W_TITLE_HIT = 40` against
+`BLOCK_THRESHOLD = 100`, so *loading* and *firing* a rule is not evidence
+that it *dismisses* anything.
+
+**Result**: `scripts/check-blocklist-live.sh` (`verify.sh` check 1k)
+loads `examples/overlay-blocklist.txt` with the real `Ruleset::parse` and
+judges it with the real `classify()`:
+
+| assertion | measured |
+|---|---|
+| loader counts equal the file's (title / glob / process / host) | 309 / 44 / 44 / 0 — equal |
+| every `title:` rule fires `blocklist_title` **as itself** (first-match-wins not pre-empting it) | 309 / 309 |
+| every `title:` rule reaches `Decision::Block` in a scam-shaped window | 309 / 309 |
+| control: benign title, same geometry | 95 → Suspicious, **not** Block |
+
+The control is what gives the per-rule result meaning: geometry alone
+stops at 95, so each rule is the thing that crosses the line.
+
+**A measurement worth keeping.** With `W_TITLE_HIT` forced to 0, **109 of
+the 309 rules stop blocking** and 200 still do, because content
+heuristics independently add points for those phrasings. So the
+two-path design (S1) is now quantified: for **109 known scam phrasings,
+the curated rule is the only thing that dismisses the window.** Deleting
+one of those rules removes protection that no heuristic backs up.
+
+**Teeth-proven four ways**, each on a scratch copy so the shipped file is
+never touched: a mis-cased `Title:` line (`COUNT host: file 0, loader 1`);
+a zero-width-only rule (`COUNT title: 310 vs 309`); a broad `title: virus`
+prepended (`SHADOWED … pre-empted by "virus"`); and `W_TITLE_HIT = 0`
+(`NOBLOCK …, 109 of 309 title rules fail`). Per-rule output is capped at
+20 lines plus a count, so a systemic break reads as a summary.
+
+**What it confirms about the reimplementations**: the shell linter's
+"zero unreachable rules" and the Python regex's counts both **agree with
+the real loader** on the shipped file. They remain useful — the linter
+runs with no toolchain and explains *why* a line is wrong — but they are
+no longer the only evidence.
+
+---
+
 ### [~~RESOLVED~~] DR-29: nothing tied the published signal list to the emitted one
 **How this was found**: by questioning S1 and S8 together. S1 claims 89
 named signals; S8 claims every verdict is *explainable by construction*.
@@ -1129,10 +1190,10 @@ from the tree by a command, not claimed; every number is enforced by
 
 | # | Strength | Evidence |
 |---|---|---|
-| S1 | **Detection breadth, with no phantom entries** — 89 named signals across 10 analytical lenses, plus 309 `title:` / 44 `glob:` / 44 `process:` blocklist rules, over **two complementary paths**: heuristics catch novel structural variants, the blocklist catches known exact phrasings. Since DR-29 the published list and the set the engine emits are **proven to be the same set**, and every signal is weighted | `all_signals()` count and blocklist counts, enforced as marked doc-claims; `scripts/check-signals.sh` (verify.sh 1j), teeth-proven three ways |
+| S1 | **Detection breadth, with no phantom entries** — 89 named signals across 10 analytical lenses, plus 309 `title:` / 44 `glob:` / 44 `process:` blocklist rules, over **two complementary paths**: heuristics catch novel structural variants, the blocklist catches known exact phrasings. Since DR-29 the published list and the set the engine emits are **proven to be the same set**; since DR-30 every blocklist rule is loaded by the **real** loader and all 309 title rules are proven to reach Block — for 109 of them the rule is the *only* path that does | `all_signals()` count and blocklist counts, enforced as marked doc-claims; `scripts/check-signals.sh` (1j) and `scripts/check-blocklist-live.sh` (1k), both teeth-proven |
 | S2 | **False-positive aversion that is measured by an executed test, not asserted** — 132-title benign corpus at **0 FPs / 0.0%**, plus **0/11 legitimate URLs** firing the URL signals (DR-25), weighted toward adversarial-benign cases that reuse scam vocabulary legitimately (a real AV's `ウイルス定義を更新しました`, a real bank's `重要なお知らせ`). Since DR-28 `benign_corpus.rs` **runs against the real `classify()`**, not a stub | `tests/benign_corpus.rs` (7 tests, executed), `scripts/check-crate.sh` + `scripts/fp-probe/` |
 | S3 | **Detection *and dismissal* both guarded** — 8 representative 2026 scam families verified still caught, each reporting *which* path caught it; and since DR-28 the **244 scoring scenarios run for real**, so the score is proven to cross `BLOCK_THRESHOLD` rather than merely to fire a signal | `scripts/check-detection.sh` + `tests/scoring_scenarios.rs` (executed), both teeth-proven |
-| S4 | **Reproducible verification without a registry** — **31 checks** run on any machine offline, including <!--claim:offline_tests-->1,623 real tests executed via standalone `rustc`, the whole crate included; a skip is never counted as a pass | `./scripts/verify.sh --offline`, test count machine-enforced |
+| S4 | **Reproducible verification without a registry** — **33 checks** run on any machine offline, including <!--claim:offline_tests-->1,623 real tests executed via standalone `rustc`, the whole crate included; a skip is never counted as a pass | `./scripts/verify.sh --offline`, test count machine-enforced |
 | S5 | **Self-defending documentation** — numeric claims carry machine-checked markers, so prose cannot quietly go false as the product grows | `scripts/check-doc-claims.sh`, 7 claims enforced |
 | S6 | **Small, safe supply chain** — `#![forbid(unsafe_code)]`, **6** direct dependencies, MSRV 1.75 held, `Cargo.lock`↔`Cargo.toml` pin sync enforced, Dependabot config validated | `verify.sh` checks 1c/1d + `Cargo.toml` |
 | S7 | **Cross-artifact deployment integrity** — 4 OS helpers and 3 MDM templates, with template→helper and template→CLI-flag references machine-verified | `scripts/check-mdm-templates.sh`, teeth-proven |
@@ -1164,7 +1225,7 @@ verdict rests on a two-part evidence chain, not on assertion:
    SHA-256 proven against four NIST vectors (DR-26). The shell layer,
    blocklist (lint-clean, 10 dead rules removed), MDM templates and the
    132-title benign corpus are verified in place, and
-   `./scripts/verify.sh` reproduces **31** checks on any machine with no
+   `./scripts/verify.sh` reproduces **33** checks on any machine with no
    registry access. What remains registry-bound is narrow and named: the
    three proptest suites, `cli_contract`, and a real `cargo build`.
 
