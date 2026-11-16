@@ -22,6 +22,7 @@ pub mod agent;
 pub mod audit;
 pub mod decide;
 pub mod distribute;
+pub mod fleet;
 pub mod grant;
 pub mod pin;
 pub mod policy;
@@ -32,6 +33,10 @@ pub use audit::{verify_chain, AuditLog, ChainStatus, Event, EventKind};
 pub use decide::{decide, Decision, Observed};
 pub use distribute::{
     fetcher_for_source, refresh_policy, FileFetcher, HelperFetcher, PolicyFetcher, RefreshOutcome,
+};
+pub use fleet::{
+    analyze_log, collect_log_paths, format_unix_utc, machine_label, short_hash, AppliedPolicy,
+    ChainCheck, MachineStatus, PolicyFailure, SyncStatus,
 };
 pub use grant::Grant;
 pub use pin::PinRecord;

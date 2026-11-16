@@ -217,6 +217,158 @@ fn fetch_policy_applies_validates_and_reports() {
 }
 
 #[test]
+fn fleet_status_aggregates_collected_logs() {
+    let bin = Path::new(env!("CARGO_BIN_EXE_muten-audio"));
+    let dir = tempfile::tempdir().unwrap();
+    let dir = dir.path();
+
+    // Two "central shares": the master policy M and an older/other
+    // policy N that one machine is still running.
+    let master_bytes =
+        r#"{"version":1,"enforce":false,"allow_unmute":false,"max_unmute_minutes":15}"#;
+    let other_bytes = r#"{"version":1,"enforce":true,"allow_unmute":true,"max_unmute_minutes":45}"#;
+    let share = dir.join("share");
+    std::fs::create_dir(&share).unwrap();
+    let master = share.join("policy.json");
+    std::fs::write(&master, master_bytes).unwrap();
+    let share2 = dir.join("share2");
+    std::fs::create_dir(&share2).unwrap();
+    let other = share2.join("policy.json");
+    std::fs::write(&other, other_bytes).unwrap();
+
+    // Machine A pulls the master; machine B pulls the other policy
+    // and then fails a pull (missing source) so its log also carries
+    // a failure. Local policies start out different from the shares
+    // so each first pull is a real application.
+    let mut logs: Vec<PathBuf> = Vec::new();
+    for (name, source, start) in [("a", &master, other_bytes), ("b", &other, master_bytes)] {
+        let home = dir.join(name);
+        std::fs::create_dir(&home).unwrap();
+        let policy = home.join("policy.json");
+        std::fs::write(&policy, start).unwrap();
+        let log = home.join(format!("pc-{name}.log"));
+        let r = run(
+            bin,
+            dir,
+            &[
+                "fetch-policy",
+                "--policy",
+                policy.to_str().unwrap(),
+                "--source",
+                source.to_str().unwrap(),
+                "--log",
+                log.to_str().unwrap(),
+            ],
+            "",
+        );
+        assert!(r.status.success(), "fetch-policy failed: {}", r.stderr);
+        logs.push(log);
+    }
+    let (log_a, log_b) = (logs[0].to_str().unwrap(), logs[1].to_str().unwrap());
+    let r = run(
+        bin,
+        dir,
+        &[
+            "fetch-policy",
+            "--policy",
+            dir.join("b").join("policy.json").to_str().unwrap(),
+            "--source",
+            dir.join("missing.json").to_str().unwrap(),
+            "--log",
+            log_b,
+        ],
+        "",
+    );
+    assert!(!r.status.success(), "missing source must fail");
+
+    // Aggregated against the master: A is current, B is STALE and
+    // shows its failure — and the drift makes the command fail.
+    let r = run(
+        bin,
+        dir,
+        &[
+            "fleet-status",
+            "--master",
+            master.to_str().unwrap(),
+            log_a,
+            log_b,
+        ],
+        "",
+    );
+    assert_eq!(r.status.code(), Some(1), "stdout: {}", r.stdout);
+    assert!(r.stdout.contains("Expected policy sha256:"), "{}", r.stdout);
+    assert!(r.stdout.contains("pc-a"), "{}", r.stdout);
+    assert!(r.stdout.contains("current"), "{}", r.stdout);
+    assert!(r.stdout.contains("pc-b"), "{}", r.stdout);
+    assert!(r.stdout.contains("STALE"), "{}", r.stdout);
+    assert!(r.stdout.contains("policy_fetch_failed"), "{}", r.stdout);
+    assert!(
+        r.stdout
+            .contains("1 current, 1 STALE, 0 with no policy record"),
+        "{}",
+        r.stdout
+    );
+
+    // Without an expected policy there is no drift to fail on.
+    let r = run(bin, dir, &["fleet-status", log_a], "");
+    assert!(r.status.success(), "fleet-status failed: {}", r.stderr);
+    assert!(r.stdout.contains("not checked"), "{}", r.stdout);
+
+    // The directory form reads every *.log inside, and
+    // --expect-sha256 is interchangeable with --master.
+    let collected = dir.join("collected");
+    std::fs::create_dir(&collected).unwrap();
+    std::fs::copy(&logs[0], collected.join("pc-a.log")).unwrap();
+    std::fs::copy(&logs[1], collected.join("pc-b.log")).unwrap();
+    let master_sha = muten_audio::distribute::policy_sha256(master_bytes.as_bytes());
+    let r = run(
+        bin,
+        dir,
+        &[
+            "fleet-status",
+            "--expect-sha256",
+            &master_sha,
+            collected.to_str().unwrap(),
+        ],
+        "",
+    );
+    assert_eq!(r.status.code(), Some(1), "stdout: {}", r.stdout);
+    assert!(
+        r.stdout.contains("pc-a") && r.stdout.contains("pc-b"),
+        "{}",
+        r.stdout
+    );
+
+    // --master and --expect-sha256 together are ambiguous.
+    let r = run(
+        bin,
+        dir,
+        &[
+            "fleet-status",
+            "--master",
+            master.to_str().unwrap(),
+            "--expect-sha256",
+            &master_sha,
+            log_a,
+        ],
+        "",
+    );
+    assert!(!r.status.success());
+    assert!(r.stderr.contains("alternatives"), "stderr: {}", r.stderr);
+
+    // A garbage line in a collected log is counted and reported, and
+    // the broken chain fails the run — never silently skipped.
+    let log_c = dir.join("pc-c.log");
+    let mut text = std::fs::read_to_string(&logs[0]).unwrap();
+    text.push_str("{junk\n");
+    std::fs::write(&log_c, text).unwrap();
+    let r = run(bin, dir, &["fleet-status", log_c.to_str().unwrap()], "");
+    assert_eq!(r.status.code(), Some(1), "stdout: {}", r.stdout);
+    assert!(r.stdout.contains("BROKEN"), "{}", r.stdout);
+    assert!(r.stdout.contains("1 unreadable line(s)"), "{}", r.stdout);
+}
+
+#[test]
 fn unmute_without_pin_set_is_denied() {
     let bin = Path::new(env!("CARGO_BIN_EXE_muten-audio"));
     let dir = tempfile::tempdir().unwrap();

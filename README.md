@@ -72,9 +72,14 @@ HTTPS URL and each agent pulls it (`--policy-source` on `watch`, or
 the one-shot `fetch-policy` command). Only policies that parse and
 validate are applied; a failed pull changes nothing and is logged,
 and every applied policy is recorded in the audit log with the
-SHA-256 of its bytes. There is deliberately no signature scheme —
-protect the distribution location like an admin credential (details
-and honest limits in [`agent/README.md`](agent/README.md)).
+SHA-256 of its bytes. The read side of that trail is
+`muten-audio fleet-status`: point it at the collected per-machine
+audit logs and the master policy, and it lists which policy each
+machine last applied, from where, and its most recent failure —
+machines running a different policy are flagged STALE. There is
+deliberately no signature scheme — protect the distribution
+location like an admin credential (details and honest limits in
+[`agent/README.md`](agent/README.md)).
 
 **Honest limits** (full text in [`agent/README.md`](agent/README.md)):
 the agent is user-mode software — a user with local administrator
