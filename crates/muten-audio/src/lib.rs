@@ -21,6 +21,7 @@
 pub mod agent;
 pub mod audit;
 pub mod decide;
+pub mod distribute;
 pub mod grant;
 pub mod pin;
 pub mod policy;
@@ -29,6 +30,9 @@ pub mod time;
 pub use agent::{AudioBackend, HelperBackend, Watch, WatchPaths};
 pub use audit::{verify_chain, AuditLog, ChainStatus, Event, EventKind};
 pub use decide::{decide, Decision, Observed};
+pub use distribute::{
+    fetcher_for_source, refresh_policy, FileFetcher, HelperFetcher, PolicyFetcher, RefreshOutcome,
+};
 pub use grant::Grant;
 pub use pin::PinRecord;
 pub use policy::{Policy, Weekday, Window};

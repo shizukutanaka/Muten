@@ -5,6 +5,31 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [Unreleased]
 
+### Added — muten-audio: central policy distribution intake
+
+- New `distribute` module in `crates/muten-audio`: the watchdog can
+  pull `policy.json` from a central source — a file path (shared
+  folder / UNC / local) or an http(s) URL — and applies it only if
+  it parses and validates exactly like a hand-placed policy (unknown
+  fields rejected). Replacement is atomic; a failed or invalid pull
+  leaves the current policy byte-for-byte untouched and is recorded
+  in the audit log (`policy_fetch_failed` / `policy_error`), so a
+  distribution outage never lifts enforcement.
+- `watch` gains `--policy-source` / `--policy-source-interval`
+  (default 300 s, first check on the first poll); new one-shot
+  `fetch-policy` subcommand for scheduled-task deployments. Every
+  applied policy is logged as `policy_updated` with the source and
+  the SHA-256 of the applied bytes. URL downloads are delegated to
+  the new `agent/policy-fetch.ps1` helper — the crate still does no
+  network I/O and gains no dependency.
+- No signature scheme, deliberately: whoever can write to the
+  distribution location controls every pulling machine's policy.
+  The trust boundary and the PIN-ownership rule (the distributed
+  file replaces the whole policy, PIN hash included) are documented
+  in `agent/README.md`.
+- Tests: 49 unit (was 36) + 3 CLI contract (was 2) + 6 property,
+  clippy `-D warnings` clean, fmt clean.
+
 ### Added — muten-audio v0.1.0: the audio half exists
 
 - New crate `crates/muten-audio`: forced-mute policy engine for managed
