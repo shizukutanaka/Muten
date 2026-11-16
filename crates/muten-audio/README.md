@@ -39,7 +39,7 @@ needs a service account / ACLs / Group Policy).
 
 ## Status
 
-v0.1.0 — 49 unit tests + 6 property tests + 3 CLI contract tests,
+v0.1.0 — 61 unit tests + 6 property tests + 4 CLI contract tests,
 `clippy -D warnings` clean, MSRV 1.75. The watchdog's full behaviour
 (startup mute, re-mute after a raise, grant honoured, expiry re-mute,
 corrupt-grant fail-closed) is covered against a fake backend; the
@@ -53,3 +53,11 @@ change nothing, and every applied policy is recorded in the audit
 log with the SHA-256 of its bytes. No signature scheme — the trust
 boundary is the distribution location itself (see
 [`agent/README.md`](../../agent/README.md)).
+
+Fleet status (the `fleet` module, the `fleet-status` command): the
+read side of that trail. It aggregates collected per-machine audit
+logs — last applied policy hash, source, time, most recent failure —
+and flags machines whose policy differs from the master's SHA-256.
+Machines are labelled by the log file names the administrator
+collected them under; the command reads only the files it is handed
+and counts (never silently drops) lines it cannot recognise.

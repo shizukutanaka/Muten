@@ -5,6 +5,31 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [Unreleased]
 
+### Added — muten-audio: fleet policy status aggregation
+
+- New `fleet` module in `crates/muten-audio` and a `fleet-status`
+  subcommand: the read side of central distribution. It aggregates
+  the audit logs an administrator collected from the fleet (log
+  files, or a folder of `*.log` files, one per machine) into a
+  table — each machine's last applied policy (SHA-256, source,
+  time), its most recent distribution failure, and its audit-chain
+  state. `--master <policy.json>` (or `--expect-sha256 <hex>`)
+  supplies the expected hash; machines on a different policy are
+  flagged STALE and machines with no recorded application are
+  flagged, and the command exits non-zero when any machine needs
+  attention (drift, no record, broken chain).
+- Chain reporting distinguishes a fully verified chain (`intact`)
+  from an internally consistent excerpt whose head is missing
+  (`excerpt`) and from an edited or unreadable log (`BROKEN`).
+  Lines that cannot be read or recognised are counted and reported
+  per machine — never silently dropped.
+- No new collection: the log format carries no machine identity,
+  so machines are labelled by the file names the administrator
+  collected the logs under. The command reads only the files it is
+  handed; nothing is sent or watched. No new dependencies.
+- Tests: 61 unit (was 49) + 4 CLI contract (was 3) + 6 property,
+  clippy `-D warnings` clean, fmt clean.
+
 ### Added — muten-audio: central policy distribution intake
 
 - New `distribute` module in `crates/muten-audio`: the watchdog can

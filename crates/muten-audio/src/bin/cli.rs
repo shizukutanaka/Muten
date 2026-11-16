@@ -10,7 +10,11 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 use muten_audio::audit::{verify_chain, AuditLog, Event, EventKind};
-use muten_audio::distribute::{fetcher_for_source, refresh_policy, RefreshOutcome};
+use muten_audio::distribute::{fetcher_for_source, policy_sha256, refresh_policy, RefreshOutcome};
+use muten_audio::fleet::{
+    analyze_log, collect_log_paths, format_unix_utc, machine_label, short_hash, ChainCheck,
+    SyncStatus,
+};
 use muten_audio::grant::Grant;
 use muten_audio::pin::{generate_salt, PinRecord};
 use muten_audio::policy::Policy;
@@ -92,6 +96,25 @@ enum Command {
         /// PowerShell helper used to download a URL policy source.
         #[arg(long, default_value = "policy-fetch.ps1")]
         policy_helper: PathBuf,
+    },
+    /// Aggregate collected audit logs: which policy each machine
+    /// last applied, from where, and its most recent failure.
+    /// Read-only — it reads the logs you collected (one file per
+    /// machine, labelled by file name); nothing is collected or
+    /// sent anywhere.
+    FleetStatus {
+        /// Audit log files, or folders containing *.log files
+        /// (one per machine).
+        #[arg(required = true)]
+        logs: Vec<PathBuf>,
+        /// Master policy.json to compare against: machines whose
+        /// last applied policy differs are reported STALE.
+        #[arg(long)]
+        master: Option<PathBuf>,
+        /// Expected policy SHA-256 (hex) — an alternative to
+        /// --master when you only have the hash.
+        #[arg(long)]
+        expect_sha256: Option<String>,
     },
     /// Pull the central policy once and apply it if it validates
     /// (for scheduled tasks and manual fleet updates).
@@ -316,6 +339,205 @@ fn cmd_watch(
     Ok(())
 }
 
+fn pad(s: &str, width: usize) -> String {
+    let len = s.chars().count();
+    if len >= width {
+        s.to_string()
+    } else {
+        format!("{s}{}", " ".repeat(width - len))
+    }
+}
+
+fn cmd_fleet_status(
+    logs: Vec<PathBuf>,
+    master: Option<PathBuf>,
+    expect_sha256: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if master.is_some() && expect_sha256.is_some() {
+        return Err("--master and --expect-sha256 are alternatives; pass only one".into());
+    }
+    let expected: Option<String> = match (master, expect_sha256) {
+        (Some(path), None) => {
+            let bytes = std::fs::read(&path)
+                .map_err(|e| format!("failed to read master policy {}: {e}", path.display()))?;
+            Some(policy_sha256(&bytes))
+        }
+        (None, Some(h)) => {
+            let h = h.trim().to_lowercase();
+            if h.len() != 64 || !h.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Err("--expect-sha256 must be 64 hex characters".into());
+            }
+            Some(h)
+        }
+        (None, None) => None,
+        (Some(_), Some(_)) => unreachable!("checked above"),
+    };
+
+    let paths = collect_log_paths(&logs)?;
+    if paths.is_empty() {
+        return Err("no audit logs to read".into());
+    }
+    let mut machines = Vec::new();
+    for path in &paths {
+        let text = std::fs::read_to_string(path)
+            .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+        machines.push(analyze_log(&machine_label(path), &text));
+    }
+
+    if let Some(exp) = &expected {
+        println!("Expected policy sha256: {exp}");
+        println!();
+    }
+    let w_machine = machines
+        .iter()
+        .map(|m| m.label.chars().count())
+        .max()
+        .unwrap_or(0)
+        .max("MACHINE".len());
+    println!(
+        "{}  {}  {}  {}  {}  CHAIN",
+        pad("MACHINE", w_machine),
+        pad("POLICY", 12),
+        pad("APPLIED (UTC)", 19),
+        pad("SYNC", 11),
+        pad("LAST FAILURE (UTC)", 19),
+    );
+    for m in &machines {
+        let policy = m
+            .last_applied
+            .as_ref()
+            .map(|a| short_hash(&a.sha256).to_string())
+            .unwrap_or_else(|| "—".to_string());
+        let applied = m
+            .last_applied
+            .as_ref()
+            .map(|a| format_unix_utc(a.ts_unix))
+            .unwrap_or_else(|| "—".to_string());
+        let sync = match m.sync_status(expected.as_deref()) {
+            SyncStatus::Current => "current",
+            SyncStatus::Stale => "STALE",
+            SyncStatus::NoRecord => "no record",
+            SyncStatus::NotChecked => "not checked",
+        };
+        let failure = m
+            .last_failure
+            .as_ref()
+            .map(|f| format_unix_utc(f.ts_unix))
+            .unwrap_or_else(|| "—".to_string());
+        let chain = match &m.chain {
+            ChainCheck::Intact { events } => {
+                format!(
+                    "intact ({events} event{})",
+                    if *events == 1 { "" } else { "s" }
+                )
+            }
+            ChainCheck::Excerpt { events } => {
+                format!(
+                    "excerpt ({events} event{})",
+                    if *events == 1 { "" } else { "s" }
+                )
+            }
+            ChainCheck::Broken { .. } => "BROKEN".to_string(),
+        };
+        println!(
+            "{}  {}  {}  {}  {}  {}",
+            pad(&m.label, w_machine),
+            pad(&policy, 12),
+            pad(&applied, 19),
+            pad(sync, 11),
+            pad(&failure, 19),
+            chain,
+        );
+    }
+
+    // Detail lines: everything the table cannot hold, per machine.
+    let mut notes: Vec<String> = Vec::new();
+    for m in &machines {
+        if let Some(a) = &m.last_applied {
+            notes.push(format!("{}: policy source {}", m.label, a.source));
+        }
+        if let Some(f) = &m.last_failure {
+            let mut note = format!(
+                "{}: last failure {} at {}",
+                m.label,
+                f.kind_name(),
+                format_unix_utc(f.ts_unix)
+            );
+            if !f.error.is_empty() {
+                note.push_str(&format!(": {}", f.error));
+            }
+            notes.push(note);
+        }
+        if let ChainCheck::Broken { line, reason } = &m.chain {
+            if *line > 0 {
+                notes.push(format!(
+                    "{}: audit chain BROKEN at line {line}: {reason}",
+                    m.label
+                ));
+            } else {
+                notes.push(format!("{}: audit chain BROKEN: {reason}", m.label));
+            }
+        }
+        if m.skipped_lines() > 0 {
+            notes.push(format!(
+                "{}: {} unreadable line(s), {} unknown-format line(s) counted and skipped",
+                m.label, m.unreadable_lines, m.unknown_lines
+            ));
+        }
+        if m.events == 0 {
+            notes.push(format!("{}: no recognisable events in the log", m.label));
+        }
+    }
+    if !notes.is_empty() {
+        println!();
+        for note in &notes {
+            println!("{note}");
+        }
+    }
+
+    let total_unreadable: usize = machines.iter().map(|m| m.unreadable_lines).sum();
+    let total_unknown: usize = machines.iter().map(|m| m.unknown_lines).sum();
+    println!();
+    if expected.is_some() {
+        let count = |want: SyncStatus| {
+            machines
+                .iter()
+                .filter(|m| m.sync_status(expected.as_deref()) == want)
+                .count()
+        };
+        println!(
+            "{} machine(s): {} current, {} STALE, {} with no policy record.",
+            machines.len(),
+            count(SyncStatus::Current),
+            count(SyncStatus::Stale),
+            count(SyncStatus::NoRecord),
+        );
+    } else {
+        println!(
+            "{} machine(s) (no expected policy given; pass --master or --expect-sha256 to compare).",
+            machines.len()
+        );
+    }
+    if total_unreadable + total_unknown > 0 {
+        println!(
+            "Skipped lines across all logs: {total_unreadable} unreadable, {total_unknown} unknown-format (counted above, never silently dropped)."
+        );
+    }
+
+    let attention = machines.iter().any(|m| {
+        matches!(m.chain, ChainCheck::Broken { .. })
+            || (expected.is_some()
+                && matches!(
+                    m.sync_status(expected.as_deref()),
+                    SyncStatus::Stale | SyncStatus::NoRecord
+                ))
+    });
+    if attention {
+        return Err("one or more machines need attention (see the table above)".into());
+    }
+    Ok(())
+}
+
 fn cmd_fetch_policy(
     policy_path: PathBuf,
     source: String,
@@ -418,6 +640,11 @@ fn main() -> ExitCode {
             policy_source_interval,
             policy_helper,
         ),
+        Command::FleetStatus {
+            logs,
+            master,
+            expect_sha256,
+        } => cmd_fleet_status(logs, master, expect_sha256),
         Command::FetchPolicy {
             policy,
             source,

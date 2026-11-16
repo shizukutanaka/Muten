@@ -83,6 +83,51 @@ The rules are deliberately strict:
   it), because a local `Set-Pin.bat` change will be overwritten at
   the next pull.
 
+### Checking what the fleet actually runs
+
+The records above answer "which policy did each machine take?" —
+`fleet-status` aggregates them. Collect each machine's `audit.log`
+(copy it from the agent folder, or forward it with a scheduled task)
+into one folder, **one file per machine, named for the machine**
+(e.g. `pc-042.log`, `front-desk.log`), then run:
+
+```
+muten-audio.exe fleet-status --master \\fileserver\muten\policy.json C:\collected-logs
+```
+
+```
+Expected policy sha256: f48994fcd727…
+
+MACHINE  POLICY        APPLIED (UTC)        SYNC         LAST FAILURE (UTC)   CHAIN
+pc-042   f48994fcd727  2026-11-16 08:12:03  current      —                    intact (132 events)
+pc-017   51bd09c3aa04  2026-11-15 22:40:10  STALE        2026-11-16 07:58:11  intact (98 events)
+
+pc-017: policy source \\fileserver\muten\policy.json
+pc-017: last failure policy_fetch_failed at 2026-11-16 07:58:11: …
+
+2 machine(s): 1 current, 1 STALE, 0 with no policy record.
+```
+
+- The expected hash comes from `--master <policy.json>` (the file
+  you distribute) or `--expect-sha256 <hex>` if you only have the
+  hash. A machine whose last applied policy differs is **STALE**;
+  one whose log records no application at all is **no record**.
+  The command exits non-zero when any machine is STALE, has no
+  record, or has a broken audit chain — so a scheduled task can
+  alert on it.
+- A machine is labelled by its log's file name: the log format
+  deliberately carries no machine identity, and `fleet-status`
+  adds none. It only reads the files it is handed — nothing is
+  collected, sent, or watched.
+- `CHAIN` is `intact` when the log's hash chain verifies from the
+  start. A forwarded excerpt shows `excerpt`: internally consistent
+  (no entry inside it was edited), but its beginning is missing,
+  so it cannot prove completeness. `BROKEN` means an entry was
+  edited or a line cannot be read; the detail line says where.
+  Lines that cannot be read or recognised are counted and printed
+  per machine — never silently skipped.
+- Times are UTC, the one frame every machine's log shares.
+
 ## Honest limits — read before deploying
 
 - **User-mode software.** The agent runs as the signed-in user. Anyone

@@ -69,7 +69,12 @@ struct ChainedLine {
     hash: String,
 }
 
-fn line_hash(prev: &str, ts_unix: i64, kind: EventKind, detail: &serde_json::Value) -> String {
+pub(crate) fn line_hash(
+    prev: &str,
+    ts_unix: i64,
+    kind: EventKind,
+    detail: &serde_json::Value,
+) -> String {
     // Canonical form: serde_json serializes struct fields in declaration
     // order and map keys in insertion order; `detail` values built by
     // this crate use `serde_json::json!`, whose object is a BTreeMap
