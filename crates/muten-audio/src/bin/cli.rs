@@ -19,7 +19,7 @@ use muten_audio::grant::Grant;
 use muten_audio::pin::{generate_salt, PinRecord};
 use muten_audio::policy::Policy;
 use muten_audio::time::now_unix;
-use muten_audio::{HelperBackend, Watch, WatchPaths};
+use muten_audio::{AudioBackend, HelperBackend, LinuxBackend, Watch, WatchPaths};
 
 #[derive(Parser)]
 #[command(
@@ -81,6 +81,12 @@ enum Command {
         /// PowerShell helper script that performs the actual audio calls.
         #[arg(long, default_value = "audio-helper.ps1")]
         helper: PathBuf,
+        /// Audio backend: "auto" (PowerShell helper on Windows,
+        /// wpctl/pactl on Linux), "helper" (always the PowerShell
+        /// helper), or "linux" (always wpctl/pactl — stops with the
+        /// reason when neither tool is usable).
+        #[arg(long, default_value = "auto", value_parser = ["auto", "helper", "linux"])]
+        backend: String,
         /// Run a single poll and exit (smoke tests / scheduled tasks).
         #[arg(long)]
         once: bool,
@@ -297,12 +303,37 @@ fn cmd_verify_log(log_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Build the audio backend the `--backend` option selected. The
+/// Linux backend probes for wpctl/pactl here, so "neither tool is
+/// usable" fails the command — with the reason — before the watchdog
+/// starts: nothing is enforced and nothing is changed.
+fn build_backend(
+    backend: &str,
+    helper: PathBuf,
+) -> Result<Box<dyn AudioBackend>, Box<dyn std::error::Error>> {
+    let use_linux = match backend {
+        "helper" => false,
+        "linux" => true,
+        // "auto": the platform decides.
+        _ => cfg!(target_os = "linux"),
+    };
+    if use_linux {
+        let backend = LinuxBackend::new()?;
+        println!("Audio backend: {} (Linux)", backend.tool().describe());
+        Ok(Box::new(backend))
+    } else {
+        println!("Audio backend: PowerShell helper ({})", helper.display());
+        Ok(Box::new(HelperBackend::new(helper)))
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn cmd_watch(
     policy_path: PathBuf,
     grant_path: PathBuf,
     log_path: PathBuf,
     helper: PathBuf,
+    backend: String,
     once: bool,
     policy_source: Option<String>,
     policy_source_interval: i64,
@@ -317,7 +348,7 @@ fn cmd_watch(
         grant: grant_path,
         log: log_path,
     };
-    let backend = HelperBackend::new(helper);
+    let backend = build_backend(&backend, helper)?;
     let mut watch = Watch::new(policy, paths, backend)?;
     if let Some(source) = policy_source {
         let fetcher = fetcher_for_source(&source, policy_helper);
@@ -626,6 +657,7 @@ fn main() -> ExitCode {
             grant,
             log,
             helper,
+            backend,
             once,
             policy_source,
             policy_source_interval,
@@ -635,6 +667,7 @@ fn main() -> ExitCode {
             grant,
             log,
             helper,
+            backend,
             once,
             policy_source,
             policy_source_interval,

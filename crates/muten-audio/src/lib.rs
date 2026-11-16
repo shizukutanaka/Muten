@@ -4,11 +4,12 @@
 //! This crate is the *brain*: policy, schedule evaluation, the admin-PIN
 //! gate, temporary-unmute grants, the watchdog decision function, and a
 //! tamper-evident audit log. It performs **no OS audio calls itself** —
-//! all Core Audio work lives in a small PowerShell helper
-//! (`agent/audio-helper.ps1`) behind the [`AudioBackend`] trait, exactly
-//! like muten-overlay keeps Win32 in its helper scripts. That split is
-//! what makes the enforcement logic fully testable without a Windows
-//! machine or a sound device.
+//! on Windows all Core Audio work lives in a small PowerShell helper
+//! (`agent/audio-helper.ps1`), and on Linux the backend shells out to
+//! the desktop's own `wpctl` / `pactl` tools — both behind the
+//! [`AudioBackend`] trait, exactly like muten-overlay keeps Win32 in
+//! its helper scripts. That split is what makes the enforcement logic
+//! fully testable without a Windows machine or a sound device.
 //!
 //! Honest scope (also stated in the README): this is a user-mode agent.
 //! It deters casual unmuting and records what happened; it cannot stop a
@@ -24,6 +25,7 @@ pub mod decide;
 pub mod distribute;
 pub mod fleet;
 pub mod grant;
+pub mod linux;
 pub mod pin;
 pub mod policy;
 pub mod time;
@@ -39,6 +41,7 @@ pub use fleet::{
     ChainCheck, MachineStatus, PolicyFailure, SyncStatus,
 };
 pub use grant::Grant;
+pub use linux::{CommandOutput, CommandRunner, LinuxBackend, LinuxTool, SystemRunner};
 pub use pin::PinRecord;
 pub use policy::{Policy, Weekday, Window};
 
