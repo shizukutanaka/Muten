@@ -29,6 +29,15 @@ pub enum EventKind {
     AgentStopped,
     PolicyLoaded,
     PolicyError,
+    /// A centrally distributed policy was validated and applied; the
+    /// detail records the source and the SHA-256 of the applied
+    /// bytes, so which policy a machine took is traceable after the
+    /// fact.
+    PolicyUpdated,
+    /// A policy refresh could not fetch its source at all (share or
+    /// server unreachable, helper failed). The current policy stays
+    /// in force — a distribution outage never lifts enforcement.
+    PolicyFetchFailed,
     /// The agent muted the endpoint (startup, volume raised, grant
     /// expired, schedule started — the reason is in the detail).
     Muted,

@@ -8,6 +8,7 @@ folder. No installer, no registry writes: copy the folder anywhere
 |---|---|
 | `muten-audio.exe` | The agent + admin CLI (build once with `Build.bat`, or get it from CI — see below) |
 | `audio-helper.ps1` | The only part that touches Windows audio (Core Audio COM). Called by the exe; never run it by hand |
+| `policy-fetch.ps1` | Downloads the central policy when the policy source is a URL. Called by the exe; never run it by hand |
 | `Start-Muten.bat` | Start the resident watchdog. Keep the window open; closing it stops enforcement, visibly |
 | `Set-Pin.bat` | First run: create `policy.json` + set the admin PIN. Later: change the PIN |
 | `Unmute.bat` | Grant a temporary unmute (admin PIN required) |
@@ -45,6 +46,43 @@ mistake — the agent only enforces while it is running.
   policy, any active grant, and whether the audit chain is intact.
 - **Verify the log**: `muten-audio.exe verify-log`.
 
+## Central policy distribution (optional)
+
+Placing `policy.json` by hand does not scale past a few machines.
+Instead, host one master `policy.json` in a place every machine can
+read — a shared folder (e.g. `\\fileserver\muten\policy.json`) or an
+HTTPS URL — and let each machine pull it:
+
+- **Resident pull**: add the source to the `Start-Muten.bat` command
+  line:
+  `muten-audio.exe watch --policy policy.json --grant grant.json --log audit.log --helper audio-helper.ps1 --policy-source \\fileserver\muten\policy.json`
+  The agent checks the source every 300 seconds
+  (`--policy-source-interval` to change it; minimum 10) and once at
+  the first poll. URL sources are downloaded by `policy-fetch.ps1`,
+  which must sit next to the exe.
+- **One-shot pull** (e.g. from a scheduled task):
+  `muten-audio.exe fetch-policy --policy policy.json --source \\fileserver\muten\policy.json --log audit.log`
+
+The rules are deliberately strict:
+
+- A pulled policy is applied **only** if it parses and validates
+  exactly like a hand-placed one (unknown fields are rejected). The
+  local `policy.json` is then replaced atomically, and the agent
+  continues with the new policy.
+- If the source is unreachable or the content is invalid, **nothing
+  changes**: the current policy stays in force, and the failure is
+  written to `audit.log` (`policy_fetch_failed` / `policy_error`). A
+  distribution outage never lifts enforcement.
+- Every applied policy is recorded in `audit.log` as
+  `policy_updated`, with the source and the **SHA-256 of the applied
+  bytes** — so you can verify after the fact which policy each
+  machine actually took.
+- **The distributed file replaces the whole local policy, including
+  the PIN hash.** On centrally managed machines the PIN is owned
+  centrally too: set it in the master copy (run `set-pin` against
+  it), because a local `Set-Pin.bat` change will be overwritten at
+  the next pull.
+
 ## Honest limits — read before deploying
 
 - **User-mode software.** The agent runs as the signed-in user. Anyone
@@ -65,3 +103,15 @@ mistake — the agent only enforces while it is running.
 - **Schedule clock.** Windows' clock is the source of truth; the
   policy's `utc_offset_minutes` must be kept correct across DST
   changes by the administrator.
+- **Central distribution has no signature.** If you use the policy
+  source above, there is no cryptographic proof that a pulled policy
+  came from you — muten deliberately does not invent one. Whoever can
+  write to the share, or change what the URL serves, controls the
+  policy (including the PIN hash and the master switch) of every
+  machine that pulls from it. Protect that location like an
+  administrator credential: tight share ACLs, HTTPS on the server,
+  and check the `policy_updated` hashes in `audit.log` against the
+  master copy. A tampered policy cannot do more than a policy can
+  express (it cannot run code), but a policy with `enforce: false`
+  silently stops muting on every machine — the audit log is how you
+  would find out.

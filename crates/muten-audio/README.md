@@ -39,9 +39,17 @@ needs a service account / ACLs / Group Policy).
 
 ## Status
 
-v0.1.0 — 36 unit tests + 6 property tests + 2 CLI contract tests,
+v0.1.0 — 49 unit tests + 6 property tests + 3 CLI contract tests,
 `clippy -D warnings` clean, MSRV 1.75. The watchdog's full behaviour
 (startup mute, re-mute after a raise, grant honoured, expiry re-mute,
 corrupt-grant fail-closed) is covered against a fake backend; the
 PowerShell helper's Core Audio calls are verified by protocol smoke
 test only — **a run on a real Windows machine is still pending**.
+
+Central policy distribution (the `distribute` module): the watchdog
+can pull `policy.json` from a shared folder or an HTTPS URL and
+applies only what parses and validates; failed pulls are logged and
+change nothing, and every applied policy is recorded in the audit
+log with the SHA-256 of its bytes. No signature scheme — the trust
+boundary is the distribution location itself (see
+[`agent/README.md`](../../agent/README.md)).

@@ -12,6 +12,7 @@ use std::process::Command;
 
 use crate::audit::{AuditLog, Event, EventKind};
 use crate::decide::{decide, Decision, Observed};
+use crate::distribute::{refresh_policy, PolicyFetcher, RefreshOutcome};
 use crate::grant::Grant;
 use crate::policy::Policy;
 use crate::time::local_from_unix;
@@ -104,6 +105,15 @@ pub struct WatchPaths {
     pub log: PathBuf,
 }
 
+/// Central-distribution state attached to a [`Watch`]: where the
+/// policy is pulled from, and how often.
+struct PolicySource {
+    fetcher: Box<dyn PolicyFetcher>,
+    label: String,
+    interval_secs: i64,
+    last_check_unix: Option<i64>,
+}
+
 /// The watchdog state machine.
 pub struct Watch<B: AudioBackend> {
     policy: Policy,
@@ -112,6 +122,8 @@ pub struct Watch<B: AudioBackend> {
     log: AuditLog,
     /// Whether we have already recorded the current grant's expiry.
     expired_grant_seen: Option<i64>,
+    /// Central policy distribution, when configured.
+    source: Option<PolicySource>,
 }
 
 impl<B: AudioBackend> Watch<B> {
@@ -123,7 +135,95 @@ impl<B: AudioBackend> Watch<B> {
             backend,
             log,
             expired_grant_seen: None,
+            source: None,
         })
+    }
+
+    /// Attach a central policy source: the watchdog pulls it every
+    /// `interval_secs` (and once on the first poll) and applies
+    /// whatever validates. See [`crate::distribute`] for the rules —
+    /// a failed or invalid pull is logged and never disturbs
+    /// enforcement.
+    pub fn with_policy_source(
+        mut self,
+        fetcher: Box<dyn PolicyFetcher>,
+        interval_secs: i64,
+    ) -> Watch<B> {
+        let label = fetcher.label();
+        self.source = Some(PolicySource {
+            fetcher,
+            label,
+            interval_secs: interval_secs.max(1),
+            last_check_unix: None,
+        });
+        self
+    }
+
+    /// The policy currently in force (after any distributed refresh).
+    pub fn policy(&self) -> &Policy {
+        &self.policy
+    }
+
+    /// Pull the central source when due and apply a valid new policy.
+    /// Runs at the top of a poll; the poll itself then decides with
+    /// the freshest policy. Failures are recorded and swallowed —
+    /// enforcement continues with the policy already in force.
+    fn maybe_refresh_policy(&mut self, now_unix: i64) {
+        let (label, result) = {
+            let Some(source) = &mut self.source else {
+                return;
+            };
+            if let Some(last) = source.last_check_unix {
+                if now_unix - last < source.interval_secs {
+                    return;
+                }
+            }
+            source.last_check_unix = Some(now_unix);
+            let label = source.label.clone();
+            let result = refresh_policy(source.fetcher.as_ref(), &self.paths.policy);
+            (label, result)
+        };
+        match result {
+            Ok(RefreshOutcome::Unchanged) => {
+                // Steady state: nothing to record (PolicyLoaded /
+                // PolicyUpdated already tell the story).
+            }
+            Ok(RefreshOutcome::Applied { policy, sha256 }) => {
+                self.policy = policy;
+                self.record(
+                    now_unix,
+                    EventKind::PolicyUpdated,
+                    serde_json::json!({
+                        "source": label,
+                        "sha256": sha256,
+                        "enforce": self.policy.enforce,
+                        "allow_unmute": self.policy.allow_unmute,
+                        "max_unmute_minutes": self.policy.max_unmute_minutes,
+                        "schedule_windows": self.policy.schedule.len(),
+                        "pin_set": self.policy.pin.is_some(),
+                    }),
+                );
+            }
+            Err(e) => {
+                // "Could not fetch it" and "fetched it but it is not
+                // a valid policy" are different operational problems;
+                // the log says which one happened.
+                let kind = if matches!(e, Error::Backend(_)) {
+                    EventKind::PolicyFetchFailed
+                } else {
+                    EventKind::PolicyError
+                };
+                self.record(
+                    now_unix,
+                    kind,
+                    serde_json::json!({
+                        "what": "policy_source",
+                        "source": label,
+                        "error": e.to_string(),
+                    }),
+                );
+            }
+        }
     }
 
     fn record(&mut self, now_unix: i64, kind: EventKind, detail: serde_json::Value) {
@@ -142,6 +242,10 @@ impl<B: AudioBackend> Watch<B> {
 
     /// One poll: observe, decide, act, log transitions.
     pub fn step(&mut self, now_unix: i64) -> Result<Decision> {
+        // A due policy refresh happens first, so this poll already
+        // decides with the freshest valid policy.
+        self.maybe_refresh_policy(now_unix);
+
         let grant = match Grant::load(&self.paths.grant) {
             Ok(g) => g,
             Err(e) => {
@@ -345,6 +449,113 @@ mod tests {
         assert!(text.contains("volume_raised_detected"));
         assert!(text.contains("unmuted_for_grant"));
         assert!(text.contains("grant_expired"));
+    }
+
+    // ---- central policy distribution (intake) ----
+
+    use crate::distribute::PolicyFetcher;
+    use std::collections::VecDeque;
+    use std::sync::{Arc, Mutex};
+
+    /// A fetcher whose responses the test scripts in advance; the
+    /// clone the test keeps shares the queue with the one the
+    /// watchdog owns, so responses can be added between polls.
+    #[derive(Clone, Default)]
+    struct ScriptedFetcher {
+        responses: Arc<Mutex<VecDeque<crate::Result<Vec<u8>>>>>,
+        calls: Arc<Mutex<usize>>,
+    }
+
+    impl PolicyFetcher for ScriptedFetcher {
+        fn fetch(&self) -> crate::Result<Vec<u8>> {
+            *self.calls.lock().unwrap() += 1;
+            self.responses
+                .lock()
+                .unwrap()
+                .pop_front()
+                .expect("no scripted response left")
+        }
+
+        fn label(&self) -> String {
+            "scripted://source".to_string()
+        }
+    }
+
+    fn policy_json(enforce: bool) -> Vec<u8> {
+        let mut p = Policy::starter();
+        p.enforce = enforce;
+        p.to_json().unwrap().into_bytes()
+    }
+
+    fn rig_with_source(interval_secs: i64) -> (Rig, Watch<FakeBackend>, ScriptedFetcher) {
+        let (rig, watch) = rig();
+        let fetcher = ScriptedFetcher::default();
+        let watch = watch.with_policy_source(Box::new(fetcher.clone()), interval_secs);
+        (rig, watch, fetcher)
+    }
+
+    fn serve(fetcher: &ScriptedFetcher, response: crate::Result<Vec<u8>>) {
+        fetcher.responses.lock().unwrap().push_back(response);
+    }
+
+    #[test]
+    fn distributed_policy_is_applied_on_the_first_poll() {
+        let (rig, mut w, fetcher) = rig_with_source(300);
+        let bytes = policy_json(false); // central says: enforcement off
+        serve(&fetcher, Ok(bytes.clone()));
+
+        // The starter policy would mute; the distributed one stands by.
+        assert_eq!(w.step(T0).unwrap(), Decision::Standby);
+        assert!(!w.backend.muted);
+        assert!(!w.policy().enforce);
+
+        // The application is in the audit log, identified by hash.
+        let text = std::fs::read_to_string(&rig.paths.log).unwrap();
+        assert!(text.contains("policy_updated"), "log: {text}");
+        assert!(text.contains(&crate::distribute::policy_sha256(&bytes)));
+    }
+
+    #[test]
+    fn invalid_distributed_policy_keeps_enforcement_and_is_logged() {
+        let (rig, mut w, fetcher) = rig_with_source(300);
+        serve(&fetcher, Ok(b"{tampered".to_vec()));
+
+        assert_eq!(w.step(T0).unwrap(), Decision::MuteNow);
+        assert!(w.backend.muted);
+        assert!(w.policy().enforce);
+        let text = std::fs::read_to_string(&rig.paths.log).unwrap();
+        assert!(text.contains("policy_error"), "log: {text}");
+    }
+
+    #[test]
+    fn unreachable_source_keeps_enforcement_and_is_logged() {
+        let (rig, mut w, fetcher) = rig_with_source(300);
+        serve(
+            &fetcher,
+            Err(crate::Error::Backend("share unreachable".into())),
+        );
+
+        assert_eq!(w.step(T0).unwrap(), Decision::MuteNow);
+        assert!(w.backend.muted);
+        let text = std::fs::read_to_string(&rig.paths.log).unwrap();
+        assert!(text.contains("policy_fetch_failed"), "log: {text}");
+    }
+
+    #[test]
+    fn refreshes_are_rate_limited_by_the_interval() {
+        let (_rig, mut w, fetcher) = rig_with_source(3600);
+        serve(&fetcher, Ok(policy_json(false)));
+        assert_eq!(w.step(T0).unwrap(), Decision::Standby);
+
+        // A new central policy exists, but the interval has not
+        // elapsed: no second fetch, and the applied policy still rules.
+        serve(&fetcher, Ok(policy_json(true)));
+        assert_eq!(w.step(T0 + 10).unwrap(), Decision::Standby);
+        assert_eq!(*fetcher.calls.lock().unwrap(), 1);
+
+        // After the interval, the new policy is pulled and applied.
+        assert_eq!(w.step(T0 + 3600).unwrap(), Decision::MuteNow);
+        assert_eq!(*fetcher.calls.lock().unwrap(), 2);
     }
 
     #[test]

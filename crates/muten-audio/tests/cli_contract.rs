@@ -137,6 +137,86 @@ fn full_admin_flow() {
 }
 
 #[test]
+fn fetch_policy_applies_validates_and_reports() {
+    let bin = Path::new(env!("CARGO_BIN_EXE_muten-audio"));
+    let dir = tempfile::tempdir().unwrap();
+    let dir = dir.path();
+    let (policy, _grant, log) = paths(dir);
+    let (p, l) = (policy.to_str().unwrap(), log.to_str().unwrap());
+
+    // The "central share" is a plain folder with a policy.json in it.
+    let share = dir.join("share");
+    std::fs::create_dir(&share).unwrap();
+    let central = share.join("policy.json");
+    let central_bytes =
+        r#"{"version":1,"enforce":false,"allow_unmute":false,"max_unmute_minutes":15}"#;
+    std::fs::write(&central, central_bytes).unwrap();
+    let s = central.to_str().unwrap();
+
+    // The local policy starts out different (enforcement on).
+    std::fs::write(
+        &policy,
+        r#"{"version":1,"enforce":true,"allow_unmute":true,"max_unmute_minutes":30}"#,
+    )
+    .unwrap();
+
+    // First pull: applied, and the local file now holds the central
+    // bytes exactly.
+    let r = run(
+        bin,
+        dir,
+        &["fetch-policy", "--policy", p, "--source", s, "--log", l],
+        "",
+    );
+    assert!(r.status.success(), "fetch-policy failed: {}", r.stderr);
+    assert!(r.stdout.contains("Policy updated"), "stdout: {}", r.stdout);
+    assert_eq!(std::fs::read_to_string(&policy).unwrap(), central_bytes);
+    // The application is traceable in the audit log.
+    let log_text = std::fs::read_to_string(&log).unwrap();
+    assert!(log_text.contains("policy_updated"), "log: {log_text}");
+
+    // Second pull of the same bytes: reported as up to date.
+    let r = run(
+        bin,
+        dir,
+        &["fetch-policy", "--policy", p, "--source", s, "--log", l],
+        "",
+    );
+    assert!(r.status.success(), "fetch-policy failed: {}", r.stderr);
+    assert!(r.stdout.contains("up to date"), "stdout: {}", r.stdout);
+
+    // A tampered central copy is refused and the local policy is
+    // left byte-for-byte untouched.
+    std::fs::write(&central, "{tampered").unwrap();
+    let r = run(
+        bin,
+        dir,
+        &["fetch-policy", "--policy", p, "--source", s, "--log", l],
+        "",
+    );
+    assert!(!r.status.success(), "tampered policy must be refused");
+    assert_eq!(std::fs::read_to_string(&policy).unwrap(), central_bytes);
+
+    // A missing source is an error too, never a silent pass.
+    let r = run(
+        bin,
+        dir,
+        &[
+            "fetch-policy",
+            "--policy",
+            p,
+            "--source",
+            dir.join("nope.json").to_str().unwrap(),
+            "--log",
+            l,
+        ],
+        "",
+    );
+    assert!(!r.status.success(), "missing source must fail");
+    assert_eq!(std::fs::read_to_string(&policy).unwrap(), central_bytes);
+}
+
+#[test]
 fn unmute_without_pin_set_is_denied() {
     let bin = Path::new(env!("CARGO_BIN_EXE_muten-audio"));
     let dir = tempfile::tempdir().unwrap();

@@ -10,6 +10,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 use muten_audio::audit::{verify_chain, AuditLog, Event, EventKind};
+use muten_audio::distribute::{fetcher_for_source, refresh_policy, RefreshOutcome};
 use muten_audio::grant::Grant;
 use muten_audio::pin::{generate_salt, PinRecord};
 use muten_audio::policy::Policy;
@@ -79,6 +80,33 @@ enum Command {
         /// Run a single poll and exit (smoke tests / scheduled tasks).
         #[arg(long)]
         once: bool,
+        /// Central policy source to pull periodically: a file path
+        /// (e.g. a shared folder) or an http(s) URL. Only policies
+        /// that parse and validate are applied; failures are logged
+        /// and the current policy stays in force.
+        #[arg(long)]
+        policy_source: Option<String>,
+        /// Seconds between policy-source checks.
+        #[arg(long, default_value_t = 300)]
+        policy_source_interval: i64,
+        /// PowerShell helper used to download a URL policy source.
+        #[arg(long, default_value = "policy-fetch.ps1")]
+        policy_helper: PathBuf,
+    },
+    /// Pull the central policy once and apply it if it validates
+    /// (for scheduled tasks and manual fleet updates).
+    FetchPolicy {
+        #[arg(long, default_value = "policy.json")]
+        policy: PathBuf,
+        /// Central policy source: a file path (e.g. a shared folder)
+        /// or an http(s) URL.
+        #[arg(long)]
+        source: String,
+        #[arg(long, default_value = "audit.log")]
+        log: PathBuf,
+        /// PowerShell helper used to download a URL policy source.
+        #[arg(long, default_value = "policy-fetch.ps1")]
+        policy_helper: PathBuf,
     },
 }
 
@@ -246,13 +274,20 @@ fn cmd_verify_log(log_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_watch(
     policy_path: PathBuf,
     grant_path: PathBuf,
     log_path: PathBuf,
     helper: PathBuf,
     once: bool,
+    policy_source: Option<String>,
+    policy_source_interval: i64,
+    policy_helper: PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    if policy_source.is_some() && policy_source_interval < 10 {
+        return Err("--policy-source-interval must be at least 10 seconds".into());
+    }
     let policy = Policy::load(&policy_path)?;
     let paths = WatchPaths {
         policy: policy_path,
@@ -261,6 +296,15 @@ fn cmd_watch(
     };
     let backend = HelperBackend::new(helper);
     let mut watch = Watch::new(policy, paths, backend)?;
+    if let Some(source) = policy_source {
+        let fetcher = fetcher_for_source(&source, policy_helper);
+        println!(
+            "Policy source: {} (checked every {}s; only valid policies are applied)",
+            fetcher.label(),
+            policy_source_interval
+        );
+        watch = watch.with_policy_source(fetcher, policy_source_interval);
+    }
     if once {
         let decision = watch.step(now_unix())?;
         println!("poll decision: {decision:?}");
@@ -270,6 +314,76 @@ fn cmd_watch(
     println!("Events are written to the audit log. Press Ctrl+C to stop.");
     watch.run(now_unix)?;
     Ok(())
+}
+
+fn cmd_fetch_policy(
+    policy_path: PathBuf,
+    source: String,
+    log_path: PathBuf,
+    policy_helper: PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let now = now_unix();
+    let fetcher = fetcher_for_source(&source, policy_helper);
+    let label = fetcher.label();
+    // The audit log is best-effort here, as in `unmute`: the outcome
+    // is always printed, and recorded when the log can be opened.
+    let mut log = AuditLog::open(&log_path).ok();
+    let note = |kind: EventKind, detail: serde_json::Value, log: &mut Option<AuditLog>| {
+        if let Some(l) = log.as_mut() {
+            let _ = l.append(&Event {
+                ts_unix: now,
+                kind,
+                detail,
+            });
+        }
+    };
+    match refresh_policy(fetcher.as_ref(), &policy_path) {
+        Ok(RefreshOutcome::Unchanged) => {
+            println!("Policy already up to date (source: {label}).");
+            Ok(())
+        }
+        Ok(RefreshOutcome::Applied { policy, sha256 }) => {
+            note(
+                EventKind::PolicyUpdated,
+                serde_json::json!({
+                    "source": label,
+                    "sha256": sha256,
+                    "enforce": policy.enforce,
+                    "allow_unmute": policy.allow_unmute,
+                    "max_unmute_minutes": policy.max_unmute_minutes,
+                    "schedule_windows": policy.schedule.len(),
+                    "pin_set": policy.pin.is_some(),
+                }),
+                &mut log,
+            );
+            println!(
+                "Policy updated from {label} (sha256 {sha256}); wrote {}",
+                policy_path.display()
+            );
+            Ok(())
+        }
+        Err(e) => {
+            let kind = if matches!(e, muten_audio::Error::Backend(_)) {
+                EventKind::PolicyFetchFailed
+            } else {
+                EventKind::PolicyError
+            };
+            note(
+                kind,
+                serde_json::json!({
+                    "what": "policy_source",
+                    "source": label,
+                    "error": e.to_string(),
+                }),
+                &mut log,
+            );
+            Err(format!(
+                "policy NOT updated ({} left untouched): {e}",
+                policy_path.display()
+            )
+            .into())
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -291,7 +405,25 @@ fn main() -> ExitCode {
             log,
             helper,
             once,
-        } => cmd_watch(policy, grant, log, helper, once),
+            policy_source,
+            policy_source_interval,
+            policy_helper,
+        } => cmd_watch(
+            policy,
+            grant,
+            log,
+            helper,
+            once,
+            policy_source,
+            policy_source_interval,
+            policy_helper,
+        ),
+        Command::FetchPolicy {
+            policy,
+            source,
+            log,
+            policy_helper,
+        } => cmd_fetch_policy(policy, source, log, policy_helper),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

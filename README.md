@@ -66,6 +66,16 @@ Temporary sound for a legit need: `agent/Unmute.bat` + the PIN; the
 grant expires and the endpoint re-mutes automatically. Everything is
 written to a tamper-evident audit log (`audit.log`).
 
+For more than a few machines, the policy can be distributed
+centrally: host one master `policy.json` on a shared folder or an
+HTTPS URL and each agent pulls it (`--policy-source` on `watch`, or
+the one-shot `fetch-policy` command). Only policies that parse and
+validate are applied; a failed pull changes nothing and is logged,
+and every applied policy is recorded in the audit log with the
+SHA-256 of its bytes. There is deliberately no signature scheme —
+protect the distribution location like an admin credential (details
+and honest limits in [`agent/README.md`](agent/README.md)).
+
 **Honest limits** (full text in [`agent/README.md`](agent/README.md)):
 the agent is user-mode software — a user with local administrator
 rights can stop or remove it, so the PIN/watchdog pair deters casual
@@ -128,7 +138,7 @@ produces these.
 
 ## Status
 
-`muten-audio` v0.1.0 — 36 unit tests + 6 property tests + 2 CLI
+`muten-audio` v0.1.0 — 49 unit tests + 6 property tests + 3 CLI
 contract tests, `clippy -D warnings` clean, MSRV 1.75.0. The full
 watchdog behaviour is tested against a fake backend; the Windows
 helper and a real-machine run are pending verification.
