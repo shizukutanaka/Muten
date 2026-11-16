@@ -10,8 +10,14 @@ tool and now enforces two things:
   infected / call support / verify you are human" windows) and **rogue
   antivirus / scareware**.
 
-This repository currently contains the **screen** half:
-[`crates/muten-overlay`](crates/muten-overlay) (v0.6.0).
+This repository contains both halves:
+
+- **Audio** — [`crates/muten-audio`](crates/muten-audio) (v0.1.0) plus
+  the portable Windows agent folder [`agent/`](agent/): the endpoint
+  is muted at sign-in, volume raises are re-muted within a second, and
+  only an admin PIN can grant a temporary unmute that expires on its
+  own. See the quick start below.
+- **Screen** — [`crates/muten-overlay`](crates/muten-overlay) (v0.6.0).
 
 ## Design principles
 
@@ -44,7 +50,31 @@ Detection is informed by published threat intel and the security literature
 support-scam, and arXiv work on TSS, dark patterns, and homoglyph evasion) —
 see [`docs/THREAT_INTEL_2026.md`](docs/THREAT_INTEL_2026.md).
 
-## Quick start
+## Quick start — audio (Windows)
+
+The deployable unit is the portable folder [`agent/`](agent/) — no
+installer, no registry writes:
+
+1. Put `muten-audio.exe` in `agent/` (`agent/Build.bat` builds it from
+   source; `docs/ci/build-windows.yml` builds one in CI).
+2. Run `agent/Set-Pin.bat` — creates `policy.json`, sets the admin PIN.
+3. Optionally edit the schedule in `agent/policy-editor.html`
+   (offline, EN/JA).
+4. Run `agent/Start-Muten.bat` and keep its window open.
+
+Temporary sound for a legit need: `agent/Unmute.bat` + the PIN; the
+grant expires and the endpoint re-mutes automatically. Everything is
+written to a tamper-evident audit log (`audit.log`).
+
+**Honest limits** (full text in [`agent/README.md`](agent/README.md)):
+the agent is user-mode software — a user with local administrator
+rights can stop or remove it, so the PIN/watchdog pair deters casual
+unmuting rather than defeating a determined admin; hard enforcement
+needs a service under a separate admin account, ACLs, or Group
+Policy/MDM. Only the default playback endpoint is controlled. A run
+on a real Windows machine is still pending verification.
+
+## Quick start — screen
 
 ```bash
 cd crates/muten-overlay
@@ -97,6 +127,11 @@ produces these.
   the audit doc (*what*) and the model playbook (*who*).
 
 ## Status
+
+`muten-audio` v0.1.0 — 36 unit tests + 6 property tests + 2 CLI
+contract tests, `clippy -D warnings` clean, MSRV 1.75.0. The full
+watchdog behaviour is tested against a fake backend; the Windows
+helper and a real-machine run are pending verification.
 
 `muten-overlay` v0.6.0 — 1331 unit tests + 26 `cli_contract` integration
 tests, `clippy -D warnings` clean, MSRV 1.75.0.

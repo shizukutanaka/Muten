@@ -3,6 +3,28 @@
 All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [Unreleased]
+
+### Added — muten-audio v0.1.0: the audio half exists
+
+- New crate `crates/muten-audio`: forced-mute policy engine for managed
+  Windows PCs. Policy file (master switch, weekday/time schedule with
+  overnight windows, UTC offset), admin-PIN gate (salted iterated
+  SHA-256, never stored or logged), temporary-unmute grants with
+  automatic expiry and re-mute, and a tamper-evident hash-chained
+  audit log. 36 unit tests + 6 property tests + 2 CLI contract tests,
+  clippy `-D warnings` clean.
+- Portable Windows agent folder `agent/`: PowerShell Core Audio helper
+  (the only part that touches the OS audio stack), `Start-Muten.bat` /
+  `Set-Pin.bat` / `Unmute.bat` / `Build.bat` launchers, and an offline
+  single-file policy editor (`policy-editor.html`, EN/JA).
+- `docs/ci/build-windows.yml`: owner-installable workflow that builds
+  `muten-audio.exe` on `windows-latest` and uploads it as an artifact.
+- Honest limits documented in `agent/README.md`: the agent is
+  user-mode (a local administrator can stop it), controls the default
+  playback endpoint only, and the audit log is tamper-evident rather
+  than tamper-proof. A run on a real Windows machine is still pending.
+
 ## [0.6.0] — evasion-resistant normalization + TOAD/Web3/browser-security signals (rounds 10–31)
 
 ### Measured — DR-21: the Japanese detection surface is 50× larger than the benign corpus guarding it

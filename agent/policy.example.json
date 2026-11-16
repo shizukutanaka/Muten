@@ -1,0 +1,1 @@
+{"allow_unmute":true,"enforce":true,"max_unmute_minutes":30,"pin":null,"poll_interval_ms":1000,"schedule":[{"days":["mon","tue","wed","thu","fri"],"end":"19:00","start":"08:00"}],"utc_offset_minutes":540,"version":1}

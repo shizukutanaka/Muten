@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>muten-audio policy editor</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 760px; padding: 0 1rem; line-height: 1.5; }
+  h1 { font-size: 1.3rem; }
+  fieldset { margin: 1rem 0; border: 1px solid #bbb; border-radius: 8px; }
+  legend { font-weight: 600; }
+  label { display: block; margin: 0.4rem 0; }
+  .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin: 0.4rem 0; }
+  .days label { display: inline-block; margin: 0 0.3rem 0 0; }
+  #errors { color: #b00020; white-space: pre-wrap; }
+  #ok { color: #0a6c03; }
+  button { padding: 0.4rem 0.9rem; }
+  .note { color: #555; font-size: 0.9rem; }
+  input[type="number"] { width: 7rem; }
+</style>
+</head>
+<body>
+<h1 data-i18n="title">muten-audio policy editor</h1>
+<p class="note" data-i18n="intro">Load policy.json, edit, and download the updated file. Replace the old policy.json next to Start-Muten.bat and restart the agent. This page runs fully offline; nothing is uploaded anywhere.</p>
+<p>
+  <button id="langBtn" type="button">日本語</button>
+  <input type="file" id="file" accept=".json,application/json">
+</p>
+
+<form id="form">
+  <fieldset>
+    <legend data-i18n="basic">Basic</legend>
+    <label><input type="checkbox" id="enforce"> <span data-i18n="enforce">Enforce muting (master switch)</span></label>
+    <label><span data-i18n="offset">UTC offset, minutes (540 = JST)</span>
+      <input type="number" id="offset" min="-720" max="840" step="1"></label>
+    <label><span data-i18n="poll">Poll interval, ms (min 100)</span>
+      <input type="number" id="poll" min="100" step="50"></label>
+  </fieldset>
+
+  <fieldset>
+    <legend data-i18n="unmute">Temporary unmute (admin)</legend>
+    <label><input type="checkbox" id="allowUnmute"> <span data-i18n="allowUnmute">Allow temporary unmute with the admin PIN</span></label>
+    <label><span data-i18n="maxMinutes">Max minutes per grant</span>
+      <input type="number" id="maxMinutes" min="1" max="1440"></label>
+    <p class="note" id="pinState"></p>
+    <label><input type="checkbox" id="removePin"> <span data-i18n="removePin">Remove the PIN record (unmute becomes impossible until Set-Pin.bat runs again)</span></label>
+    <p class="note" data-i18n="pinNote">The PIN itself is never shown or edited here — it is stored only as a salted hash. Set or change it with Set-Pin.bat.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend data-i18n="schedule">Schedule (enforcement windows)</legend>
+    <p class="note" data-i18n="scheduleNote">No windows = enforce at all times. A window whose end is earlier than its start crosses midnight. Start is inclusive, end is exclusive.</p>
+    <div id="windows"></div>
+    <button type="button" id="addWindow" data-i18n="addWindow">Add window</button>
+  </fieldset>
+
+  <p id="errors"></p>
+  <p id="ok"></p>
+  <button type="button" id="download" data-i18n="download">Download policy.json</button>
+</form>
+
+<script>
+"use strict";
+const I18N = {
+  en: {
+    title: "muten-audio policy editor",
+    intro: "Load policy.json, edit, and download the updated file. Replace the old policy.json next to Start-Muten.bat and restart the agent. This page runs fully offline; nothing is uploaded anywhere.",
+    basic: "Basic", enforce: "Enforce muting (master switch)",
+    offset: "UTC offset, minutes (540 = JST)", poll: "Poll interval, ms (min 100)",
+    unmute: "Temporary unmute (admin)", allowUnmute: "Allow temporary unmute with the admin PIN",
+    maxMinutes: "Max minutes per grant",
+    removePin: "Remove the PIN record (unmute becomes impossible until Set-Pin.bat runs again)",
+    pinNote: "The PIN itself is never shown or edited here — it is stored only as a salted hash. Set or change it with Set-Pin.bat.",
+    schedule: "Schedule (enforcement windows)",
+    scheduleNote: "No windows = enforce at all times. A window whose end is earlier than its start crosses midnight. Start is inclusive, end is exclusive.",
+    addWindow: "Add window", download: "Download policy.json",
+    pinSet: "Admin PIN: set.", pinUnset: "Admin PIN: NOT set — unmute stays refused until Set-Pin.bat runs.",
+    remove: "Remove", loaded: "Loaded. Edit, then download.",
+    saved: "Downloaded policy.json — replace the old file and restart the agent.",
+    errJson: "The selected file is not valid policy JSON.",
+    errDays: "A schedule window has no days selected.",
+    errTime: "A schedule window has an invalid time.",
+    errZero: "A schedule window has identical start and end times.",
+    errMax: "Max minutes must be at least 1 when unmute is allowed.",
+    errPoll: "Poll interval must be at least 100.",
+    errOffset: "UTC offset must be between -720 and 840."
+  },
+  ja: {
+    title: "muten-audio ポリシー編集",
+    intro: "policy.json を読み込み、編集して、更新したファイルをダウンロードします。Start-Muten.bat の隣の policy.json を差し替えてエージェントを再起動してください。このページは完全にオフラインで動作し、どこにも送信しません。",
+    basic: "基本", enforce: "ミュートを強制する（マスタースイッチ）",
+    offset: "UTC オフセット（分、540 = 日本時間）", poll: "見張り間隔 ms（最小 100）",
+    unmute: "一時的なミュート解除（管理者）", allowUnmute: "管理者 PIN による一時解除を許可する",
+    maxMinutes: "1回の解除の上限（分）",
+    removePin: "PIN 記録を削除する（Set-Pin.bat を再実行するまで解除できなくなります）",
+    pinNote: "PIN そのものはここには表示も編集もできません（塩付きハッシュでのみ保存されます）。設定・変更は Set-Pin.bat で行ってください。",
+    schedule: "スケジュール（強制する時間帯）",
+    scheduleNote: "時間帯が無ければ常時強制します。終了が開始より早い時間帯は日付をまたぎます。開始時刻は含み、終了時刻は含みません。",
+    addWindow: "時間帯を追加", download: "policy.json をダウンロード",
+    pinSet: "管理者 PIN: 設定済み。", pinUnset: "管理者 PIN: 未設定 — Set-Pin.bat を実行するまで解除は拒否されます。",
+    remove: "削除", loaded: "読み込みました。編集してダウンロードしてください。",
+    saved: "policy.json をダウンロードしました — 古いファイルを差し替えてエージェントを再起動してください。",
+    errJson: "選択したファイルは正しいポリシー JSON ではありません。",
+    errDays: "曜日が1つも選ばれていない時間帯があります。",
+    errTime: "時刻が不正な時間帯があります。",
+    errZero: "開始と終了が同じ時刻の時間帯があります。",
+    errMax: "解除を許可する場合、上限は1分以上にしてください。",
+    errPoll: "見張り間隔は100以上にしてください。",
+    errOffset: "UTC オフセットは -720〜840 の範囲にしてください。"
+  }
+};
+let lang = "en";
+let pinRecord = null;
+const DAYS = ["mon","tue","wed","thu","fri","sat","sun"];
+const $ = id => document.getElementById(id);
+
+function applyLang() {
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const k = el.getAttribute("data-i18n");
+    if (I18N[lang][k]) el.textContent = I18N[lang][k];
+  });
+  $("langBtn").textContent = lang === "en" ? "日本語" : "English";
+  document.querySelectorAll(".removeBtn").forEach(b => b.textContent = I18N[lang].remove);
+  updatePinState();
+}
+function updatePinState() {
+  $("pinState").textContent = pinRecord ? I18N[lang].pinSet : I18N[lang].pinUnset;
+}
+$("langBtn").addEventListener("click", () => { lang = lang === "en" ? "ja" : "en"; applyLang(); });
+
+function addWindowRow(w) {
+  const div = document.createElement("div");
+  div.className = "row windowRow";
+  const days = document.createElement("span");
+  days.className = "days";
+  DAYS.forEach(d => {
+    const lab = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.className = "day"; cb.value = d;
+    if (w && w.days.includes(d)) cb.checked = true;
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(" " + d));
+    days.appendChild(lab);
+  });
+  const start = document.createElement("input");
+  start.type = "time"; start.className = "start"; start.value = w ? w.start : "08:00";
+  const end = document.createElement("input");
+  end.type = "time"; end.className = "end"; end.value = w ? w.end : "19:00";
+  const rm = document.createElement("button");
+  rm.type = "button"; rm.className = "removeBtn"; rm.textContent = I18N[lang].remove;
+  rm.addEventListener("click", () => div.remove());
+  div.append(days, start, end, rm);
+  $("windows").appendChild(div);
+}
+$("addWindow").addEventListener("click", () => addWindowRow(null));
+
+function fillForm(p) {
+  $("enforce").checked = !!p.enforce;
+  $("offset").value = p.utc_offset_minutes ?? 540;
+  $("poll").value = p.poll_interval_ms ?? 1000;
+  $("allowUnmute").checked = !!p.allow_unmute;
+  $("maxMinutes").value = p.max_unmute_minutes ?? 30;
+  pinRecord = p.pin ?? null;
+  $("removePin").checked = false;
+  $("windows").innerHTML = "";
+  (p.schedule ?? []).forEach(addWindowRow);
+  updatePinState();
+}
+
+$("file").addEventListener("change", ev => {
+  const f = ev.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const p = JSON.parse(reader.result);
+      if (p.version !== 1) throw new Error("version");
+      fillForm(p);
+      $("errors").textContent = "";
+      $("ok").textContent = I18N[lang].loaded;
+    } catch (e) {
+      $("errors").textContent = I18N[lang].errJson;
+      $("ok").textContent = "";
+    }
+  };
+  reader.readAsText(f);
+});
+
+function validTime(s) { return /^([01]\d|2[0-3]):[0-5]\d$/.test(s); }
+
+$("download").addEventListener("click", () => {
+  const errs = [];
+  const schedule = [];
+  document.querySelectorAll(".windowRow").forEach(row => {
+    const days = [...row.querySelectorAll(".day")].filter(c => c.checked).map(c => c.value);
+    const start = row.querySelector(".start").value;
+    const end = row.querySelector(".end").value;
+    if (days.length === 0) errs.push(I18N[lang].errDays);
+    if (!validTime(start) || !validTime(end)) errs.push(I18N[lang].errTime);
+    else if (start === end) errs.push(I18N[lang].errZero);
+    schedule.push({ days, start, end });
+  });
+  const allowUnmute = $("allowUnmute").checked;
+  const maxMinutes = parseInt($("maxMinutes").value, 10);
+  const poll = parseInt($("poll").value, 10);
+  const offset = parseInt($("offset").value, 10);
+  if (allowUnmute && !(maxMinutes >= 1)) errs.push(I18N[lang].errMax);
+  if (!(poll >= 100)) errs.push(I18N[lang].errPoll);
+  if (!(offset >= -720 && offset <= 840)) errs.push(I18N[lang].errOffset);
+  if (errs.length) {
+    $("errors").textContent = [...new Set(errs)].join("\n");
+    $("ok").textContent = "";
+    return;
+  }
+  $("errors").textContent = "";
+  const policy = {
+    version: 1,
+    enforce: $("enforce").checked,
+    utc_offset_minutes: offset,
+    poll_interval_ms: poll,
+    allow_unmute: allowUnmute,
+    max_unmute_minutes: maxMinutes,
+    schedule,
+    pin: $("removePin").checked ? null : pinRecord
+  };
+  const blob = new Blob([JSON.stringify(policy, null, 2) + "\n"], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "policy.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  $("ok").textContent = I18N[lang].saved;
+});
+
+// Start from the example shape (weekday daytime enforcement).
+fillForm({
+  version: 1, enforce: true, utc_offset_minutes: 540, poll_interval_ms: 1000,
+  allow_unmute: true, max_unmute_minutes: 30,
+  schedule: [{ days: ["mon","tue","wed","thu","fri"], start: "08:00", end: "19:00" }],
+  pin: null
+});
+applyLang();
+</script>
+</body>
+</html>
