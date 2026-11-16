@@ -1,6 +1,6 @@
 [package]
 name        = "muten-audio"
-description = "muten — forced-mute policy engine for managed Windows PCs (pure logic + CLI; OS audio control lives in a PowerShell helper)"
+description = "muten — forced-mute policy engine for managed PCs (pure logic + CLI; OS audio control lives in a PowerShell helper on Windows, wpctl/pactl on Linux)"
 version     = "0.1.0"
 edition     = "2021"
 license     = "MIT"

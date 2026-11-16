@@ -18,13 +18,26 @@ use crate::policy::Policy;
 use crate::time::local_from_unix;
 use crate::{Error, Result};
 
-/// OS audio operations. Implemented by [`HelperBackend`] in production
-/// and by fakes in tests.
+/// OS audio operations. Implemented by [`HelperBackend`] (Windows)
+/// and [`crate::LinuxBackend`] (Linux) in production, and by fakes in
+/// tests.
 pub trait AudioBackend {
     /// Current state of the default playback endpoint.
     fn get_state(&mut self) -> Result<Observed>;
     /// Set the endpoint mute. `true` = muted.
     fn set_mute(&mut self, mute: bool) -> Result<()>;
+}
+
+/// Forwarding impl so the CLI can pick the backend at runtime
+/// (helper vs. Linux) and hand the watchdog a single boxed backend.
+impl AudioBackend for Box<dyn AudioBackend> {
+    fn get_state(&mut self) -> Result<Observed> {
+        (**self).get_state()
+    }
+
+    fn set_mute(&mut self, mute: bool) -> Result<()> {
+        (**self).set_mute(mute)
+    }
 }
 
 /// Backend that delegates to the PowerShell helper script
@@ -162,6 +175,17 @@ impl<B: AudioBackend> Watch<B> {
     /// The policy currently in force (after any distributed refresh).
     pub fn policy(&self) -> &Policy {
         &self.policy
+    }
+
+    /// The backend the watchdog drives.
+    pub fn backend(&self) -> &B {
+        &self.backend
+    }
+
+    /// Mutable access to the backend (tests substitute machine
+    /// states behind the watchdog's back, e.g. a volume raise).
+    pub fn backend_mut(&mut self) -> &mut B {
+        &mut self.backend
     }
 
     /// Pull the central source when due and apply a valid new policy.

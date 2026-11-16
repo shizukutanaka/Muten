@@ -5,6 +5,41 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [Unreleased]
 
+### Added — muten-audio: Linux audio agent
+
+- New `linux` module in `crates/muten-audio`: a `LinuxBackend`
+  implementing the same `AudioBackend` trait as the Windows
+  PowerShell helper, so policy interpretation (`decide()`), PIN
+  grants, the schedule and the hash-chained audit log behave
+  identically on Linux. OS contact is delegated to the desktop's
+  own tools — `wpctl` (PipeWire/WirePlumber) preferred, `pactl`
+  (PulseAudio) as fallback — behind a `CommandRunner` trait, so the
+  crate gains no dependency and stays `#![forbid(unsafe_code)]`.
+  Scope matches the Windows helper: the default playback device
+  only.
+- Tool selection is by probe: if neither tool is usable, backend
+  construction fails with an error naming both tools and why each
+  failed; `watch` prints that reason and exits before any
+  enforcement starts — the agent stops loudly and changes nothing.
+- The `watch` command gains `--backend auto|helper|linux`
+  (default `auto`: helper on Windows, Linux backend on Linux).
+  Windows behaviour with `--backend helper` (or `auto` on Windows)
+  is unchanged, including the default `audio-helper.ps1` flow.
+- New launcher `agent/start-muten-linux.sh` mirroring
+  `Start-Muten.bat` (existence checks, visible stop, exit code
+  shown). The admin commands (`init` / `set-pin` / `unmute` /
+  `status` / `verify-log` / `fetch-policy` / `fleet-status`) were
+  already platform-independent and work on Linux unchanged.
+- Tests: 74 unit (was 61; +13 for parsers, tool selection,
+  backend command sequences, and the full watchdog flow over the
+  Linux backend against a scripted fake machine) + 5 CLI contract
+  (was 4; +1: with an empty PATH, `watch --backend linux` stops
+  with a reason naming wpctl and pactl and creates no audit log)
+  + 6 property, clippy `-D warnings` clean, fmt clean.
+- Honest status: **volume control on a real Linux machine is
+  unverified** — this environment has no audio device, so all
+  command interaction is verified against stubs/mocks only.
+
 ### Added — muten-audio: fleet policy status aggregation
 
 - New `fleet` module in `crates/muten-audio` and a `fleet-status`

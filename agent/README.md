@@ -46,6 +46,33 @@ mistake — the agent only enforces while it is running.
   policy, any active grant, and whether the audit chain is intact.
 - **Verify the log**: `muten-audio.exe verify-log`.
 
+## Linux
+
+The same agent runs on Linux. Policy, PIN grants and the audit log
+are identical — only the "hands" differ: instead of the PowerShell
+helper, the agent drives the desktop session's own audio tools,
+`wpctl` (PipeWire/WirePlumber) if available, otherwise `pactl`
+(PulseAudio). If neither is usable, the agent prints the reason —
+naming both tools — and stops before enforcing anything.
+
+1. Build the binary: `cargo build --release` in
+   `../crates/muten-audio`, then copy `target/release/muten-audio`
+   into this folder.
+2. Create the policy and PIN: `./muten-audio init` (the `init` /
+   `set-pin` / `unmute` / `status` / `verify-log` commands are the
+   same on both platforms).
+3. Run `./start-muten-linux.sh` and keep the terminal open. It runs
+   `muten-audio watch --backend linux`; `--backend auto` (the
+   default) also picks the Linux backend on Linux.
+
+Honest status: the Linux backend is unit-tested against a scripted
+fake machine (tool selection, output parsing, the full watchdog
+flow), but **volume control on a real Linux machine has not been
+verified yet** — the first run on a real desktop is the first real
+test. The honest limits below (user-mode agent, default playback
+device only, tamper-evident-not-proof log) apply on Linux exactly
+as on Windows.
+
 ## Central policy distribution (optional)
 
 Placing `policy.json` by hand does not scale past a few machines.

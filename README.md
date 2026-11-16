@@ -13,10 +13,11 @@ tool and now enforces two things:
 This repository contains both halves:
 
 - **Audio** — [`crates/muten-audio`](crates/muten-audio) (v0.1.0) plus
-  the portable Windows agent folder [`agent/`](agent/): the endpoint
+  the portable agent folder [`agent/`](agent/): the endpoint
   is muted at sign-in, volume raises are re-muted within a second, and
   only an admin PIN can grant a temporary unmute that expires on its
-  own. See the quick start below.
+  own. Windows is the primary target; the same binary also runs on
+  Linux (wpctl/pactl backend). See the quick start below.
 - **Screen** — [`crates/muten-overlay`](crates/muten-overlay) (v0.6.0).
 
 ## Design principles
@@ -66,6 +67,15 @@ Temporary sound for a legit need: `agent/Unmute.bat` + the PIN; the
 grant expires and the endpoint re-mutes automatically. Everything is
 written to a tamper-evident audit log (`audit.log`).
 
+On **Linux** the same binary enforces the same policy through the
+desktop's own audio tools — `wpctl` (PipeWire/WirePlumber) or
+`pactl` (PulseAudio): build with cargo, run `./muten-audio init`,
+then launch [`agent/start-muten-linux.sh`](agent/start-muten-linux.sh)
+(`watch --backend linux`). With neither tool usable the agent prints
+the reason and stops before enforcing anything. The Linux backend is
+tested against a scripted fake machine; a run controlling volume on
+a real Linux desktop is still pending verification.
+
 For more than a few machines, the policy can be distributed
 centrally: host one master `policy.json` on a shared folder or an
 HTTPS URL and each agent pulls it (`--policy-source` on `watch`, or
@@ -87,7 +97,8 @@ rights can stop or remove it, so the PIN/watchdog pair deters casual
 unmuting rather than defeating a determined admin; hard enforcement
 needs a service under a separate admin account, ACLs, or Group
 Policy/MDM. Only the default playback endpoint is controlled. A run
-on a real Windows machine is still pending verification.
+on a real Windows machine is still pending verification, as is
+volume control on a real Linux machine.
 
 ## Quick start — screen
 

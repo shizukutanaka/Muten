@@ -369,6 +369,57 @@ fn fleet_status_aggregates_collected_logs() {
 }
 
 #[test]
+#[cfg(target_os = "linux")]
+fn watch_linux_backend_without_audio_tools_stops_with_reason() {
+    let bin = Path::new(env!("CARGO_BIN_EXE_muten-audio"));
+    let dir = tempfile::tempdir().unwrap();
+    let dir = dir.path();
+    let (policy, grant, log) = paths(dir);
+    std::fs::write(
+        &policy,
+        r#"{"version":1,"enforce":true,"allow_unmute":true,"max_unmute_minutes":30}"#,
+    )
+    .unwrap();
+
+    // An empty PATH guarantees neither wpctl nor pactl can be found,
+    // whatever the machine running the test has installed.
+    let empty_path = dir.join("empty-bin");
+    std::fs::create_dir(&empty_path).unwrap();
+    let out = Command::new(bin)
+        .args([
+            "watch",
+            "--policy",
+            policy.to_str().unwrap(),
+            "--grant",
+            grant.to_str().unwrap(),
+            "--log",
+            log.to_str().unwrap(),
+            "--backend",
+            "linux",
+            "--once",
+        ])
+        .current_dir(dir)
+        .env("PATH", &empty_path)
+        .output()
+        .expect("spawn muten-audio");
+    assert!(
+        !out.status.success(),
+        "watch must stop when no audio tool is usable: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    // The reason names both tools the operator could install.
+    assert!(stderr.contains("wpctl"), "stderr: {stderr}");
+    assert!(stderr.contains("pactl"), "stderr: {stderr}");
+    // The agent never started: no audit log was created and nothing
+    // was enforced.
+    assert!(
+        !log.exists(),
+        "audit log must not be created on a failed start"
+    );
+}
+
+#[test]
 fn unmute_without_pin_set_is_denied() {
     let bin = Path::new(env!("CARGO_BIN_EXE_muten-audio"));
     let dir = tempfile::tempdir().unwrap();
