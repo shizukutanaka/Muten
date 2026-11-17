@@ -1,0 +1,142 @@
+# Release packaging for the muten audio agent.
+#
+# The deployable unit is the portable folder agent/ plus the compiled
+# muten-audio binary placed inside it — exactly what agent/Build.bat
+# produces by hand and what agent/README.md describes. This workflow
+# builds that folder on Windows and on Linux and packages it as:
+#
+#   muten-agent-<version>-windows-x86_64.zip
+#   muten-agent-<version>-linux-x86_64.tar.gz
+#
+# Triggers:
+#   - push of a version tag (v*): the packages and a SHA256SUMS file
+#     are attached to a new GitHub Release for that tag.
+#   - workflow_dispatch: the packages are uploaded as Actions
+#     artifacts only — no Release is created. Use this to rehearse a
+#     release; publishing stays a deliberate, separate act (push the
+#     tag when the release should exist).
+#
+# The packages are NOT code-signed, matching the product's documented
+# honest limits (see agent/README.md): muten ships unsigned portable
+# folders, and central policy distribution deliberately carries no
+# signature either. SHA256SUMS proves the download matches what this
+# workflow built — nothing more is claimed.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-windows:
+    name: Package agent (Windows)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: crates/muten-audio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Determine version
+        id: version
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "value=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Test
+        run: cargo test
+      - name: Build release exe
+        run: cargo build --release
+      - name: Assemble agent package
+        working-directory: ${{ github.workspace }}
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.value }}"
+          New-Item -ItemType Directory -Force -Path dist/stage | Out-Null
+          Copy-Item -Recurse -Path agent -Destination dist/stage/agent
+          Copy-Item -Path crates/muten-audio/target/release/muten-audio.exe -Destination dist/stage/agent/muten-audio.exe
+          Compress-Archive -Path dist/stage/agent -DestinationPath "dist/muten-agent-$version-windows-x86_64.zip"
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: muten-agent-windows-x86_64
+          path: ${{ github.workspace }}/dist/muten-agent-${{ steps.version.outputs.value }}-windows-x86_64.zip
+          if-no-files-found: error
+
+  package-linux:
+    name: Package agent (Linux)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/muten-audio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Determine version
+        id: version
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "value=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Test
+        run: cargo test
+      - name: Build release binary
+        run: cargo build --release
+      - name: Assemble agent package
+        working-directory: ${{ github.workspace }}
+        run: |
+          version="${{ steps.version.outputs.value }}"
+          mkdir -p dist/stage
+          cp -r agent dist/stage/agent
+          cp crates/muten-audio/target/release/muten-audio dist/stage/agent/muten-audio
+          chmod +x dist/stage/agent/muten-audio dist/stage/agent/start-muten-linux.sh
+          tar -czf "dist/muten-agent-${version}-linux-x86_64.tar.gz" -C dist/stage agent
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: muten-agent-linux-x86_64
+          path: ${{ github.workspace }}/dist/muten-agent-${{ steps.version.outputs.value }}-linux-x86_64.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    # Tag pushes only. A manual workflow_dispatch run stops after the
+    # package jobs and leaves its output as Actions artifacts.
+    if: github.ref_type == 'tag'
+    needs: [package-windows, package-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum muten-agent-*.zip muten-agent-*.tar.gz > SHA256SUMS
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/SHA256SUMS dist/muten-agent-* \
+            --title "muten $GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag
