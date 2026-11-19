@@ -369,6 +369,64 @@ fn fleet_status_aggregates_collected_logs() {
 }
 
 #[test]
+fn fleet_status_flags_an_agent_that_stopped_on_an_error() {
+    let bin = Path::new(env!("CARGO_BIN_EXE_muten-audio"));
+    let dir = tempfile::tempdir().unwrap();
+    let dir = dir.path();
+    let (policy, grant, _) = paths(dir);
+    std::fs::write(
+        &policy,
+        r#"{"version":1,"enforce":true,"allow_unmute":true,"max_unmute_minutes":30}"#,
+    )
+    .unwrap();
+    let log = dir.join("pc-dead.log");
+
+    // The resident loop with a helper that cannot run: the first poll
+    // fails and the agent exits — leaving that fact in its log.
+    let r = run(
+        bin,
+        dir,
+        &[
+            "watch",
+            "--backend",
+            "helper",
+            "--helper",
+            dir.join("missing-helper.ps1").to_str().unwrap(),
+            "--policy",
+            policy.to_str().unwrap(),
+            "--grant",
+            grant.to_str().unwrap(),
+            "--log",
+            log.to_str().unwrap(),
+        ],
+        "",
+    );
+    assert!(!r.status.success(), "watch must fail without a helper");
+    let text = std::fs::read_to_string(&log).unwrap();
+    assert!(
+        text.lines().last().unwrap().contains("\"agent_stopped\""),
+        "{text}"
+    );
+
+    let r = run(bin, dir, &["fleet-status", log.to_str().unwrap()], "");
+    assert_eq!(r.status.code(), Some(1), "stdout: {}", r.stdout);
+    assert!(r.stdout.contains("AGENT (UTC)"), "{}", r.stdout);
+    assert!(r.stdout.contains("STOPPED 2"), "{}", r.stdout);
+    assert!(
+        r.stdout.contains("pc-dead: agent STOPPED at"),
+        "{}",
+        r.stdout
+    );
+    assert!(
+        r.stdout
+            .contains("1 machine(s) with the agent STOPPED (not enforcing)."),
+        "{}",
+        r.stdout
+    );
+    assert!(r.stdout.contains("intact"), "{}", r.stdout);
+}
+
+#[test]
 #[cfg(target_os = "linux")]
 fn watch_linux_backend_without_audio_tools_stops_with_reason() {
     let bin = Path::new(env!("CARGO_BIN_EXE_muten-audio"));

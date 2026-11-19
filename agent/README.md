@@ -125,14 +125,18 @@ muten-audio.exe fleet-status --master \\fileserver\muten\policy.json C:\collecte
 ```
 Expected policy sha256: f48994fcd727…
 
-MACHINE  POLICY        APPLIED (UTC)        SYNC         LAST FAILURE (UTC)   CHAIN
-pc-042   f48994fcd727  2026-11-16 08:12:03  current      —                    intact (132 events)
-pc-017   51bd09c3aa04  2026-11-15 22:40:10  STALE        2026-11-16 07:58:11  intact (98 events)
+MACHINE  POLICY        APPLIED (UTC)        SYNC         LAST FAILURE (UTC)   AGENT (UTC)                  CHAIN
+pc-042   f48994fcd727  2026-11-16 08:12:03  current      —                    started 2026-11-16 08:00:41  intact (132 events)
+pc-017   51bd09c3aa04  2026-11-15 22:40:10  STALE        2026-11-16 07:58:11  started 2026-11-15 22:39:58  intact (98 events)
+pc-031   f48994fcd727  2026-11-16 08:12:09  current      —                    STOPPED 2026-11-16 09:03:27  intact (57 events)
 
 pc-017: policy source \\fileserver\muten\policy.json
 pc-017: last failure policy_fetch_failed at 2026-11-16 07:58:11: …
+pc-031: policy source \\fileserver\muten\policy.json
+pc-031: agent STOPPED at 2026-11-16 09:03:27 — not enforcing until restarted: …
 
-2 machine(s): 1 current, 1 STALE, 0 with no policy record.
+3 machine(s): 2 current, 1 STALE, 0 with no policy record.
+1 machine(s) with the agent STOPPED (not enforcing).
 ```
 
 - The expected hash comes from `--master <policy.json>` (the file
@@ -140,8 +144,15 @@ pc-017: last failure policy_fetch_failed at 2026-11-16 07:58:11: …
   hash. A machine whose last applied policy differs is **STALE**;
   one whose log records no application at all is **no record**.
   The command exits non-zero when any machine is STALE, has no
-  record, or has a broken audit chain — so a scheduled task can
-  alert on it.
+  record, has its agent STOPPED, or has a broken audit chain — so
+  a scheduled task can alert on it.
+- `AGENT` is the newest start/stop the log records. When the agent
+  exits on an error (the audio helper failed, say), it writes
+  `agent_stopped` with the error first, so `STOPPED` is proof the
+  machine is not enforcing, even though its policy is `current`.
+  `started` is **not** proof that the agent is still running:
+  closing its window or powering the machine off writes nothing.
+  `—` means the log records neither.
 - A machine is labelled by its log's file name: the log format
   deliberately carries no machine identity, and `fleet-status`
   adds none. It only reads the files it is handed — nothing is

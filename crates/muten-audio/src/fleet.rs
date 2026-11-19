@@ -62,6 +62,20 @@ impl PolicyFailure {
     }
 }
 
+/// The agent's newest lifecycle record: an `agent_started`, or an
+/// `agent_stopped` (written when the watchdog exits on an error).
+///
+/// A start without a later stop is *not* proof the agent is still
+/// running — closing its window or powering off writes nothing — but
+/// a recorded stop is proof that it is not.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentLifecycle {
+    pub ts_unix: i64,
+    pub stopped: bool,
+    /// The recorded error text of a stop (empty for a start).
+    pub error: String,
+}
+
 /// How a log's hash chain held up under inspection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChainCheck {
@@ -95,6 +109,8 @@ pub struct MachineStatus {
     pub last_applied: Option<AppliedPolicy>,
     /// The newest distribution failure, if the log records any.
     pub last_failure: Option<PolicyFailure>,
+    /// The newest agent start/stop, if the log records any.
+    pub last_agent: Option<AgentLifecycle>,
 }
 
 /// A machine's standing against the expected (master) policy hash.
@@ -120,6 +136,12 @@ impl MachineStatus {
             Some(applied) if applied.sha256.eq_ignore_ascii_case(expected) => SyncStatus::Current,
             Some(_) => SyncStatus::Stale,
         }
+    }
+
+    /// The log's last lifecycle record says the agent stopped, so
+    /// this machine is not enforcing whatever policy it last applied.
+    pub fn agent_stopped(&self) -> bool {
+        self.last_agent.as_ref().is_some_and(|a| a.stopped)
     }
 
     /// Lines that were skipped, with their counts — always reported.
@@ -227,6 +249,7 @@ pub fn analyze_log(label: &str, text: &str) -> MachineStatus {
     let mut parsed: Vec<ParsedLine> = Vec::new();
     let mut last_applied: Option<AppliedPolicy> = None;
     let mut last_failure: Option<PolicyFailure> = None;
+    let mut last_agent: Option<AgentLifecycle> = None;
 
     for (i, raw) in text.lines().enumerate() {
         if raw.trim().is_empty() {
@@ -288,6 +311,28 @@ pub fn analyze_log(label: &str, text: &str) -> MachineStatus {
                     last_failure = Some(failure);
                 }
             }
+            EventKind::AgentStarted | EventKind::AgentStopped => {
+                let stopped = line.kind == EventKind::AgentStopped;
+                let lifecycle = AgentLifecycle {
+                    ts_unix: line.ts_unix,
+                    stopped,
+                    error: if stopped {
+                        line.detail
+                            .get("error")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string()
+                    } else {
+                        String::new()
+                    },
+                };
+                if last_agent
+                    .as_ref()
+                    .map_or(true, |prev| lifecycle.ts_unix >= prev.ts_unix)
+                {
+                    last_agent = Some(lifecycle);
+                }
+            }
             _ => {}
         }
         events += 1;
@@ -321,6 +366,7 @@ pub fn analyze_log(label: &str, text: &str) -> MachineStatus {
         chain,
         last_applied,
         last_failure,
+        last_agent,
     }
 }
 
@@ -487,6 +533,47 @@ mod tests {
         assert_eq!(st.sync_status(Some(SHA_B)), SyncStatus::Current);
         assert_eq!(st.sync_status(Some(SHA_A)), SyncStatus::Stale);
         assert_eq!(st.sync_status(None), SyncStatus::NotChecked);
+    }
+
+    fn lifecycle(ts: i64, kind: EventKind) -> Event {
+        Event {
+            ts_unix: ts,
+            kind,
+            detail: if kind == EventKind::AgentStopped {
+                serde_json::json!({"reason": "error", "error": "audio backend error: x"})
+            } else {
+                serde_json::json!({"version": "0.1.0"})
+            },
+        }
+    }
+
+    #[test]
+    fn last_agent_is_the_newest_start_or_stop() {
+        let text = log_text(&[
+            lifecycle(10, EventKind::AgentStarted),
+            applied(20, SHA_A),
+            lifecycle(30, EventKind::AgentStopped),
+        ]);
+        let m = analyze_log("pc", &text);
+        assert!(m.agent_stopped());
+        let a = m.last_agent.unwrap();
+        assert_eq!(a.ts_unix, 30);
+        assert_eq!(a.error, "audio backend error: x");
+
+        // A restart after the stop clears it.
+        let text = log_text(&[
+            lifecycle(10, EventKind::AgentStarted),
+            lifecycle(30, EventKind::AgentStopped),
+            lifecycle(40, EventKind::AgentStarted),
+        ]);
+        let m = analyze_log("pc", &text);
+        assert!(!m.agent_stopped());
+        assert_eq!(m.last_agent.unwrap().ts_unix, 40);
+
+        // No lifecycle record at all: unknown, not stopped.
+        let m = analyze_log("pc", &log_text(&[applied(20, SHA_A)]));
+        assert!(m.last_agent.is_none());
+        assert!(!m.agent_stopped());
     }
 
     #[test]

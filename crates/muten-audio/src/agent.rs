@@ -366,7 +366,17 @@ impl<B: AudioBackend> Watch<B> {
             }),
         );
         loop {
-            self.step(now_fn())?;
+            if let Err(e) = self.step(now_fn()) {
+                // The loop is about to end and enforcement with it:
+                // say so in the log, so a collected log (fleet-status)
+                // does not keep reporting this machine as running.
+                self.record(
+                    now_fn(),
+                    EventKind::AgentStopped,
+                    serde_json::json!({"reason": "error", "error": e.to_string()}),
+                );
+                return Err(e);
+            }
             std::thread::sleep(std::time::Duration::from_millis(
                 self.policy.poll_interval_ms,
             ));
@@ -384,6 +394,7 @@ mod tests {
         muted: bool,
         volume_percent: Option<u8>,
         mute_calls: Vec<bool>,
+        fail_set_mute: bool,
     }
 
     impl AudioBackend for FakeBackend {
@@ -394,6 +405,9 @@ mod tests {
             })
         }
         fn set_mute(&mut self, mute: bool) -> Result<()> {
+            if self.fail_set_mute {
+                return Err(crate::Error::Backend("set_mute failed".into()));
+            }
             self.muted = mute;
             self.mute_calls.push(mute);
             Ok(())
@@ -473,6 +487,18 @@ mod tests {
         assert!(text.contains("volume_raised_detected"));
         assert!(text.contains("unmuted_for_grant"));
         assert!(text.contains("grant_expired"));
+    }
+
+    #[test]
+    fn run_records_agent_stopped_when_it_exits_on_an_error() {
+        let (rig, mut w) = rig();
+        w.backend.fail_set_mute = true;
+        assert!(w.run(|| T0).is_err());
+        let text = std::fs::read_to_string(&rig.paths.log).unwrap();
+        crate::audit::verify_chain(&text).unwrap();
+        let last = text.lines().last().unwrap();
+        assert!(last.contains("\"agent_stopped\""), "{last}");
+        assert!(last.contains("set_mute failed"), "{last}");
     }
 
     // ---- central policy distribution (intake) ----

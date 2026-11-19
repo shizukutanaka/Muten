@@ -85,8 +85,9 @@ and every applied policy is recorded in the audit log with the
 SHA-256 of its bytes. The read side of that trail is
 `muten-audio fleet-status`: point it at the collected per-machine
 audit logs and the master policy, and it lists which policy each
-machine last applied, from where, and its most recent failure —
-machines running a different policy are flagged STALE. There is
+machine last applied, from where, its most recent failure, and
+whether its agent last started or STOPPED on an error — machines
+running a different policy are flagged STALE. There is
 deliberately no signature scheme — protect the distribution
 location like an admin credential (details and honest limits in
 [`agent/README.md`](agent/README.md)).

@@ -5,6 +5,25 @@ and [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [Unreleased]
 
+### Added — muten-audio: fleet-status shows agents that stopped
+
+- `watch` now writes `agent_stopped` (with the error) to the audit
+  log when the resident loop exits on an error. Before, a helper
+  failure ended enforcement without a trace in the log (a failed
+  mute call recorded nothing at all), so `fleet-status` kept
+  reporting the machine `current`.
+- `fleet-status` gains an `AGENT (UTC)` column — the newest
+  `started` / `STOPPED` record — a detail line with the stop's
+  error, a summary count, and a non-zero exit for any STOPPED
+  machine. No new event kind, field, or dependency: `agent_stopped`
+  already existed in the log format but was never written.
+- Honest limit: `started` is not liveness — closing the window or
+  powering off writes nothing.
+- Tests: 76 unit (was 74; +1 `run` records the stop, +1 lifecycle
+  reduction) + 6 CLI contract (was 5; +1: `watch` with a missing
+  helper exits, and `fleet-status` on its log reports STOPPED and
+  exits 1) + 6 property.
+
 ### Added — muten-audio: Linux audio agent
 
 - New `linux` module in `crates/muten-audio`: a `LinuxBackend`

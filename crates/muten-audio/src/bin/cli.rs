@@ -426,12 +426,13 @@ fn cmd_fleet_status(
         .unwrap_or(0)
         .max("MACHINE".len());
     println!(
-        "{}  {}  {}  {}  {}  CHAIN",
+        "{}  {}  {}  {}  {}  {}  CHAIN",
         pad("MACHINE", w_machine),
         pad("POLICY", 12),
         pad("APPLIED (UTC)", 19),
         pad("SYNC", 11),
         pad("LAST FAILURE (UTC)", 19),
+        pad("AGENT (UTC)", 27),
     );
     for m in &machines {
         let policy = m
@@ -455,6 +456,11 @@ fn cmd_fleet_status(
             .as_ref()
             .map(|f| format_unix_utc(f.ts_unix))
             .unwrap_or_else(|| "—".to_string());
+        let agent = match &m.last_agent {
+            Some(a) if a.stopped => format!("STOPPED {}", format_unix_utc(a.ts_unix)),
+            Some(a) => format!("started {}", format_unix_utc(a.ts_unix)),
+            None => "—".to_string(),
+        };
         let chain = match &m.chain {
             ChainCheck::Intact { events } => {
                 format!(
@@ -471,12 +477,13 @@ fn cmd_fleet_status(
             ChainCheck::Broken { .. } => "BROKEN".to_string(),
         };
         println!(
-            "{}  {}  {}  {}  {}  {}",
+            "{}  {}  {}  {}  {}  {}  {}",
             pad(&m.label, w_machine),
             pad(&policy, 12),
             pad(&applied, 19),
             pad(sync, 11),
             pad(&failure, 19),
+            pad(&agent, 27),
             chain,
         );
     }
@@ -496,6 +503,17 @@ fn cmd_fleet_status(
             );
             if !f.error.is_empty() {
                 note.push_str(&format!(": {}", f.error));
+            }
+            notes.push(note);
+        }
+        if let Some(a) = m.last_agent.as_ref().filter(|a| a.stopped) {
+            let mut note = format!(
+                "{}: agent STOPPED at {} — not enforcing until restarted",
+                m.label,
+                format_unix_utc(a.ts_unix)
+            );
+            if !a.error.is_empty() {
+                note.push_str(&format!(": {}", a.error));
             }
             notes.push(note);
         }
@@ -549,6 +567,10 @@ fn cmd_fleet_status(
             machines.len()
         );
     }
+    let stopped = machines.iter().filter(|m| m.agent_stopped()).count();
+    if stopped > 0 {
+        println!("{stopped} machine(s) with the agent STOPPED (not enforcing).");
+    }
     if total_unreadable + total_unknown > 0 {
         println!(
             "Skipped lines across all logs: {total_unreadable} unreadable, {total_unknown} unknown-format (counted above, never silently dropped)."
@@ -557,6 +579,7 @@ fn cmd_fleet_status(
 
     let attention = machines.iter().any(|m| {
         matches!(m.chain, ChainCheck::Broken { .. })
+            || m.agent_stopped()
             || (expected.is_some()
                 && matches!(
                     m.sync_status(expected.as_deref()),

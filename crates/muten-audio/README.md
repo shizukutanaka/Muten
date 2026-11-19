@@ -69,8 +69,9 @@ boundary is the distribution location itself (see
 
 Fleet status (the `fleet` module, the `fleet-status` command): the
 read side of that trail. It aggregates collected per-machine audit
-logs — last applied policy hash, source, time, most recent failure —
-and flags machines whose policy differs from the master's SHA-256.
+logs — last applied policy hash, source, time, most recent failure,
+newest agent start/stop — and flags machines whose policy differs
+from the master's SHA-256 or whose agent stopped on an error.
 Machines are labelled by the log file names the administrator
 collected them under; the command reads only the files it is handed
 and counts (never silently drops) lines it cannot recognise.
