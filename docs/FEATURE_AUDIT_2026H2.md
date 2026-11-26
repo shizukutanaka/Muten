@@ -523,7 +523,16 @@ distinguishes all four dismiss outcomes at pre-flight time, and
 custom helper that would trigger this conflation is caught before
 deployment rather than after.
 
-### [OPEN ★★] DR-18: one malformed window blinds the whole sweep (fault isolation)
+### [RESOLVED 2026-11-26] DR-18: one malformed window blinds the whole sweep (fault isolation)
+Implemented as spec'd below: `parse_enumerate_output` in
+`src/controller.rs` (strict fast path → control-char sanitize + strict
+retry → per-element salvage via `Vec<Value>`/`from_value`, `Err` only
+when nothing is salvageable, stderr warning naming the dropped count).
+Unit tests cover the control-char, one-bad-element-among-three, and
+wholly-garbage cases. Verified with a working local cargo:
+`cargo test` all suites green (1337 unit tests), clippy clean,
+`rustfmt --check` clean for the touched file. The original spec text
+follows, kept for the record.
 **Evidence** (first-principles reading of the parse path, 2026-07):
 `SubprocessController::enumerate` (`src/controller.rs`) parses the
 helper's entire stdout in one shot —

@@ -200,6 +200,35 @@ const DEFAULT_HELPER_TIMEOUT: std::time::Duration = std::time::Duration::from_se
 /// avoid busy-spinning the CPU while waiting on a normal sub-second call.
 const HELPER_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(20);
 
+fn parse_enumerate_output(text: &str) -> Result<Vec<EnumeratedWindow>, ControllerError> {
+    if let Ok(windows) = serde_json::from_str::<Vec<EnumeratedWindow>>(text) {
+        return Ok(windows);
+    }
+
+    let sanitized: String = text.chars().filter(|c| !c.is_control()).collect();
+    if let Ok(windows) = serde_json::from_str::<Vec<EnumeratedWindow>>(&sanitized) {
+        return Ok(windows);
+    }
+
+    let values = serde_json::from_str::<Vec<serde_json::Value>>(&sanitized)
+        .map_err(|e| ControllerError::Enumerate(format!("bad helper JSON: {e}")))?;
+    let element_count = values.len();
+    let windows: Vec<EnumeratedWindow> = values
+        .into_iter()
+        .filter_map(|value| serde_json::from_value(value).ok())
+        .collect();
+    let dropped = element_count - windows.len();
+    if dropped > 0 {
+        eprintln!("muten-overlay: dropped {dropped} malformed enumerated window element(s)");
+    }
+    if windows.is_empty() && element_count != 0 {
+        return Err(ControllerError::Enumerate(format!(
+            "bad helper JSON: all {element_count} elements failed to deserialize"
+        )));
+    }
+    Ok(windows)
+}
+
 impl SubprocessController {
     /// `helper` is the path/name of the platform helper. Override via
     /// `$MUTEN_OVERLAY_HELPER` for testing or non-PATH installs. Uses
@@ -313,8 +342,7 @@ impl OverlayController for SubprocessController {
         if text.trim().is_empty() {
             return Ok(Vec::new());
         }
-        serde_json::from_str::<Vec<EnumeratedWindow>>(&text)
-            .map_err(|e| ControllerError::Enumerate(format!("bad helper JSON: {e}")))
+        parse_enumerate_output(&text)
     }
 
     fn dismiss(&self, id: &WindowId) -> Result<bool, ControllerError> {
@@ -486,6 +514,51 @@ mod tests {
         let ew: EnumeratedWindow = serde_json::from_str(old_format)
             .expect("pre-process-field helper JSON must keep parsing");
         assert_eq!(ew.process, None);
+    }
+
+    #[test]
+    fn enumerate_output_strips_raw_control_chars_from_titles() {
+        let clean = serde_json::to_string(&vec![win("w1", "bad title")]).unwrap();
+        let text = clean.replace("bad title", "bad\u{1b}title");
+        let windows = parse_enumerate_output(&text).unwrap();
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0].id, "w1");
+        assert_eq!(windows[0].window.title, "badtitle");
+        assert!(!windows[0].window.title.chars().any(|c| c.is_control()));
+    }
+
+    #[test]
+    fn enumerate_output_drops_only_schema_invalid_elements() {
+        let first = serde_json::to_string(&win("w1", "one")).unwrap();
+        let second = serde_json::to_string(&win("w2", "two")).unwrap();
+        let invalid = r#"{"id":42,"window":{}}"#;
+        let text = format!("[{first},{invalid},{second}]");
+        let windows = parse_enumerate_output(&text).unwrap();
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[0].id, "w1");
+        assert_eq!(windows[1].id, "w2");
+    }
+
+    #[test]
+    fn enumerate_output_empty_array_is_valid() {
+        assert!(parse_enumerate_output("[]").unwrap().is_empty());
+    }
+
+    #[test]
+    fn enumerate_output_rejects_wholly_garbage_input() {
+        for input in [
+            "this is not json",
+            r#"{"windows":[]}"#,
+            r#"[{"id":42,"window":{}}]"#,
+        ] {
+            assert!(
+                matches!(
+                    parse_enumerate_output(input),
+                    Err(ControllerError::Enumerate(_))
+                ),
+                "input must fail enumerate parsing: {input:?}"
+            );
+        }
     }
 
     #[cfg(unix)]
