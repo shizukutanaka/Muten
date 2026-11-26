@@ -32,7 +32,7 @@ confidence-threshold = 0.9
 [bans]
 # Deny multiple major versions of the same crate (bloat / confusion).
 multiple-versions = "warn"
-wildcard-dependencies = "deny"   # all deps must be version-pinned
+wildcards = "deny"          # all deps must be version-pinned
 # muten pins exact versions for MSRV 1.75 compatibility; flag any
 # crate that sneaks in unpinned.
 
